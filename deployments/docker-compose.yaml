@@ -7,22 +7,23 @@ services:
     container_name: prism-postgres
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      POSTGRES_DB: news_rag
-      DB_APP_USER: ${DB_APP_USER:-prism_user}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin
+      POSTGRES_DB: ${POSTGRES_DB:-prism}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     secrets:
-      - postgres_password
-      - app_db_password
+      - postgres_admin
+      - postgres_app
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../db/init:/docker-entrypoint-initdb.d
     networks:
       - prism-net
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -33,18 +34,32 @@ services:
   nats:
     image: nats:2-alpine
     container_name: prism-nats
-    command: [ "-c", "/etc/nats/nats.conf", "-js" ]
+    command: >
+      sh -c "export NATS_AUTH_TOKEN=$$(cat /run/secrets/nats_token) && nats-server -c /etc/nats/nats.conf"
     ports:
       - "127.0.0.1:${NATS_HTTP_MONITORING_PORT:-8222}:8222"
     environment:
-      NATS_AUTH_TOKEN: ${NATS_AUTH_TOKEN:-prism_token}
+      NATS_SERVER_NAME: ${NATS_SERVER_NAME:-prism-nats}
+      NATS_CLIENT_PORT: ${NATS_CLIENT_PORT:-4222}
+      NATS_HTTP_MONITORING_PORT: ${NATS_HTTP_MONITORING_PORT:-8222}
+      NATS_JS_STORE_DIR: ${NATS_JS_STORE_DIR:-/data/jetstream}
     volumes:
       - nats_data:/data
       - ../build/infra/nats/nats.conf:/etc/nats/nats.conf
+    secrets:
+      - nats_token
     networks:
       - prism-net
     healthcheck:
-      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz" ]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8222/healthz",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -55,16 +70,25 @@ services:
   seaweedfs:
     image: chrislusf/seaweedfs:4.05
     container_name: prism-seaweedfs
-    command: "server -dir=/data -s3 -s3.port=${SEAWEEDFS_S3_PORT:-8333} -ip.bind=0.0.0.0"
-    environment:
-      - AWS_ACCESS_KEY_ID=${SEAWEEDFS_ACCESS_KEY:-prism_key}
-      - AWS_SECRET_ACCESS_KEY=${SEAWEEDFS_SECRET_KEY:-prism_secret}
+    entrypoint: /bin/sh
+    command: >
+      -c "export AWS_ACCESS_KEY_ID=$$(cat /run/secrets/sw_access_key) && 
+             export AWS_SECRET_ACCESS_KEY=$$(cat /run/secrets/sw_secret_key) && 
+             /usr/bin/weed server -dir=/data -s3 -s3.port=${SEAWEEDFS_S3_PORT} -ip.bind=0.0.0.0"
     volumes:
       - seaweedfs_data:/data
     networks:
       - prism-net
     healthcheck:
-      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9333/cluster/status" ]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:9333/cluster/status",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -74,10 +98,16 @@ networks:
     driver: bridge
 
 secrets:
-  postgres_password:
-    file: ../.secrets/postgres_password
-  app_db_password:
-    file: ../.secrets/app_db_password
+  postgres_admin:
+    file: ../${POSTGRES_ADMIN_PASSWORD_FILE}
+  postgres_app:
+    file: ../${POSTGRES_APP_PASSWORD_FILE}
+  nats_token:
+    file: ../${NATS_AUTH_TOKEN_FILE}
+  sw_access_key:
+    file: ../${SEAWEEDFS_ACCESS_KEY_FILE}
+  sw_secret_key:
+    file: ../${SEAWEEDFS_SECRET_KEY_FILE}
 
 volumes:
   postgres_data:

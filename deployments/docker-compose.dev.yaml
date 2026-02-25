@@ -17,6 +17,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:80",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
   # -------------------------------------------------------------------------
   # NATS UI: Monitoring Dashboard
@@ -33,6 +47,20 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:31311",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
 volumes:
   pgadmin_data:

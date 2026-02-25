@@ -3,7 +3,7 @@ services:
   # Ollama: Local LLM for Keyword Extraction & Fallback Parsing
   # -------------------------------------------------------------------------
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.13.5
     container_name: prism-ollama
     ports:
       - "127.0.0.1:11434:11434"

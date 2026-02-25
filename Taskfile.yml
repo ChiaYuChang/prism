@@ -1,41 +1,29 @@
 # yaml-language-server: $schema=https://taskfile.dev/schema.json
-version: '3'
+version: "3"
 
 # 自動載入環境變數
-dotenv: ['.env']
+dotenv: [".env"]
 
 vars:
   DEPLOY_DIR: deployments
-  BUILD_DIR: cmd
+  BUILD_DIR: bin
+  CMD_DIR: cmd
   DB_DIR: db
 
   POSTGRES_APP_PASSWORD:
     sh: cat ${POSTGRES_APP_PASSWORD_FILE} 2>/dev/null || echo "secret_not_found"
   POSTGRES_ADMIN_PASSWORD:
     sh: cat ${POSTGRES_ADMIN_PASSWORD_FILE} 2>/dev/null || echo "secret_not_found"
-  NATS_AUTH_TOKEN:
-    sh: cat ${NATS_AUTH_TOKEN_FILE} 2>/dev/null || echo "secret_not_found"
-  SEAWEEDFS_ACCESS_KEY:
-    sh: cat ${SEAWEEDFS_ACCESS_KEY_FILE} 2>/dev/null || echo "secret_not_found"
-  SEAWEEDFS_SECRET_KEY:
-    sh: cat ${SEAWEEDFS_SECRET_KEY_FILE} 2>/dev/null || echo "secret_not_found"
-  GEMINI_API_KEY:
-    sh: cat ${GEMINI_API_KEY_FILE} 2>/dev/null || echo "secret_not_found"
-  GCLOUD_API_KEY:
-    sh: cat ${GCLOUD_API_KEY_FILE} 2>/dev/null || echo "secret_not_found"
-  GOOGLE_CSE_ID:
-    sh: cat ${GOOGLE_CSE_ID_FILE} 2>/dev/null || echo "secret_not_found"
 
-  COMPOSE_FILES: >-
+  COMPOSE_SOURCES: >-
     -f {{.DEPLOY_DIR}}/docker-compose.yaml 
     -f {{.DEPLOY_DIR}}/docker-compose.dev.yaml 
     -f {{.DEPLOY_DIR}}/docker-compose.obs.yaml 
     -f {{.DEPLOY_DIR}}/docker-compose.ai.yaml
-  COMPOSE_RUN: docker compose {{.COMPOSE_FILES}}
+  COMPOSE_MERGED: .docker-compose.merged.yaml
 
 env:
-  POSTGRES_APP_URL: "postgres://{{.POSTGRES_APP_USER}}:{{.POSTGRES_APP_PASSWORD}}@localhost:{{default \"5432\" .POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
-  POSTGRES_ADMIN_URL: "postgres://postgres:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{default \"5432\" .POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
+  POSTGRES_URL: 'postgres://localhost:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{default "5432" .POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable'
 
 tasks:
   default:
@@ -64,13 +52,11 @@ tasks:
 
   compose:down:
     desc: stop and remove all services
-    deps: [compose:bake]
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down
 
   compose:clean:
     desc: stop and remove all services and volumes
-    deps: [compose:bake]
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down -v --remove-orphans
 
@@ -107,12 +93,12 @@ tasks:
   migrate:up:
     desc: run database migration
     cmds:
-      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_ADMIN_URL}}" up
+      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" up
 
   migrate:down:
     desc: rollback last migration
     cmds:
-      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_ADMIN_URL}}" down 1
+      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down 1
 
   migrate:create:
     desc: create new migration file (NAME=xxx)
@@ -138,13 +124,17 @@ tasks:
       - task: build:pipeline
 
   build:scheduler:
-    cmds: [ "go build -o {{.BUILD_DIR}}/scheduler ./cmd/scheduler/main.go" ]
-  
+    cmds:
+      ["go build -o {{.BUILD_DIR}}/scheduler ./{{.CMD_DIR}}/scheduler/main.go"]
+
   build:discovery:
-    cmds: [ "go build -o {{.BUILD_DIR}}/discovery ./cmd/discovery-worker/main.go" ]
-  
+    cmds:
+      [
+        "go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/discovery-worker/main.go",
+      ]
+
   build:pipeline:
-    cmds: [ "go build -o {{.BUILD_DIR}}/pipeline ./cmd/pipeline-worker/main.go" ]
+    cmds: ["go build -o {{.BUILD_DIR}}/pipeline ./cmd/pipeline-worker/main.go"]
 
   # ----------------------------------------------------------------------------
   # Run Services (Local Development)
