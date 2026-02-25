@@ -1,0 +1,85 @@
+services:
+  # -------------------------------------------------------------------------
+  # Database: PostgreSQL 17 with pgvector
+  # -------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: prism-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: news_rag
+      DB_APP_USER: ${DB_APP_USER:-prism_user}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    secrets:
+      - postgres_password
+      - app_db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../db/init:/docker-entrypoint-initdb.d
+    networks:
+      - prism-net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------------------
+  # Messaging: NATS JetStream (Matches SQS for local dev)
+  # -------------------------------------------------------------------------
+  nats:
+    image: nats:2-alpine
+    container_name: prism-nats
+    command: [ "-c", "/etc/nats/nats.conf", "-js" ]
+    ports:
+      - "127.0.0.1:${NATS_HTTP_MONITORING_PORT:-8222}:8222"
+    environment:
+      NATS_AUTH_TOKEN: ${NATS_AUTH_TOKEN:-prism_token}
+    volumes:
+      - nats_data:/data
+      - ../build/infra/nats/nats.conf:/etc/nats/nats.conf
+    networks:
+      - prism-net
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------------------
+  # Storage: SeaweedFS (S3 Compatible for ArchiveRecord)
+  # -------------------------------------------------------------------------
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.05
+    container_name: prism-seaweedfs
+    command: "server -dir=/data -s3 -s3.port=${SEAWEEDFS_S3_PORT:-8333} -ip.bind=0.0.0.0"
+    environment:
+      - AWS_ACCESS_KEY_ID=${SEAWEEDFS_ACCESS_KEY:-prism_key}
+      - AWS_SECRET_ACCESS_KEY=${SEAWEEDFS_SECRET_KEY:-prism_secret}
+    volumes:
+      - seaweedfs_data:/data
+    networks:
+      - prism-net
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9333/cluster/status" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  prism-net:
+    driver: bridge
+
+secrets:
+  postgres_password:
+    file: ../.secrets/postgres_password
+  app_db_password:
+    file: ../.secrets/app_db_password
+
+volumes:
+  postgres_data:
+  nats_data:
+  seaweedfs_data:

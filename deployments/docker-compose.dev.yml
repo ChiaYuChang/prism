@@ -1,0 +1,39 @@
+services:
+  # -------------------------------------------------------------------------
+  # Database Management: pgAdmin 4
+  # -------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:9
+    container_name: prism-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@prism.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "127.0.0.1:${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - prism-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # -------------------------------------------------------------------------
+  # NATS UI: Monitoring Dashboard
+  # -------------------------------------------------------------------------
+  nats-nui:
+    image: ghcr.io/nats-nui/nui:0.8.1
+    container_name: prism-nats-nui
+    ports:
+      - "127.0.0.1:${NATS_UI_PORT:-3000}:31311"
+    volumes:
+      - nui_data:/db
+    networks:
+      - prism-net
+    depends_on:
+      nats:
+        condition: service_healthy
+
+volumes:
+  pgadmin_data:
+  nui_data:

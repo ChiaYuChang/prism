@@ -25,7 +25,10 @@ go.work.sum
 .env
 
 # logs
-logs/
+*/logs/
+
+# data
+data/
 
 # secrets
 .secrets/

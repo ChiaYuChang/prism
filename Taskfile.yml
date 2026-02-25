@@ -1,0 +1,165 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+version: '3'
+
+# 自動載入環境變數
+dotenv: ['.env']
+
+vars:
+  DEPLOY_DIR: deployments
+  BUILD_DIR: cmd
+  DB_DIR: db
+
+  POSTGRES_APP_PASSWORD:
+    sh: cat ${POSTGRES_APP_PASSWORD_FILE} 2>/dev/null || echo "secret_not_found"
+  POSTGRES_ADMIN_PASSWORD:
+    sh: cat ${POSTGRES_ADMIN_PASSWORD_FILE} 2>/dev/null || echo "secret_not_found"
+  NATS_AUTH_TOKEN:
+    sh: cat ${NATS_AUTH_TOKEN_FILE} 2>/dev/null || echo "secret_not_found"
+  SEAWEEDFS_ACCESS_KEY:
+    sh: cat ${SEAWEEDFS_ACCESS_KEY_FILE} 2>/dev/null || echo "secret_not_found"
+  SEAWEEDFS_SECRET_KEY:
+    sh: cat ${SEAWEEDFS_SECRET_KEY_FILE} 2>/dev/null || echo "secret_not_found"
+  GEMINI_API_KEY:
+    sh: cat ${GEMINI_API_KEY_FILE} 2>/dev/null || echo "secret_not_found"
+  GCLOUD_API_KEY:
+    sh: cat ${GCLOUD_API_KEY_FILE} 2>/dev/null || echo "secret_not_found"
+  GOOGLE_CSE_ID:
+    sh: cat ${GOOGLE_CSE_ID_FILE} 2>/dev/null || echo "secret_not_found"
+
+  COMPOSE_FILES: >-
+    -f {{.DEPLOY_DIR}}/docker-compose.yaml 
+    -f {{.DEPLOY_DIR}}/docker-compose.dev.yaml 
+    -f {{.DEPLOY_DIR}}/docker-compose.obs.yaml 
+    -f {{.DEPLOY_DIR}}/docker-compose.ai.yaml
+  COMPOSE_RUN: docker compose {{.COMPOSE_FILES}}
+
+env:
+  POSTGRES_APP_URL: "postgres://{{.POSTGRES_APP_USER}}:{{.POSTGRES_APP_PASSWORD}}@localhost:{{default \"5432\" .POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
+  POSTGRES_ADMIN_URL: "postgres://postgres:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{default \"5432\" .POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
+
+tasks:
+  default:
+    desc: list all available tasks
+    cmds:
+      - task --list
+
+  # ----------------------------------------------------------------------------
+  # Service Management (Docker Compose)
+  # ----------------------------------------------------------------------------
+  compose:bake:
+    desc: combine all docker-compose files into one
+    cmds:
+      - docker compose {{.COMPOSE_SOURCES}} config > {{.COMPOSE_MERGED}}
+    sources:
+      - "{{.DEPLOY_DIR}}/docker-compose*.yaml"
+      - .env
+    generates:
+      - .docker-compose.merged.yaml
+
+  compose:up:
+    desc: start all services
+    deps: [compose:bake]
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} up -d
+
+  compose:down:
+    desc: stop and remove all services
+    deps: [compose:bake]
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} down
+
+  compose:clean:
+    desc: stop and remove all services and volumes
+    deps: [compose:bake]
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} down -v --remove-orphans
+
+  compose:logs:
+    desc: list all service logs
+    deps: [compose:bake]
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} logs -f
+
+  # ----------------------------------------------------------------------------
+  # Development & Code Generation
+  # ----------------------------------------------------------------------------
+  init:
+    desc: initialize development environment
+    deps: [tidy, gen]
+    cmds:
+      - echo "Development environment initialized"
+
+  gen:
+    desc: generate code
+    cmds:
+      - sqlc generate
+      - mockery
+
+  tidy:
+    desc: tidy go dependencies
+    cmds:
+      - go mod tidy
+      - go mod verify
+
+  # ----------------------------------------------------------------------------
+  # Database Migration
+  # ----------------------------------------------------------------------------
+  migrate:up:
+    desc: run database migration
+    cmds:
+      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_ADMIN_URL}}" up
+
+  migrate:down:
+    desc: rollback last migration
+    cmds:
+      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_ADMIN_URL}}" down 1
+
+  migrate:create:
+    desc: create new migration file (NAME=xxx)
+    cmds:
+      - migrate create -ext sql -dir {{.DB_DIR}}/migrations -seq {{.NAME}}
+    preconditions:
+      - sh: 'test -n "{{.NAME}}"'
+        msg: "Please provide a name for the migration file, e.g. task migrate:create NAME=add_users_table"
+
+  # ----------------------------------------------------------------------------
+  # Build & Test
+  # ----------------------------------------------------------------------------
+  test:
+    desc: run unit tests
+    cmds:
+      - go test -v -short -cover ./...
+
+  build:all:
+    desc: build all microservice binaries
+    cmds:
+      - task: build:scheduler
+      - task: build:discovery
+      - task: build:pipeline
+
+  build:scheduler:
+    cmds: [ "go build -o {{.BUILD_DIR}}/scheduler ./cmd/scheduler/main.go" ]
+  
+  build:discovery:
+    cmds: [ "go build -o {{.BUILD_DIR}}/discovery ./cmd/discovery-worker/main.go" ]
+  
+  build:pipeline:
+    cmds: [ "go build -o {{.BUILD_DIR}}/pipeline ./cmd/pipeline-worker/main.go" ]
+
+  # ----------------------------------------------------------------------------
+  # Run Services (Local Development)
+  # ----------------------------------------------------------------------------
+  run:scheduler:
+    desc: run scheduler on host
+    cmds:
+      - go run cmd/scheduler/main.go
+
+  run:discovery:
+    desc: run discovery worker on host
+    cmds:
+      - go run cmd/discovery-worker/main.go
+
+  run:pipeline:
+    desc: run pipeline worker on host
+    cmds:
+      - go run cmd/pipeline-worker/main.go
