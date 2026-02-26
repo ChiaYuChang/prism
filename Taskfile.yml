@@ -11,9 +11,9 @@ vars:
   DB_DIR: db
 
   POSTGRES_APP_PASSWORD:
-    sh: cat ${POSTGRES_APP_PASSWORD_FILE} 2>/dev/null || echo "secret_not_found"
+    sh: cat ${POSTGRES_APP_PASSWORD_FILE}
   POSTGRES_ADMIN_PASSWORD:
-    sh: cat ${POSTGRES_ADMIN_PASSWORD_FILE} 2>/dev/null || echo "secret_not_found"
+    sh: cat ${POSTGRES_ADMIN_PASSWORD_FILE}
 
   COMPOSE_SOURCES: >-
     -f {{.DEPLOY_DIR}}/docker-compose.yaml 
@@ -21,9 +21,6 @@ vars:
     -f {{.DEPLOY_DIR}}/docker-compose.obs.yaml 
     -f {{.DEPLOY_DIR}}/docker-compose.ai.yaml
   COMPOSE_MERGED: .docker-compose.merged.yaml
-
-env:
-  POSTGRES_URL: 'postgres://localhost:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{default "5432" .POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable'
 
 tasks:
   default:
@@ -92,13 +89,36 @@ tasks:
   # ----------------------------------------------------------------------------
   migrate:up:
     desc: run database migration
+    vars:
+      POSTGRES_ADMIN_PASSWORD: "$(cat {{.POSTGRES_ADMIN_PASSWORD_FILE}})"
+      POSTGRES_URL: "postgres://{{.POSTGRES_ADMIN_USER}}:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{.POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
     cmds:
       - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" up
 
   migrate:down:
     desc: rollback last migration
+    vars:
+      POSTGRES_ADMIN_PASSWORD: "$(cat {{.POSTGRES_ADMIN_PASSWORD_FILE}})"
+      POSTGRES_URL: "postgres://{{.POSTGRES_ADMIN_USER}}:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{.POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
     cmds:
       - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down 1
+
+  migrate:clean:
+    desc: rollback last migration
+    vars:
+      POSTGRES_ADMIN_PASSWORD: "$(cat {{.POSTGRES_ADMIN_PASSWORD_FILE}})"
+      POSTGRES_URL: "postgres://{{.POSTGRES_ADMIN_USER}}:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{.POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
+    cmds:
+      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down
+
+  migrate:force:
+    desc: Force a migration version (use with caution!)
+    vars:
+      POSTGRES_ADMIN_PASSWORD: "$(cat {{.POSTGRES_ADMIN_PASSWORD_FILE}})"
+      POSTGRES_URL: "postgres://{{.POSTGRES_ADMIN_USER}}:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{.POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
+      VERSION: "{{.VERSION}}"
+    cmds:
+      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" force {{.VERSION}}
 
   migrate:create:
     desc: create new migration file (NAME=xxx)

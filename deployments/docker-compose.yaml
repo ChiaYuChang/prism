@@ -1,9 +1,9 @@
 services:
   # -------------------------------------------------------------------------
-  # Database: PostgreSQL 17 with pgvector
+  # Database: PostgreSQL 18 with pgvector
   # -------------------------------------------------------------------------
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg18
     container_name: prism-postgres
     restart: always
     environment:
@@ -18,7 +18,7 @@ services:
       - postgres_admin
       - postgres_app
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
       - ../db/init:/docker-entrypoint-initdb.d
     networks:
       - prism-net

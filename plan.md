@@ -33,22 +33,39 @@ The system follows a standardized "Normalization First, Parallel Execution" work
 
 * [x] 1.1 Infrastructure Deployment: Docker Compose configuration completed.  
 * [x] 1.2 Interface Definitions: Fetcher, Transformer, Saver, and Parser interfaces defined.  
-* [x] 1.3 Utility Implementation: Gzip+Base64 tools, TraceID extraction, and Hash deduplication tools completed.  
-* [x] 1.4 Database Management: Migration folder created and initial schema (000001\_init.up.sql) established.
-* [ ] 1.5 Database Management: Initial migration script (000001_init.up.sql) execution.
+* [x] 1.3 Utility Implementation: Hash deduplication tools and Functional helpers completed.  
+* [x] 1.4 Database Management: Migration folder created and initial schema established.
+* [x] 1.5 Database Management: Initial migration script (000001_init.up.sql) execution.
+* [ ] 1.6 Utilities Refinement & Traceability:
+  * [ ] Implement Gzip+Base64 compression tools in `pkg/utils`.
+  * [ ] Implement OpenTelemetry context propagation helpers for TraceID.
+  * [ ] Add basic health-check endpoints for all microservices.
 
 ### Phase 2: Discovery Loop and Query Optimization
 
-* [ ] 2.1 Signal Dispatching: cmd/scheduler implemented with Valkey SETNX deduplication.  
-* [ ] 2.2 Keyword Phrase Extraction: Gemini integration for extracting 2-3 "Composite Search Phrases".  
-* [ ] 2.3 Save Queue: NATS prism.discovery.detected async database persistence implemented.  
-* [ ] 2.4 Keyword Persistence: Implementation of active\_search\_queries buffer with TTL-based iterative search.
+* [ ] 2.1 Signal Dispatching (Scheduler):
+  * [ ] Implement `cmd/scheduler` with configurable ticker intervals.
+  * [ ] Integrate Valkey `SETNX` distributed lock to prevent task collision.
+  * [ ] Logic to fetch active `search_tasks` and publish to NATS `prism.discovery.trigger`.
+* [ ] 2.2 LLM Analysis (Keyword & Phrase Extraction):
+  * [ ] Implement Gemini client wrapper with structured output support.
+  * [ ] Design prompts for extracting 2-3 "Composite Search Phrases" from political text.
+  * [ ] Implement persistence logic for `keywords` and `content_keywords` tables.
+* [ ] 2.3 Discovery Execution (Worker):
+  * [ ] Implement `cmd/discovery-worker` subscribing to NATS search triggers.
+  * [ ] Integrate Search Engine API (Google/Bing/Serper) for URL discovery.
+  * [ ] Implement URL normalization and "Fingerprint" deduplication logic.
+* [ ] 2.4 Async Persistence (Save Queue):
+  * [ ] Implement NATS `prism.discovery.detected` async subscriber.
+  * [ ] Persistence logic for writing results to `fingerprints` table with `DISCOVERED` status.
+  * [ ] Ensure TraceID consistency from trigger to discovery.
 
 ### Phase 3: Pipeline Execution and Parsing
 
 * [ ] 3.1 Smart Dispatcher: Automatic routing and component assembly logic implemented.  
 * [ ] 3.2 Parallel Pipeline: BaseCollector implemented with background Save and foreground Parse.  
-* [ ] 3.3 Vectorization Integration: Integration of Embedding models (e.g., BGE-M3) for semantic storage.
+* [x] 3.3 Vectorization Integration: Database schema for Embedding models (Gemma 2025) completed.
+* [ ] 3.4 Vector Execution: Implementation of Embedding client and worker logic.
 
 ### Phase 4: Analysis Results
 

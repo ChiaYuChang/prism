@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS embeddings_gemma_2025 CASCADE;
