@@ -60,17 +60,3 @@ func Hash(input ...string) string {
 	defer DefaultHasher.RUnlock()
 	return DefaultHasher.Sum(input...)
 }
-
-// Ptr returns a pointer to the provided value v.
-// Useful for handling optional database fields or API parameters that require pointers.
-func Ptr[T any](v T) *T {
-	return &v
-}
-
-// TruncateString truncate a string to the given length
-func TruncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}

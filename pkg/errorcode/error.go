@@ -20,7 +20,7 @@ type Error struct {
 // Error implements the standard Go error interface, concatenating all internal errors and warnings.
 func (e *Error) Error() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("[%d] %s", e.Code, e.Message))
+	fmt.Fprintf(&sb, "[%d] %s", e.Code, e.Message)
 
 	if len(e.Errors) > 0 {
 		sb.WriteString(" | Sub-errors: ")

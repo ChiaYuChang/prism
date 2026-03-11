@@ -87,7 +87,8 @@ CREATE TABLE IF NOT EXISTS contents (
     content        TEXT NOT NULL,
     author         VARCHAR(64),
     trace_id       VARCHAR(100) NOT NULL,      
-    publish_date   TIMESTAMP WITH TIME ZONE NOT NULL,
+    published_at   TIMESTAMP WITH TIME ZONE NOT NULL,
+    fetched_at     TIMESTAMP WITH TIME ZONE NOT NULL,
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     deleted_at     TIMESTAMP WITH TIME ZONE,   
     metadata       JSONB
@@ -95,7 +96,7 @@ CREATE TABLE IF NOT EXISTS contents (
 
 CREATE INDEX IF NOT EXISTS idx_contents_type ON contents(type);
 CREATE INDEX IF NOT EXISTS idx_contents_trace_id ON contents(trace_id);
-CREATE INDEX IF NOT EXISTS idx_contents_publish_date ON contents(publish_date);
+CREATE INDEX IF NOT EXISTS idx_contents_published_at ON contents(published_at);
 CREATE INDEX IF NOT EXISTS idx_contents_deleted_at ON contents(deleted_at) WHERE deleted_at IS NULL;
 
 -- 6. Keywords System (Normalized Dictionary)
@@ -119,11 +120,18 @@ CREATE TABLE IF NOT EXISTS search_tasks (
     content_id     UUID REFERENCES contents(id) ON DELETE CASCADE, 
     phrases        TEXT[] NOT NULL,              -- Composite search phrases
     trace_id       VARCHAR(100) NOT NULL,
+    frequency      INTERVAL NOT NULL DEFAULT '6 hours' CHECK (frequency >= '30 minutes'::interval), -- Min frequency: 30m
+    next_run_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(), -- Scheduled time
     expires_at     TIMESTAMP WITH TIME ZONE NOT NULL,
     created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_search_tasks_expiry ON search_tasks(expires_at);
+CREATE INDEX IF NOT EXISTS idx_search_tasks_schedule ON search_tasks(next_run_at, frequency) WITH (fillfactor = 80);
+
+-- Optimize for frequent updates: Reserve 20% free space in each 8KB page 
+-- to enable Heap Only Tuple (HOT) updates, reducing index maintenance overhead.
+ALTER TABLE search_tasks SET (fillfactor = 80);
 
 COMMIT;
