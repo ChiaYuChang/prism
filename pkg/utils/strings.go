@@ -70,7 +70,7 @@ func SecretMask(s string) string {
 	if len(s) <= 10 {
 		return strings.Repeat("●", len(s))
 	}
-	return s[:5] + strings.Repeat("●", 5) + s[len(s)-5:]
+	return s[:3] + strings.Repeat("●", len(s)-6) + s[len(s)-3:]
 }
 
 type StringTruncator struct {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/infra"
+	"github.com/ChiaYuChang/prism/pkg/utils"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -47,6 +48,12 @@ type PostgresConfig struct {
 func (p *PostgresConfig) ConnString() string {
 	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		p.User, p.Password, p.Host, p.Port, p.DBName, p.SSLMode)
+}
+
+// String returns a string representation of the config with the password masked.
+func (p PostgresConfig) String() string {
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s db=%s sslmode=%s",
+		p.Host, p.Port, p.User, utils.SecretMask(p.Password), p.DBName, p.SSLMode)
 }
 
 // Config holds the scheduler's runtime configuration.

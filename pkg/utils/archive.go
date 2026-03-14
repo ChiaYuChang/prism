@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -53,4 +54,29 @@ func DecompressGzipBase64(encoded string) (string, error) {
 	}
 
 	return string(result), nil
+}
+
+type JsonObject struct {
+	Compressed    bool   `json:"compressed"`
+	Base64Encoded bool   `json:"base64_encoded"`
+	Type          string `json:"type"`
+	Data          string `json:"data"`
+}
+
+func CompressJSONGzipBase64(js json.Marshaler) (*JsonObject, error) {
+	data, err := js.MarshalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("json marshal error: %w", err)
+	}
+
+	compressed, err := CompressGzipBase64(string(data))
+	if err != nil {
+		return nil, fmt.Errorf("gzip compress error: %w", err)
+	}
+
+	return &JsonObject{
+		Compressed:    true,
+		Base64Encoded: true,
+		Data:          compressed,
+	}, nil
 }

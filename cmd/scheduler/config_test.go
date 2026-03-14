@@ -4,23 +4,18 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadConfig_Defaults(t *testing.T) {
 	config, err := LoadConfig([]string{})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
+	require.NoError(t, err)
 
-	if config.Interval != 10*time.Minute {
-		t.Errorf("expected default interval 10m, got %v", config.Interval)
-	}
-	if config.Postgres.Host != "localhost" {
-		t.Errorf("expected default postgres host localhost, got %s", config.Postgres.Host)
-	}
-	if config.MessengerType != "nats" {
-		t.Errorf("expected default messenger nats, got %s", config.MessengerType)
-	}
+	assert.Equal(t, 10*time.Minute, config.Interval)
+	assert.Equal(t, "localhost", config.Postgres.Host)
+	assert.Equal(t, "nats", config.MessengerType)
 }
 
 func TestLoadConfig_FromFlags(t *testing.T) {
@@ -32,43 +27,32 @@ func TestLoadConfig_FromFlags(t *testing.T) {
 	}
 
 	config, err := LoadConfig(args)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
+	require.NoError(t, err)
 
-	if config.Interval != 5*time.Minute {
-		t.Errorf("expected interval 5m, got %v", config.Interval)
-	}
-	if config.Postgres.Host != "127.0.0.1" {
-		t.Errorf("expected host 127.0.0.1, got %s", config.Postgres.Host)
-	}
-	if config.Postgres.Port != 5433 {
-		t.Errorf("expected port 5433, got %d", config.Postgres.Port)
-	}
-	if config.MessengerType != "gochannel" {
-		t.Errorf("expected messenger gochannel, got %s", config.MessengerType)
-	}
+	assert.Equal(t, 5*time.Minute, config.Interval)
+	assert.Equal(t, "127.0.0.1", config.Postgres.Host)
+	assert.Equal(t, 5433, config.Postgres.Port)
+	assert.Equal(t, "gochannel", config.MessengerType)
 }
 
 func TestLoadConfig_EnvironmentVariables(t *testing.T) {
-	os.Setenv("PRISM_SCHEDULER_INTERVAL", "15m")
-	os.Setenv("PRISM_SCHEDULER_USER", "tester")
+	err := os.Setenv("PRISM_SCHEDULER_INTERVAL", "15m")
+	require.NoError(t, err)
+	err = os.Setenv("PRISM_SCHEDULER_USER", "tester")
+	require.NoError(t, err)
+
 	defer func() {
-		os.Unsetenv("PRISM_SCHEDULER_INTERVAL")
-		os.Unsetenv("PRISM_SCHEDULER_USER")
+		err := os.Unsetenv("PRISM_SCHEDULER_INTERVAL")
+		assert.NoError(t, err)
+		err = os.Unsetenv("PRISM_SCHEDULER_USER")
+		assert.NoError(t, err)
 	}()
 
 	config, err := LoadConfig([]string{})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
+	require.NoError(t, err)
 
-	if config.Interval != 15*time.Minute {
-		t.Errorf("expected interval 15m from env, got %v", config.Interval)
-	}
-	if config.Postgres.User != "tester" {
-		t.Errorf("expected user tester from env, got %s", config.Postgres.User)
-	}
+	assert.Equal(t, 15*time.Minute, config.Interval)
+	assert.Equal(t, "tester", config.Postgres.User)
 }
 
 func TestPostgresConfig_ConnString(t *testing.T) {
@@ -82,9 +66,7 @@ func TestPostgresConfig_ConnString(t *testing.T) {
 	}
 
 	expected := "postgres://user:password@db.local:5432/prism?sslmode=require"
-	if cfg.ConnString() != expected {
-		t.Errorf("expected %s, got %s", expected, cfg.ConnString())
-	}
+	assert.Equal(t, expected, cfg.ConnString())
 }
 
 func TestLoadConfig_ValidationFailed(t *testing.T) {
@@ -109,9 +91,7 @@ func TestLoadConfig_ValidationFailed(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := LoadConfig(tt.args)
-			if err == nil {
-				t.Errorf("expected error for %s, but got nil", tt.name)
-			}
+			assert.Error(t, err)
 		})
 	}
 }

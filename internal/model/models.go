@@ -6,6 +6,18 @@ import (
 	"github.com/google/uuid"
 )
 
+// ExtractionResult represents the structured insights from LLM analysis.
+type ExtractionResult struct {
+	// Entities contains key people, parties, or organizations (e.g., "KMT", "DPP", "Lai Ching-te").
+	Entities []string `json:"entities"`
+	// Topics contains central issues (e.g., "Parliamentary Reform", "Nuclear Power").
+	Topics []string `json:"topics"`
+	// Phrases contains composite search strings optimized for search engines.
+	Phrases []string `json:"phrases"`
+	// Summary provides a one-sentence overview for auditability.
+	Summary string `json:"summary"`
+}
+
 // TaskStatus represents the lifecycle state of a search task.
 type TaskStatus string
 

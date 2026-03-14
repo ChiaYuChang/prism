@@ -59,9 +59,11 @@ The system follows a standardized "Normalization First, Parallel Execution" work
     * [x] Watermill publisher for sending `SearchTaskSignal` (UUID v7, TraceID propagation).
     * [x] Comprehensive logging using PID, Uptime, and Task-specific Hooks.
     * [x] Unit tests for configuration and validation.
-* [ ] 2.2 LLM Analysis (Keyword & Phrase Extraction):
-  * [ ] Implement Gemini client for extracting "Composite Search Phrases".
-  * [ ] Design prompts for political text analysis.
+* [x] 2.2 LLM Infrastructure & Analysis:
+  * [x] Implement polymorphic LLM clients (Gemini, OpenAI, Ollama) in `internal/llm`.
+  * [x] Design structured output contract using `JsonSchema` for "Composite Search Phrases".
+  * [x] Integrate `internal/obs` for unified TraceID/UserID propagation via context.
+  * [ ] Finalize political text analysis prompts in `internal/analysis/extractor.go`.
 * [ ] 2.3 Discovery Execution (Worker):
   * [ ] Implement `cmd/discovery-worker` subscribing to search signals.
   * [ ] Integrate Search Engine API (Google/Serper) for URL discovery.
@@ -75,8 +77,9 @@ The system follows a standardized "Normalization First, Parallel Execution" work
 * [ ] 3.2 Parallel Pipeline: Concurrent Save (S3) and Parse (Structured Data).  
 * [x] 3.3 Vectorization Integration:
   * [x] Schema for **768-dimensional** embeddings with **pgvector (HNSW index)**.
+  * [x] Implement `Embedder` interface and provider implementations in `internal/llm`.
   * [ ] Implement **Partitioned storage** for TITLE and CONTENT vectors.
-* [ ] 3.4 Vector Execution: Implementation of Embedding client (Gemma 2025) and worker logic.
+* [ ] 3.4 Vector Execution: Implementation of embedding worker logic and worker-repo integration.
 
 ### Phase 4: Analysis and Monitoring
 
@@ -89,5 +92,6 @@ The system follows a standardized "Normalization First, Parallel Execution" work
 ## 5. Future Roadmap
 
 * [ ] Admin API: Endpoints to Pause/Resume Scheduler and update keyword TTL.
+* [ ] LLM-assisted QC: Randomly sample and compare rule-based Parser output with LLM-generated results to detect page layout changes (notifying users on significant text loss).
 * [ ] User Interfaces: Prism TUI (Terminal UI) and Web Dashboard.  
 * [ ] Expansion: Direct Media API connectors and JS-rendered scraping via Playwright.
