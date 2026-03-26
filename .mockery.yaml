@@ -1,0 +1,25 @@
+all: false
+dir: "{{.InterfaceDir}}/mocks"
+filename: "mock_{{.InterfaceName}}.go"
+force-file-write: true
+formatter: goimports
+log-level: info
+pkgname: "mocks"
+recursive: false
+structname: "Mock{{.InterfaceName}}"
+template: testify
+exclude-subpkg-regex:
+  - "mocks$"
+packages:
+  github.com/ChiaYuChang/prism/internal/collector:
+    config:
+      all: true
+  github.com/ChiaYuChang/prism/internal/discovery:
+    config:
+      all: true
+  github.com/ChiaYuChang/prism/internal/llm:
+    config:
+      all: true
+  github.com/ChiaYuChang/prism/internal/repo:
+    config:
+      all: true

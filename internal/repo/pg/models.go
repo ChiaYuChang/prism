@@ -10,7 +10,72 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	pgvector_go "github.com/pgvector/pgvector-go"
 )
+
+type CandidateIngestionMethod string
+
+const (
+	CandidateIngestionMethodDIRECTORY    CandidateIngestionMethod = "DIRECTORY"
+	CandidateIngestionMethodSEARCH       CandidateIngestionMethod = "SEARCH"
+	CandidateIngestionMethodSUBSCRIPTION CandidateIngestionMethod = "SUBSCRIPTION"
+	CandidateIngestionMethodMANUAL       CandidateIngestionMethod = "MANUAL"
+)
+
+func (e *CandidateIngestionMethod) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CandidateIngestionMethod(s)
+	case string:
+		*e = CandidateIngestionMethod(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CandidateIngestionMethod: %T", src)
+	}
+	return nil
+}
+
+type NullCandidateIngestionMethod struct {
+	CandidateIngestionMethod CandidateIngestionMethod `json:"candidate_ingestion_method"`
+	Valid                    bool                     `json:"valid"` // Valid is true if CandidateIngestionMethod is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCandidateIngestionMethod) Scan(value interface{}) error {
+	if value == nil {
+		ns.CandidateIngestionMethod, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CandidateIngestionMethod.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCandidateIngestionMethod) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CandidateIngestionMethod), nil
+}
+
+func (e CandidateIngestionMethod) Valid() bool {
+	switch e {
+	case CandidateIngestionMethodDIRECTORY,
+		CandidateIngestionMethodSEARCH,
+		CandidateIngestionMethodSUBSCRIPTION,
+		CandidateIngestionMethodMANUAL:
+		return true
+	}
+	return false
+}
+
+func AllCandidateIngestionMethodValues() []CandidateIngestionMethod {
+	return []CandidateIngestionMethod{
+		CandidateIngestionMethodDIRECTORY,
+		CandidateIngestionMethodSEARCH,
+		CandidateIngestionMethodSUBSCRIPTION,
+		CandidateIngestionMethodMANUAL,
+	}
+}
 
 type ContentType string
 
@@ -73,8 +138,9 @@ func AllContentTypeValues() []ContentType {
 type EmbeddingCategory string
 
 const (
-	EmbeddingCategoryCONTENT EmbeddingCategory = "CONTENT"
 	EmbeddingCategoryTITLE   EmbeddingCategory = "TITLE"
+	EmbeddingCategoryCONTENT EmbeddingCategory = "CONTENT"
+	EmbeddingCategoryBRIEF   EmbeddingCategory = "BRIEF"
 )
 
 func (e *EmbeddingCategory) Scan(src interface{}) error {
@@ -114,8 +180,9 @@ func (ns NullEmbeddingCategory) Value() (driver.Value, error) {
 
 func (e EmbeddingCategory) Valid() bool {
 	switch e {
-	case EmbeddingCategoryCONTENT,
-		EmbeddingCategoryTITLE:
+	case EmbeddingCategoryTITLE,
+		EmbeddingCategoryCONTENT,
+		EmbeddingCategoryBRIEF:
 		return true
 	}
 	return false
@@ -123,69 +190,158 @@ func (e EmbeddingCategory) Valid() bool {
 
 func AllEmbeddingCategoryValues() []EmbeddingCategory {
 	return []EmbeddingCategory{
-		EmbeddingCategoryCONTENT,
 		EmbeddingCategoryTITLE,
+		EmbeddingCategoryCONTENT,
+		EmbeddingCategoryBRIEF,
 	}
 }
 
-type FingerprintStatus string
+type EntityType string
 
 const (
-	FingerprintStatusDISCOVERED FingerprintStatus = "DISCOVERED"
-	FingerprintStatusARCHIVED   FingerprintStatus = "ARCHIVED"
-	FingerprintStatusPROCESSED  FingerprintStatus = "PROCESSED"
+	EntityTypePerson            EntityType = "person"
+	EntityTypeParty             EntityType = "party"
+	EntityTypeGovernmentAgency  EntityType = "government_agency"
+	EntityTypeLegislativeBody   EntityType = "legislative_body"
+	EntityTypeJudicialBody      EntityType = "judicial_body"
+	EntityTypeMilitary          EntityType = "military"
+	EntityTypeForeignGovernment EntityType = "foreign_government"
+	EntityTypeOrganization      EntityType = "organization"
+	EntityTypeMedia             EntityType = "media"
+	EntityTypeCivicGroup        EntityType = "civic_group"
+	EntityTypeLocation          EntityType = "location"
+	EntityTypeOther             EntityType = "other"
 )
 
-func (e *FingerprintStatus) Scan(src interface{}) error {
+func (e *EntityType) Scan(src interface{}) error {
 	switch s := src.(type) {
 	case []byte:
-		*e = FingerprintStatus(s)
+		*e = EntityType(s)
 	case string:
-		*e = FingerprintStatus(s)
+		*e = EntityType(s)
 	default:
-		return fmt.Errorf("unsupported scan type for FingerprintStatus: %T", src)
+		return fmt.Errorf("unsupported scan type for EntityType: %T", src)
 	}
 	return nil
 }
 
-type NullFingerprintStatus struct {
-	FingerprintStatus FingerprintStatus `json:"fingerprint_status"`
-	Valid             bool              `json:"valid"` // Valid is true if FingerprintStatus is not NULL
+type NullEntityType struct {
+	EntityType EntityType `json:"entity_type"`
+	Valid      bool       `json:"valid"` // Valid is true if EntityType is not NULL
 }
 
 // Scan implements the Scanner interface.
-func (ns *NullFingerprintStatus) Scan(value interface{}) error {
+func (ns *NullEntityType) Scan(value interface{}) error {
 	if value == nil {
-		ns.FingerprintStatus, ns.Valid = "", false
+		ns.EntityType, ns.Valid = "", false
 		return nil
 	}
 	ns.Valid = true
-	return ns.FingerprintStatus.Scan(value)
+	return ns.EntityType.Scan(value)
 }
 
 // Value implements the driver Valuer interface.
-func (ns NullFingerprintStatus) Value() (driver.Value, error) {
+func (ns NullEntityType) Value() (driver.Value, error) {
 	if !ns.Valid {
 		return nil, nil
 	}
-	return string(ns.FingerprintStatus), nil
+	return string(ns.EntityType), nil
 }
 
-func (e FingerprintStatus) Valid() bool {
+func (e EntityType) Valid() bool {
 	switch e {
-	case FingerprintStatusDISCOVERED,
-		FingerprintStatusARCHIVED,
-		FingerprintStatusPROCESSED:
+	case EntityTypePerson,
+		EntityTypeParty,
+		EntityTypeGovernmentAgency,
+		EntityTypeLegislativeBody,
+		EntityTypeJudicialBody,
+		EntityTypeMilitary,
+		EntityTypeForeignGovernment,
+		EntityTypeOrganization,
+		EntityTypeMedia,
+		EntityTypeCivicGroup,
+		EntityTypeLocation,
+		EntityTypeOther:
 		return true
 	}
 	return false
 }
 
-func AllFingerprintStatusValues() []FingerprintStatus {
-	return []FingerprintStatus{
-		FingerprintStatusDISCOVERED,
-		FingerprintStatusARCHIVED,
-		FingerprintStatusPROCESSED,
+func AllEntityTypeValues() []EntityType {
+	return []EntityType{
+		EntityTypePerson,
+		EntityTypeParty,
+		EntityTypeGovernmentAgency,
+		EntityTypeLegislativeBody,
+		EntityTypeJudicialBody,
+		EntityTypeMilitary,
+		EntityTypeForeignGovernment,
+		EntityTypeOrganization,
+		EntityTypeMedia,
+		EntityTypeCivicGroup,
+		EntityTypeLocation,
+		EntityTypeOther,
+	}
+}
+
+type ModelType string
+
+const (
+	ModelTypeEXTRACTOR ModelType = "EXTRACTOR"
+	ModelTypeEMBEDDER  ModelType = "EMBEDDER"
+	ModelTypeANALYZER  ModelType = "ANALYZER"
+)
+
+func (e *ModelType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ModelType(s)
+	case string:
+		*e = ModelType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ModelType: %T", src)
+	}
+	return nil
+}
+
+type NullModelType struct {
+	ModelType ModelType `json:"model_type"`
+	Valid     bool      `json:"valid"` // Valid is true if ModelType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullModelType) Scan(value interface{}) error {
+	if value == nil {
+		ns.ModelType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ModelType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullModelType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ModelType), nil
+}
+
+func (e ModelType) Valid() bool {
+	switch e {
+	case ModelTypeEXTRACTOR,
+		ModelTypeEMBEDDER,
+		ModelTypeANALYZER:
+		return true
+	}
+	return false
+}
+
+func AllModelTypeValues() []ModelType {
+	return []ModelType{
+		ModelTypeEXTRACTOR,
+		ModelTypeEMBEDDER,
+		ModelTypeANALYZER,
 	}
 }
 
@@ -244,6 +400,64 @@ func AllSourceTypeValues() []SourceType {
 	return []SourceType{
 		SourceTypePARTY,
 		SourceTypeMEDIA,
+	}
+}
+
+type TaskKind string
+
+const (
+	TaskKindDIRECTORYFETCH TaskKind = "DIRECTORY_FETCH"
+	TaskKindPAGEFETCH      TaskKind = "PAGE_FETCH"
+)
+
+func (e *TaskKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = TaskKind(s)
+	case string:
+		*e = TaskKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for TaskKind: %T", src)
+	}
+	return nil
+}
+
+type NullTaskKind struct {
+	TaskKind TaskKind `json:"task_kind"`
+	Valid    bool     `json:"valid"` // Valid is true if TaskKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullTaskKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.TaskKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.TaskKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullTaskKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.TaskKind), nil
+}
+
+func (e TaskKind) Valid() bool {
+	switch e {
+	case TaskKindDIRECTORYFETCH,
+		TaskKindPAGEFETCH:
+		return true
+	}
+	return false
+}
+
+func AllTaskKindValues() []TaskKind {
+	return []TaskKind{
+		TaskKindDIRECTORYFETCH,
+		TaskKindPAGEFETCH,
 	}
 }
 
@@ -311,60 +525,107 @@ func AllTaskStatusValues() []TaskStatus {
 	}
 }
 
+type Candidate struct {
+	ID              uuid.UUID                `db:"id" json:"id"`
+	BatchID         pgtype.UUID              `db:"batch_id" json:"batch_id"`
+	SourceID        int32                    `db:"source_id" json:"source_id"`
+	TraceID         string                   `db:"trace_id" json:"trace_id"`
+	Fingerprint     string                   `db:"fingerprint" json:"fingerprint"`
+	Url             string                   `db:"url" json:"url"`
+	Title           string                   `db:"title" json:"title"`
+	Description     pgtype.Text              `db:"description" json:"description"`
+	IngestionMethod CandidateIngestionMethod `db:"ingestion_method" json:"ingestion_method"`
+	Metadata        []byte                   `db:"metadata" json:"metadata"`
+	PublishedAt     pgtype.Timestamptz       `db:"published_at" json:"published_at"`
+	DiscoveredAt    pgtype.Timestamptz       `db:"discovered_at" json:"discovered_at"`
+	CreatedAt       pgtype.Timestamptz       `db:"created_at" json:"created_at"`
+}
+
+type CandidateEmbeddingsGemma2025 struct {
+	ID          int64              `db:"id" json:"id"`
+	CandidateID uuid.UUID          `db:"candidate_id" json:"candidate_id"`
+	ModelID     int16              `db:"model_id" json:"model_id"`
+	Category    EmbeddingCategory  `db:"category" json:"category"`
+	Vector      pgvector_go.Vector `db:"vector" json:"vector"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Content struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	Type          ContentType        `db:"type" json:"type"`
-	SourceID      pgtype.Int4        `db:"source_id" json:"source_id"`
-	FingerprintID int32              `db:"fingerprint_id" json:"fingerprint_id"`
-	Url           string             `db:"url" json:"url"`
-	Title         string             `db:"title" json:"title"`
-	Content       string             `db:"content" json:"content"`
-	Author        pgtype.Text        `db:"author" json:"author"`
-	TraceID       string             `db:"trace_id" json:"trace_id"`
-	PublishedAt   pgtype.Timestamptz `db:"published_at" json:"published_at"`
-	FetchedAt     pgtype.Timestamptz `db:"fetched_at" json:"fetched_at"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	DeletedAt     pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
-	Metadata      []byte             `db:"metadata" json:"metadata"`
+	ID          uuid.UUID          `db:"id" json:"id"`
+	BatchID     pgtype.UUID        `db:"batch_id" json:"batch_id"`
+	Type        ContentType        `db:"type" json:"type"`
+	SourceID    int32              `db:"source_id" json:"source_id"`
+	CandidateID pgtype.UUID        `db:"candidate_id" json:"candidate_id"`
+	Url         string             `db:"url" json:"url"`
+	Title       string             `db:"title" json:"title"`
+	Content     string             `db:"content" json:"content"`
+	Author      pgtype.Text        `db:"author" json:"author"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	PublishedAt pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	FetchedAt   pgtype.Timestamptz `db:"fetched_at" json:"fetched_at"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DeletedAt   pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	Metadata    []byte             `db:"metadata" json:"metadata"`
 }
 
-type ContentKeyword struct {
-	ContentID uuid.UUID `db:"content_id" json:"content_id"`
-	KeywordID int32     `db:"keyword_id" json:"keyword_id"`
-}
-
-type EmbeddingsGemma2025 struct {
+type ContentEmbeddingsGemma2025 struct {
 	ID        int64              `db:"id" json:"id"`
 	ContentID uuid.UUID          `db:"content_id" json:"content_id"`
 	ModelID   int16              `db:"model_id" json:"model_id"`
 	Category  EmbeddingCategory  `db:"category" json:"category"`
-	Vector    interface{}        `db:"vector" json:"vector"`
+	Vector    pgvector_go.Vector `db:"vector" json:"vector"`
 	TraceID   string             `db:"trace_id" json:"trace_id"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-type Fingerprint struct {
-	ID           int32                 `db:"id" json:"id"`
-	Fingerprint  string                `db:"fingerprint" json:"fingerprint"`
-	SourceID     pgtype.Int4           `db:"source_id" json:"source_id"`
-	Url          string                `db:"url" json:"url"`
-	Title        pgtype.Text           `db:"title" json:"title"`
-	Description  pgtype.Text           `db:"description" json:"description"`
-	Status       NullFingerprintStatus `db:"status" json:"status"`
-	TraceID      pgtype.Text           `db:"trace_id" json:"trace_id"`
-	DiscoveredAt pgtype.Timestamptz    `db:"discovered_at" json:"discovered_at"`
+type ContentExtraction struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	ContentID     uuid.UUID          `db:"content_id" json:"content_id"`
+	ModelID       int16              `db:"model_id" json:"model_id"`
+	PromptID      uuid.UUID          `db:"prompt_id" json:"prompt_id"`
+	SchemaName    string             `db:"schema_name" json:"schema_name"`
+	SchemaVersion int32              `db:"schema_version" json:"schema_version"`
+	Title         string             `db:"title" json:"title"`
+	Summary       string             `db:"summary" json:"summary"`
+	RawResult     []byte             `db:"raw_result" json:"raw_result"`
+	TraceID       string             `db:"trace_id" json:"trace_id"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-type Keyword struct {
+type ContentExtractionEntity struct {
+	ExtractionID uuid.UUID   `db:"extraction_id" json:"extraction_id"`
+	EntityID     int32       `db:"entity_id" json:"entity_id"`
+	Surface      string      `db:"surface" json:"surface"`
+	Ordinal      pgtype.Int2 `db:"ordinal" json:"ordinal"`
+}
+
+type ContentExtractionPhrase struct {
+	ID           int64              `db:"id" json:"id"`
+	ExtractionID uuid.UUID          `db:"extraction_id" json:"extraction_id"`
+	Phrase       string             `db:"phrase" json:"phrase"`
+	Ordinal      int16              `db:"ordinal" json:"ordinal"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ContentExtractionTopic struct {
+	ExtractionID uuid.UUID   `db:"extraction_id" json:"extraction_id"`
+	TopicText    string      `db:"topic_text" json:"topic_text"`
+	Ordinal      pgtype.Int2 `db:"ordinal" json:"ordinal"`
+}
+
+type Entity struct {
 	ID        int32              `db:"id" json:"id"`
-	Text      string             `db:"text" json:"text"`
+	Canonical string             `db:"canonical" json:"canonical"`
+	Type      EntityType         `db:"type" json:"type"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type Model struct {
 	ID          int16              `db:"id" json:"id"`
 	Name        string             `db:"name" json:"name"`
-	Publisher   string             `db:"publisher" json:"publisher"`
+	Provider    string             `db:"provider" json:"provider"`
+	Type        ModelType          `db:"type" json:"type"`
 	PublishDate pgtype.Date        `db:"publish_date" json:"publish_date"`
 	Url         pgtype.Text        `db:"url" json:"url"`
 	Tag         pgtype.Text        `db:"tag" json:"tag"`
@@ -372,24 +633,16 @@ type Model struct {
 	DeletedAt   pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 }
 
+type Prompt struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	Hash      string             `db:"hash" json:"hash"`
+	Path      string             `db:"path" json:"path"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type SchemaMigration struct {
 	Version int64 `db:"version" json:"version"`
 	Dirty   bool  `db:"dirty" json:"dirty"`
-}
-
-type SearchTask struct {
-	ID         uuid.UUID          `db:"id" json:"id"`
-	ContentID  pgtype.UUID        `db:"content_id" json:"content_id"`
-	Phrases    []string           `db:"phrases" json:"phrases"`
-	TraceID    string             `db:"trace_id" json:"trace_id"`
-	Frequency  pgtype.Interval    `db:"frequency" json:"frequency"`
-	NextRunAt  pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
-	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	Status     NullTaskStatus     `db:"status" json:"status"`
-	RetryCount pgtype.Int4        `db:"retry_count" json:"retry_count"`
-	LastRunAt  pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
 }
 
 type Source struct {
@@ -400,4 +653,23 @@ type Source struct {
 	BaseUrl   string             `db:"base_url" json:"base_url"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	DeletedAt pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+type Task struct {
+	ID         uuid.UUID          `db:"id" json:"id"`
+	BatchID    uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Kind       TaskKind           `db:"kind" json:"kind"`
+	SourceType SourceType         `db:"source_type" json:"source_type"`
+	SourceID   int32              `db:"source_id" json:"source_id"`
+	Url        string             `db:"url" json:"url"`
+	Payload    []byte             `db:"payload" json:"payload"`
+	TraceID    string             `db:"trace_id" json:"trace_id"`
+	Frequency  pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt  pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Status     TaskStatus         `db:"status" json:"status"`
+	RetryCount int32              `db:"retry_count" json:"retry_count"`
+	LastRunAt  pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }

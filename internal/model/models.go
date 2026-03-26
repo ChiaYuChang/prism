@@ -1,22 +1,12 @@
 package model
 
 import (
+	"crypto/md5"
+	"encoding/base64"
 	"time"
 
 	"github.com/google/uuid"
 )
-
-// ExtractionResult represents the structured insights from LLM analysis.
-type ExtractionResult struct {
-	// Entities contains key people, parties, or organizations (e.g., "KMT", "DPP", "Lai Ching-te").
-	Entities []string `json:"entities"`
-	// Topics contains central issues (e.g., "Parliamentary Reform", "Nuclear Power").
-	Topics []string `json:"topics"`
-	// Phrases contains composite search strings optimized for search engines.
-	Phrases []string `json:"phrases"`
-	// Summary provides a one-sentence overview for auditability.
-	Summary string `json:"summary"`
-}
 
 // TaskStatus represents the lifecycle state of a search task.
 type TaskStatus string
@@ -28,8 +18,8 @@ const (
 	TaskStatusCompleted TaskStatus = "COMPLETED"
 )
 
-// SearchTask represents a task in the discovery pipeline.
-type SearchTask struct {
+// Task represents a task in the discovery pipeline.
+type Task struct {
 	ID         uuid.UUID     `json:"id"`
 	ContentID  uuid.UUID     `json:"content_id"`
 	Phrases    []string      `json:"phrases"`
@@ -41,16 +31,27 @@ type SearchTask struct {
 	LastRunAt  time.Time     `json:"last_run_at"`
 }
 
-// ArticleFingerprint is a temporary buffer for storing discovered articles before parsing.
-type ArticleFingerprint struct {
-	Fingerprint  string    `json:"fingerprint"`   // Fingerprint of URL
-	SourceID     int       `json:"source_id"`     // Source id
-	URL          string    `json:"url"`           // URL of the article
-	Title        string    `json:"title"`         // Title of the article
-	Description  string    `json:"description"`   // Description of the article
-	Status       string    `json:"status"`        // Status of the article
-	TraceID      string    `json:"trace_id"`      // Trace ID of the article
-	DiscoveredAt time.Time `json:"discovered_at"` // Discovered at
+// Candidates is a temporary buffer for storing discovered articles before parsing.
+type Candidates struct {
+	BatchID         uuid.UUID      `json:"batch_id"`
+	SourceID        int            `json:"source_id"`        // Source id
+	TraceID         string         `json:"trace_id"`         // Trace ID of the article
+	URL             string         `json:"url"`              // URL of the article
+	Title           string         `json:"title"`            // Title of the article
+	Description     string         `json:"description"`      // Description of the article
+	IngestionMethod string         `json:"ingestion_method"` // DIRECTORY, SEARCH, SUBSCRIPTION, MANUAL
+	PublishedAt     time.Time      `json:"published_at"`     // Published at
+	DiscoveredAt    time.Time      `json:"discovered_at"`    // Discovered at
+	Metadata        map[string]any `json:"metadata"`
+}
+
+// Fingerprint returns a unique identifier for the candidate based on its URL, title, and published time.
+func (c Candidates) Fingerprint() string {
+	hasher := md5.New()
+	hasher.Write([]byte(c.URL))
+	hasher.Write([]byte(c.Title))
+	hasher.Write([]byte(c.PublishedAt.UTC().Format(time.DateTime)))
+	return base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 }
 
 // ArticleContent represents a standardized news article object after parsing.

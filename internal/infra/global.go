@@ -7,6 +7,7 @@ import (
 	"github.com/go-playground/mold/v4"
 	"github.com/go-playground/mold/v4/modifiers"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -23,8 +24,8 @@ var (
 func init() {
 	// Initialize with default instances.
 	SetLogger(slog.Default())
-	SetValidator(validator.New(validator.WithRequiredStructEnabled()))
-	SetTransformer(modifiers.New())
+	SetValidator(newDefaultValidator())
+	SetTransformer(newDefaultTransformer())
 	SetTracer(otel.Tracer("prism"))
 }
 
@@ -40,6 +41,21 @@ func SetLogger(l *slog.Logger) {
 	}
 }
 
+// newDefaultValidator creates a new validator with the project-wide default settings.
+func newDefaultValidator() *validator.Validate {
+	v := validator.New(validator.WithRequiredStructEnabled())
+	if err := v.RegisterValidation("uuid7", func(fl validator.FieldLevel) bool {
+		uid, err := uuid.Parse(fl.Field().String())
+		if err != nil {
+			return false
+		}
+		return uid.Version() == 7
+	}); err != nil {
+		panic(err)
+	}
+	return v
+}
+
 // Validator returns the project-wide default validator.
 func Validator() *validator.Validate {
 	return defaultValidator.Load()
@@ -50,6 +66,11 @@ func SetValidator(v *validator.Validate) {
 	if v != nil {
 		defaultValidator.Store(v)
 	}
+}
+
+// newDefaultTransformer creates a new transformer with the project-wide default settings.
+func newDefaultTransformer() *mold.Transformer {
+	return modifiers.New()
 }
 
 // Transformer returns the project-wide default data transformer (scrubber).

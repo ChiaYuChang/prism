@@ -28,6 +28,13 @@ tasks:
     cmds:
       - task --list
 
+  #
+  # Agent
+  #
+  codex:
+    cmds:
+      - codex resume {{.CODEX_SESSION_ID}}
+
   # ----------------------------------------------------------------------------
   # Service Management (Docker Compose)
   # ----------------------------------------------------------------------------
@@ -85,8 +92,18 @@ tasks:
     desc: generate code
     cmds:
       - task: db-dump
+      - task: sqlc
+      - task: mocks
+
+  sqlc:
+    desc: generate code using sqlc
+    cmds:
       - sqlc generate -f sqlc.json
-      # - mockery
+
+  mocks:
+    desc: generate mocks using mockery v3
+    cmds:
+      - go tool mockery
 
   tidy:
     desc: tidy go dependencies

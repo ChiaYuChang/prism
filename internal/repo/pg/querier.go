@@ -8,16 +8,52 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
-	// ClaimSearchTasks selects and locks pending search tasks or zombie tasks (stuck in RUNNING for > 30 mins).
-	// It atomically updates their status to 'RUNNING' and returns the task details.
-	ClaimSearchTasks(ctx context.Context, limit int32) ([]ClaimSearchTasksRow, error)
-	// CompleteSearchTask marks a task as COMPLETED and updates its next scheduled run time.
-	CompleteSearchTask(ctx context.Context, id uuid.UUID) error
-	// FailSearchTask marks a task as FAILED.
-	FailSearchTask(ctx context.Context, id uuid.UUID) error
+	ClaimTasks(ctx context.Context, limit int32) ([]Task, error)
+	CompleteTask(ctx context.Context, id uuid.UUID) error
+	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
+	CreateCandidateEmbeddingGemma2025(ctx context.Context, arg CreateCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
+	CreateContent(ctx context.Context, arg CreateContentParams) (Content, error)
+	CreateContentEmbeddingGemma2025(ctx context.Context, arg CreateContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)
+	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
+	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
+	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	FailTask(ctx context.Context, id uuid.UUID) error
+	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
+	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
+	GetContentByCandidateID(ctx context.Context, candidateID pgtype.UUID) (Content, error)
+	GetContentByID(ctx context.Context, id uuid.UUID) (Content, error)
+	GetContentByURL(ctx context.Context, url string) (Content, error)
+	GetContentExtractionByID(ctx context.Context, id uuid.UUID) (ContentExtraction, error)
+	GetContentExtractionSnapshot(ctx context.Context, arg GetContentExtractionSnapshotParams) (ContentExtraction, error)
+	GetEntityByCanonicalAndType(ctx context.Context, arg GetEntityByCanonicalAndTypeParams) (Entity, error)
+	GetModelByID(ctx context.Context, id int16) (Model, error)
+	GetModelByNameAndType(ctx context.Context, arg GetModelByNameAndTypeParams) (Model, error)
+	GetPromptByHash(ctx context.Context, hash string) (Prompt, error)
+	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
+	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
+	GetSourceByID(ctx context.Context, id int32) (Source, error)
+	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
+	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
+	ListCandidatesForAnalysis(ctx context.Context, arg ListCandidatesForAnalysisParams) ([]Candidate, error)
+	ListContentEmbeddingsByContentID(ctx context.Context, contentID uuid.UUID) ([]ContentEmbeddingsGemma2025, error)
+	ListContentsByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Content, error)
+	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
+	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
+	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
+	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	ReplaceContentExtractionPhrases(ctx context.Context, arg ReplaceContentExtractionPhrasesParams) error
+	ReplaceContentExtractionTopics(ctx context.Context, arg ReplaceContentExtractionTopicsParams) error
+	SearchCandidatesByText(ctx context.Context, arg SearchCandidatesByTextParams) ([]Candidate, error)
+	SearchCandidatesByVector(ctx context.Context, arg SearchCandidatesByVectorParams) ([]SearchCandidatesByVectorRow, error)
+	SearchContentsByVector(ctx context.Context, arg SearchContentsByVectorParams) ([]SearchContentsByVectorRow, error)
+	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
+	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
+	UpsertEntity(ctx context.Context, arg UpsertEntityParams) (Entity, error)
+	UpsertPrompt(ctx context.Context, arg UpsertPromptParams) (Prompt, error)
 }
 
 var _ Querier = (*Queries)(nil)

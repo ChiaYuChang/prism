@@ -1,21 +1,26 @@
 BEGIN;
 
--- Drop tables with CASCADE to ensure associated SERIAL sequences are removed and reset
-DROP TABLE IF EXISTS search_tasks CASCADE;
-DROP TABLE IF EXISTS content_keywords CASCADE;
-DROP TABLE IF EXISTS keywords CASCADE;
+DROP TABLE IF EXISTS tasks CASCADE;
+DROP TABLE IF EXISTS content_extraction_phrases CASCADE;
+DROP TABLE IF EXISTS content_extraction_topics CASCADE;
+DROP TABLE IF EXISTS content_extraction_entities CASCADE;
+DROP TABLE IF EXISTS entities CASCADE;
+DROP TABLE IF EXISTS content_extractions CASCADE;
+DROP TABLE IF EXISTS prompts CASCADE;
 DROP TABLE IF EXISTS contents CASCADE;
-DROP TABLE IF EXISTS fingerprints CASCADE;
+DROP TABLE IF EXISTS candidates CASCADE;
 DROP TABLE IF EXISTS sources CASCADE;
 DROP TABLE IF EXISTS models CASCADE;
 
--- Drop custom enum types
+DROP TYPE IF EXISTS task_status;
+DROP TYPE IF EXISTS task_kind;
+DROP TYPE IF EXISTS candidate_ingestion_method;
+DROP TYPE IF EXISTS entity_type;
 DROP TYPE IF EXISTS embedding_category;
 DROP TYPE IF EXISTS content_type;
-DROP TYPE IF EXISTS fingerprint_status;
+DROP TYPE IF EXISTS model_type;
 DROP TYPE IF EXISTS source_type;
 
--- Dorp extensions
 DROP EXTENSION IF EXISTS "vector";
 
 COMMIT;

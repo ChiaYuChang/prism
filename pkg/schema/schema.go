@@ -1,34 +1,41 @@
-package llm
+package schema
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// JsonSchema wraps the google/jsonschema-go/jsonschema.Schema.
-// It provides a bridge between Go types and LLM structured outputs.
-type JsonSchema struct {
-	Name string
+var ErrMissingSchema = errors.New("schema is missing")
+
+// JSONSchema wraps google/jsonschema-go/jsonschema.Schema and carries contract metadata.
+type JSONSchema struct {
+	Name    string
+	Version int
 	*jsonschema.Schema
 	rs *jsonschema.Resolved
 }
 
-// NewSkeleton creates a basic schema based on type T.
-// You can then manually enrich the returned schema.
-func NewSkeleton[T any]() JsonSchema {
+// NewSkeleton creates a schema contract skeleton based on type T.
+func NewSkeleton[T any](name string, version int) JSONSchema {
 	s, _ := jsonschema.For[T](nil)
-	return JsonSchema{Schema: s}
+	return JSONSchema{
+		Name:    name,
+		Version: version,
+		Schema:  s,
+	}
 }
 
 // Resolve prepares the schema for validation and default application.
-func (s *JsonSchema) Resolve(opts *jsonschema.ResolveOptions) error {
+func (s *JSONSchema) Resolve(opts *jsonschema.ResolveOptions) error {
 	if s.rs != nil {
 		return nil
 	}
+
 	if s.Schema == nil {
-		return fmt.Errorf("underlying schema is nil")
+		return ErrMissingSchema
 	}
 
 	if opts == nil {
@@ -44,7 +51,7 @@ func (s *JsonSchema) Resolve(opts *jsonschema.ResolveOptions) error {
 }
 
 // ApplyDefaults applies default values to the map.
-func (s *JsonSchema) ApplyDefaults(m map[string]any) error {
+func (s *JSONSchema) ApplyDefaults(m map[string]any) error {
 	if err := s.Resolve(nil); err != nil {
 		return err
 	}
@@ -52,21 +59,25 @@ func (s *JsonSchema) ApplyDefaults(m map[string]any) error {
 }
 
 // Validate validates the map against the schema.
-func (s *JsonSchema) Validate(m map[string]any) error {
+func (s *JSONSchema) Validate(m map[string]any) error {
 	if err := s.Resolve(nil); err != nil {
 		return err
 	}
 	return s.rs.Validate(m)
 }
 
-func (s JsonSchema) ToGemini() *jsonschema.Schema {
-	return s.Schema
+func (s JSONSchema) ToGemini() (*jsonschema.Schema, error) {
+	if s.Schema == nil {
+		return nil, ErrMissingSchema
+	}
+	return s.Schema, nil
 }
 
-func (s JsonSchema) ToOpenAI() (map[string]any, error) {
+func (s JSONSchema) ToOpenAI() (map[string]any, error) {
 	if s.Schema == nil {
-		return nil, nil
+		return nil, ErrMissingSchema
 	}
+
 	data, err := json.Marshal(s.Schema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal schema: %w", err)
@@ -79,7 +90,7 @@ func (s JsonSchema) ToOpenAI() (map[string]any, error) {
 	return m, nil
 }
 
-func (s JsonSchema) MustToOpenAI() map[string]any {
+func (s JSONSchema) MustToOpenAI() map[string]any {
 	m, err := s.ToOpenAI()
 	if err != nil {
 		panic(err)

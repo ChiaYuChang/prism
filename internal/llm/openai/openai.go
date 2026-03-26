@@ -43,11 +43,11 @@ func New(ctx context.Context, l *slog.Logger, t trace.Tracer, v *validator.Valid
 	m *mold.Transformer, c *http.Client, cfg Config) (*Provider, error) {
 
 	if err := m.Struct(ctx, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to scrub openai config: %w", err)
+		return nil, fmt.Errorf("openai %w: %s", llm.ErrCfgModError, err)
 	}
 
 	if err := v.StructCtx(ctx, cfg); err != nil {
-		return nil, fmt.Errorf("failed to validate openai config: %w", err)
+		return nil, fmt.Errorf("openai %w: %s", llm.ErrCfgValError, err)
 	}
 
 	if cfg.APIKey == "" {
@@ -143,10 +143,10 @@ func (p *Provider) Generate(ctx context.Context, req *llm.GenerateRequest) (*llm
 	}
 
 	// Propagate Metadata including TraceID via internal/obs
-	params.Metadata = shared.Metadata(req.Meta)
+	params.Metadata = req.Meta
 	if tid != "" && tid != obs.DefaultTraceIDFallback {
 		if params.Metadata == nil {
-			params.Metadata = make(map[string]string)
+			params.Metadata = map[string]string{}
 		}
 		params.Metadata["trace_id"] = tid
 	}
@@ -157,17 +157,22 @@ func (p *Provider) Generate(ctx context.Context, req *llm.GenerateRequest) (*llm
 			"openai generate error",
 			slog.String("message", err.Error()),
 			slog.String("model", req.Model))
-		return nil, fmt.Errorf("openai responses api error: %w", err)
+		return nil, fmt.Errorf("openai %w: %s", llm.ErrGenAPIError, err)
 	}
 
 	l.LogAttrs(ctx, slog.LevelInfo,
 		"openai generate success",
 		slog.String("model", resp.Model),
-		slog.Any("usage", resp.Usage))
+		slog.Int64("total_tokens", resp.Usage.TotalTokens))
 
 	return &llm.GenerateResponse{
-		Model:      resp.Model,
-		Text:       resp.OutputText(),
+		Model: resp.Model,
+		Text:  resp.OutputText(),
+		Usage: llm.Usage{
+			InputTokenCount:  int(resp.Usage.InputTokens),
+			OutputTokenCount: int(resp.Usage.OutputTokens),
+			TotalTokenCount:  int(resp.Usage.TotalTokens),
+		},
 		Raw:        resp,
 		JsonSchema: req.JSONSchema,
 	}, nil
@@ -206,7 +211,7 @@ func (p *Provider) Embed(ctx context.Context, req *llm.EmbedRequest) (*llm.Embed
 			"openai embed error",
 			slog.String("message", err.Error()),
 			slog.String("model", req.Model))
-		return nil, err
+		return nil, fmt.Errorf("openai %w: %s", llm.ErrEmbedAPIError, err.Error())
 	}
 
 	n := len(resp.Data)

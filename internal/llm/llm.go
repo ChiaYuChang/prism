@@ -2,19 +2,24 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 
-	"github.com/ChiaYuChang/prism/pkg/utils"
-)
-
-const (
-	DefaultTemperature = 1.0
-	DefaultTopP        = 0.95
-	DefaultTopK        = 64
+	pkgschema "github.com/ChiaYuChang/prism/pkg/schema"
+	"github.com/go-viper/mapstructure/v2"
 )
 
 var (
 	ErrMissingAPIKEY = errors.New("missing api key")
+
+	ErrCfgModError    = errors.New("config modification error")
+	ErrCfgValError    = errors.New("config validation error")
+	ErrCliCreateError = errors.New("client creation error")
+
+	ErrGenAPIError        = errors.New("content generation API error")
+	ErrEmbedAPIError      = errors.New("embedding API error")
+	ErrEmbedBatchAPIError = errors.New("batch embedding API error")
 )
 
 // ResponseFormat defines the expected format of the LLM output.
@@ -25,9 +30,10 @@ const (
 	ResponseFormatJsonSchema ResponseFormat = "json_schema"
 )
 
-type Provider interface {
-	Generator
-	Embedder
+type Usage struct {
+	InputTokenCount  int `json:"input_token_count"`
+	OutputTokenCount int `json:"output_token_count"`
+	TotalTokenCount  int `json:"total_token_count"`
 }
 
 // Generator defines the interface for text generation (LLMs).
@@ -40,71 +46,48 @@ type Embedder interface {
 	Embed(ctx context.Context, req *EmbedRequest) (*EmbedResponse, error)
 }
 
-// GenerateRequest encapsulates all parameters for a generation task.
-type GenerateRequest struct {
-	Model             string
-	SystemInstruction string
-	Prompt            string
-	Temperature       *float32
-	TopP              *float32
-	TopK              *int
-	MaxTokens         *int
-	Meta              map[string]string
-	Format            ResponseFormat
-	JSONSchema        JsonSchema
+type Provider interface {
+	Generator
+	Embedder
 }
 
-func NewGenerateRequest(model, instruction, prompt string) *GenerateRequest {
-	return &GenerateRequest{
-		Model:             model,
-		SystemInstruction: instruction,
-		Prompt:            prompt,
-		Temperature:       utils.Ptr(float32(DefaultTemperature)),
-		TopP:              utils.Ptr(float32(DefaultTopP)),
-		TopK:              utils.Ptr(int(DefaultTopK)),
-		Meta:              make(map[string]string),
+// DecodeJsonSchema validates and decodes a JSON-schema payload into out.
+func DecodeJsonSchema(schema pkgschema.JSONSchema, in string, out any) error {
+	if out == nil {
+		return fmt.Errorf("%w: output target is nil", ErrStructuredResponseDecode)
 	}
-}
 
-// GenerateResponse holds the result and any underlying provider-specific data.
-type GenerateResponse struct {
-	Model      string
-	Text       string
-	Raw        any
-	JsonSchema JsonSchema
-}
-
-// EmbedRequest encapsulates parameters for an embedding task.
-type EmbedRequest struct {
-	Model      string
-	Input      []string
-	Dimentions int
-	Meta       map[string]string
-}
-
-func NewEmbedRequest(model string, input ...string) *EmbedRequest {
-	return &EmbedRequest{
-		Model: model,
-		Input: input,
-		Meta:  make(map[string]string),
+	if schema.Schema == nil {
+		return ErrMissingResponseSchema
 	}
-}
 
-// EmbedResponse holds the resulting vectors.
-type EmbedResponse struct {
-	Model   string
-	Vectors [][]float32
-	Raw     any
-}
+	if in == "" {
+		return ErrEmptyResponsePayload
+	}
 
-type BatchJobRequest struct {
-	DisplayName string
-}
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(in), &raw); err != nil {
+		return fmt.Errorf("%w: %s", ErrStructuredResponsePayload, err)
+	}
 
-type BatchJobResponse struct {
-	Name        string
-	DisplayName string
-	State       string
-	OutFileName string
-	Raw         any
+	if err := schema.ApplyDefaults(raw); err != nil {
+		return fmt.Errorf("%w: %s", ErrInvalidSchemaDefaults, err)
+	}
+
+	if err := schema.Validate(raw); err != nil {
+		return fmt.Errorf("%w: %s", ErrStructuredResponseValidation, err)
+	}
+
+	decoder, err := mapstructure.NewDecoder(
+		&mapstructure.DecoderConfig{
+			TagName: "json",
+			Result:  out,
+		})
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrStructuredResponseDecode, err)
+	}
+	if err := decoder.Decode(raw); err != nil {
+		return fmt.Errorf("%w: %s", ErrStructuredResponseDecode, err)
+	}
+	return nil
 }

@@ -112,6 +112,7 @@ func main() {
 		lg.AttrHook("pid", fmt.Sprintf("%d", os.Getpid())),
 		lg.ServiceHook("scheduler"),
 	)
+	scheduler := repo.Scheduler()
 
 	logger.Info("Scheduler starting",
 		"interval", config.Interval,
@@ -151,7 +152,7 @@ func main() {
 
 			// --- STEP 3: Dispatching ---
 			// 1. Fetch active search tasks atomically using SKIP LOCKED
-			tasks, err := repo.ClaimSearchTasks(ctx, int32(config.BatchSize))
+			tasks, err := scheduler.ClaimTasks(ctx, int32(config.BatchSize))
 			if err != nil {
 				logger.Error("failed to claim search tasks from postgres", "error", err)
 				goto release
@@ -174,12 +175,16 @@ func main() {
 					lg.SinceHook("dispatch_time", time.Now()),
 				)
 
-				sig := &message.SearchTaskSignal{
-					TaskID:    task.ID,
-					ContentID: task.ContentID,
-					Phrases:   task.Phrases,
-					TraceID:   task.TraceID,
-					SentAt:    time.Now(),
+				sig := &message.TaskSignal{
+					TaskID:     task.ID,
+					BatchID:    task.BatchID,
+					Kind:       task.Kind,
+					SourceType: task.SourceType,
+					SourceID:   task.SourceID,
+					URL:        task.URL,
+					Payload:    task.Payload,
+					TraceID:    task.TraceID,
+					SentAt:     time.Now(),
 				}
 
 				payload, err := sig.Marshal()
@@ -192,10 +197,10 @@ func main() {
 				// Propagate TraceID to Watermill metadata
 				msg.Metadata.Set("trace_id", task.TraceID)
 
-				if err := msgr.Publish(message.SearchTaskTopic, msg); err != nil {
+				if err := msgr.Publish(message.TaskTopic, msg); err != nil {
 					tLogger.Error("failed to publish search signal", "error", err)
 					// Mark the task as FAILED in Postgres
-					if err := repo.FailSearchTask(ctx, task.ID); err != nil {
+					if err := scheduler.FailTask(ctx, task.ID); err != nil {
 						tLogger.Error("failed to mark task as failed", "error", err)
 					}
 					continue

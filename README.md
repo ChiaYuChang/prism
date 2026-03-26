@@ -1,78 +1,111 @@
 # Project Prism
 
-**Project Prism** is a headless, high-precision data pipeline designed to analyze media bias across various platforms regarding political issues in Taiwan. It standardizes the ingestion and analysis of media reports using a specialized pipeline architecture and AI-driven semantic analysis.
+Project Prism is a headless data pipeline for tracking how Taiwan political party positions propagate into media coverage. It does not try to crawl all news. It starts from bounded seed texts, mainly party press releases, discovers broad candidate coverage, and only fetches full articles when needed.
 
-## 1. Core Philosophy: The Normalized Pipeline (F-T-(S||P))
+## Purpose
 
-Project Prism operates on a standardized **Normalization First** workflow to ensure data consistency and auditability:
+Prism is designed to:
 
-1. **Fetch (F)**: Retrieve raw "dirty" data (HTML/JSON) from remote sources.
-2. **Transform (T)**: The normalization core. Clean the DOM, minify content, and produce a **Canonical String**.
-3. **Parallel Fork**:
-    * **Save (S)**: Background physical archiving. The canonical string is compressed (Gzip+Base64) and written to **SeaweedFS/S3** for permanent auditing.
-    * **Parse (P)**: Immediate structured extraction into structured objects for immediate analysis and **vectorization**.
+- use party press releases as high-signal discovery seeds
+- generate broad, cheap discovery requests from those seeds
+- store article briefs in `candidates`
+- promote selected briefs into full `contents`
+- preserve full auditability with TraceID-linked logs, records, and archives
+- support later extraction, embedding, and semantic analysis
 
-## 2. System Architecture & Data Flow
+## Core Workflow
 
-The system consists of decoupled components communicating via **Watermill** (supporting NATS JetStream locally and AWS SQS/SNS in cloud environments).
+### 1. Party Press Release Intake
 
-### A. The Discovery Loop (Background Job)
+Background jobs periodically crawl party press release directory pages, store directory-page briefs in `candidates`, and then fetch the full press release pages into `contents`.
 
-The Discovery Loop follows a **Trigger + Executor** pattern to identify and buffer news reports.
+### 2. Planner
 
-* **Scheduler (Trigger & Executor)**:
-  * **Trigger**: Sends a signal message (e.g., `prism.cron.discovery_refresh`) to the executor periodically.
-  * **Executor**:
-    * **Task Claiming**: Pulls pending `search_tasks` from **PostgreSQL 18** using `FOR UPDATE SKIP LOCKED` for thread-safe batching.
-    * **Keyword Deduplication**: Uses **Valkey (Redis)** to lock keyword combinations (`prism:search_lock:<hash>`).
-    * **Dispatching**: If the keyword combination is not locked, it publishes search signals to the MQ (NATS/SQS).
-  * **Deployment Mapping**:
-    * **Local**: A standalone Go service (`cmd/scheduler`).
-    * **Cloud**: AWS EventBridge (Trigger) + AWS Lambda (Executor).
-* **Discovery Worker**: Subscribes to search signals, interacts with Search Engine APIs (Google/Serper) to find new URLs, and persists them as `DISCOVERED` in the `fingerprints` table (SHA256 deduplication).
+After the current batch of party press release fetches completes, `Planner` loads today's press release contents and asks the LLM to produce a bounded number of short keyword groups. The goal is recall, not precision.
 
-### B. The Analysis Pipeline (Background Job)
+### 3. Discovery Loop
 
-* **Pipeline Worker**: Subscribes to discovered URL signals and executes the **F-T-(S||P)** flow using the `BaseCollector`.
-* **Semantic Analysis**: Uses LLMs to generate structured metadata and **Gemma 2025** embeddings.
-* **Vector Retrieval**: Stores **768-dimensional** embeddings in **pgvector (HNSW index)** to calculate semantic distance.
+The discovery loop follows a trigger / executor model:
 
-### C. Data Access (API & Interface)
+- the scheduler runs periodically
+- it claims runnable `tasks` from PostgreSQL
+- it publishes task messages through Watermill
+- downstream workers execute the actual directory-fetch work
 
-* **API Server**: A headless RESTful server providing endpoints to query analysis results, media preference scores, and semantic clusters.
-* **Traceability**: Every operation is tagged with an **OpenTelemetry TraceID**, correlating logs and physical archives.
+The scheduler is a task dispatcher, not a crawler.
 
-## 3. Infrastructure Stack
+### 4. Candidate Buffering
+
+`Scout` handles directory-fetch tasks, downloads party directory pages or media search results, and stores discovered briefs in the `candidates` pool.
+
+### 5. Candidate Promotion
+
+Selected candidates are fetched into full `contents` for parsing, archiving, extraction, and later analysis.
+
+### 6. Embeddings
+
+Candidate insertion and content insertion each trigger their own embedding workers so that both `candidates` and `contents` can later be searched semantically. This includes party press release briefs as well as fetched full contents.
+
+### 7. Analysis
+
+Structured extraction, embeddings, clustering, and summarization are analysis capabilities built on top of fetched `contents`. They are not mandatory steps in the minimal discovery loop.
+
+## Design Principles
+
+### Recall Over Precision
+
+Discovery should optimize for broad coverage. Missing a relevant article is more costly than briefly collecting noise.
+
+### Seed-Driven, Not Crawl-Everything
+
+Prism intentionally starts from limited, high-signal political texts and expands outward in a controlled way.
+
+### Candidates Before Contents
+
+Article briefs and full fetched contents are different lifecycle stages and should stay separate in both code and storage.
+
+### Analysis Decoupled From Discovery
+
+Semantic extraction and clustering remain important, but discovery should not depend on them in order to stay simple and quota-aware. Discovery is driven by request-oriented tasks, not by cluster summaries.
+
+## Normalized Pipeline
+
+Prism uses a normalization-first workflow:
+
+1. Fetch (F): retrieve raw HTML or JSON
+2. Transform (T): clean DOM and generate a canonical string
+3. Save (S): archive canonical content for auditability
+4. Parse (P): produce structured data and embeddings
+
+This is commonly described as `F-T-(S||P)`.
+
+## Major Components
 
 | Component | Technology | Role |
 | :--- | :--- | :--- |
-| **Language** | Go (Golang 1.24+) | High-concurrency processing core |
-| **Message Broker** | Watermill (NATS / SQS) | Abstraction layer for task dispatching & DLQ |
-| **Primary Database** | PostgreSQL 18 + pgvector | Structured data with native **uuidv7** support |
-| **Distributed Lock** | Valkey (Redis) | Deduplication guard and task concurrency control |
-| **Object Storage** | SeaweedFS / S3 | Data Lake for Gzip-compressed canonical archives |
-| **Telemetry** | OpenTelemetry + VictoriaLogs | Full-link auditability and structured JSON logging |
+| Language | Go 1.24+ | High-concurrency services and workers |
+| Message Broker | Watermill over NATS / SQS | Task dispatch and async workflows |
+| Database | PostgreSQL 18 + pgvector | Structured data, tasks, and embeddings |
+| Cache / Lock | Valkey | Future short-term rate limiting and deduplication |
+| Object Storage | SeaweedFS / S3 | Canonical archive storage |
+| Telemetry | OpenTelemetry + VictoriaLogs | Trace-linked logging and auditability |
 
-## 4. Database Schema Highlights (PostgreSQL 18)
+## Repository Layout
 
-* **uuidv7**: Used as the Primary Key for contents and search_tasks for time-ordered indexing.
-* **Fingerprints**: SHA256 hashes of URLs used as the primary deduplication key.
-* **Embeddings**: Partitioned storage for `TITLE` and `CONTENT` vectors.
+- `cmd/`: service entry points such as the scheduler and workers
+- `internal/collector/`: fetch, transform, save, and parse interfaces
+- `internal/discovery/`: discovery interfaces and extractor implementation
+- `internal/message/`: message contracts for worker dispatch
+- `internal/model/`: domain data structures
+- `internal/repo/`: repository abstractions
+- `internal/repo/pg/`: PostgreSQL implementations
+- `assets/prompts/`: prompt assets used by analysis components
+- `pkg/schema/`: structured output schema contract helpers
+- `db/migrations/`: database schema history
+- `docs/`: design and query planning documents
 
-## 5. Internal Project Structure
+## Status
 
-* `cmd/`: Entry points for services (Scheduler, Workers, API).
-* `internal/model/`: Pure domain entities (no dependencies).
-* `internal/message/`: Wire protocols and messaging contracts.
-* `internal/repo/`: Abstract repository interfaces for persistence.
-* `internal/repo/pg/`: Concrete PostgreSQL implementation (Adapter).
-* `internal/collector/`: The core F-T-S-P logic and interfaces.
-* `pkg/`: Generic utility packages (archive, telemetry, hash).
-
-## 6. Roadmap
-
-* [x] Phase 1: Foundation & Data Contracts
-* [ ] Phase 2: Discovery Loop & Scheduler (In Progress)
-* [ ] Phase 3: Parallel Pipeline Execution
-* [ ] Phase 4: Semantic Bias Analysis
-* [ ] Future: Admin API (Pause/Resume Scheduler), Prism TUI & Web Dashboard
+- Phase 1 foundation is complete
+- Scheduler and LLM infrastructure are in place
+- Discovery worker, candidate embedding worker, and content embedding worker are the next major milestones
