@@ -1,40 +1,37 @@
-package atomscout
+package yahoo
 
 import (
 	"context"
-	"encoding/xml"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	rootscout "github.com/ChiaYuChang/prism/internal/discovery/scout"
+	htmlscout "github.com/ChiaYuChang/prism/internal/discovery/scout/html"
 	"github.com/ChiaYuChang/prism/internal/model"
 	"go.opentelemetry.io/otel/trace"
 )
 
+var streamItemsPattern = regexp.MustCompile(`(?s)"stream_items"\s*:\s*(\[.*?\])\s*,\s*"stream_total"`)
+
 type Config struct {
-	Name     string `yaml:"name" json:"name"`
-	Format   string `yaml:"format" json:"format"`
-	SpanName string `yaml:"span_name" json:"span_name"`
+	Name     string            `yaml:"name" json:"name"`
+	Format   string            `yaml:"format" json:"format"`
+	SpanName string            `yaml:"span_name" json:"span_name"`
+	Headers  map[string]string `yaml:"headers" json:"headers"`
 }
 
-type feed struct {
-	Entries []entry `xml:"entry"`
-}
-
-type entry struct {
-	Title     string      `xml:"title"`
-	Summary   string      `xml:"summary"`
-	Published string      `xml:"published"`
-	Updated   string      `xml:"updated"`
-	Links     []entryLink `xml:"link"`
-}
-
-type entryLink struct {
-	Rel  string `xml:"rel,attr"`
-	Href string `xml:"href,attr"`
+type yahooNewsItem struct {
+	Title     string `json:"title"`
+	Summary   string `json:"summary"`
+	Publisher string `json:"publisher"`
+	Timestamp int64  `json:"pubtime"`
+	URL       string `json:"url"`
 }
 
 type Scout struct {
@@ -54,6 +51,11 @@ func New(logger *slog.Logger, tracer trace.Tracer, client *http.Client, cfg Conf
 		return nil, rootscout.ErrNilTracer
 	}
 
+	loc, err := time.LoadLocation("Asia/Taipei")
+	if err != nil {
+		loc = time.FixedZone("Asia/Taipei", 8*60*60)
+	}
+
 	cfg = cfg.Normalize()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -64,7 +66,7 @@ func New(logger *slog.Logger, tracer trace.Tracer, client *http.Client, cfg Conf
 		tracer: tracer,
 		client: client,
 		now:    time.Now,
-		loc:    time.Local,
+		loc:    loc,
 		cfg:    cfg,
 	}, nil
 }
@@ -73,7 +75,7 @@ func (s *Scout) Discover(ctx context.Context, rawURL string) ([]model.Candidates
 	ctx, span := s.tracer.Start(ctx, s.cfg.SpanName)
 	defer span.End()
 
-	body, err := rootscout.Fetch(ctx, s.client, rawURL)
+	body, err := htmlscout.Fetch(ctx, s.client, rawURL, s.cfg.Headers)
 	if err != nil {
 		return nil, err
 	}
@@ -83,15 +85,25 @@ func (s *Scout) Discover(ctx context.Context, rawURL string) ([]model.Candidates
 		}
 	}()
 
-	var parsed feed
-	if err := xml.NewDecoder(body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("parse atom feed: %w", err)
+	content, err := io.ReadAll(body)
+	if err != nil {
+		return nil, fmt.Errorf("read response body: %w", err)
 	}
 
-	out := make([]model.Candidates, 0, len(parsed.Entries))
-	for _, item := range parsed.Entries {
+	match := streamItemsPattern.FindSubmatch(content)
+	if len(match) < 2 {
+		return nil, fmt.Errorf("yahoo custom scout: stream_items not found")
+	}
+
+	var items []yahooNewsItem
+	if err := json.Unmarshal(match[1], &items); err != nil {
+		return nil, fmt.Errorf("parse yahoo stream items: %w", err)
+	}
+
+	out := make([]model.Candidates, 0, len(items))
+	for _, item := range items {
 		title := rootscout.NormalizeText(item.Title)
-		link := extractAlternateLink(item.Links)
+		link := strings.TrimSpace(item.URL)
 		if title == "" || link == "" {
 			continue
 		}
@@ -103,23 +115,24 @@ func (s *Scout) Discover(ctx context.Context, rawURL string) ([]model.Candidates
 			IngestionMethod: "DIRECTORY",
 			DiscoveredAt:    s.now().In(s.loc),
 			Metadata: map[string]any{
-				"scout":  s.cfg.Name,
-				"format": s.cfg.Format,
+				"scout":     s.cfg.Name,
+				"format":    s.cfg.Format,
+				"publisher": rootscout.NormalizeText(item.Publisher),
 			},
 		}
 
-		if publishedAt, ok := parsePublishTime(item.Published, item.Updated, s.loc); ok {
-			candidate.PublishedAt = publishedAt
+		if item.Timestamp > 0 {
+			candidate.PublishedAt = time.UnixMilli(item.Timestamp).In(s.loc)
 		}
 
 		out = append(out, candidate)
 	}
 
 	if len(out) == 0 {
-		return nil, fmt.Errorf("%s atom scout: %w", s.cfg.Name, rootscout.ErrNoCandidatesFound)
+		return nil, fmt.Errorf("%s custom scout: %w", s.cfg.Name, rootscout.ErrNoCandidatesFound)
 	}
 
-	s.logger.DebugContext(ctx, "atom scout discovered candidates",
+	s.logger.DebugContext(ctx, "yahoo custom scout discovered candidates",
 		slog.String("url", rawURL),
 		slog.String("scout", s.cfg.Name),
 		slog.String("span_name", s.cfg.SpanName),
@@ -132,6 +145,10 @@ func (c Config) Normalize() Config {
 	c.Name = strings.TrimSpace(c.Name)
 	c.Format = strings.TrimSpace(c.Format)
 	c.SpanName = strings.TrimSpace(c.SpanName)
+	c.Headers = htmlscout.CloneHeaders(c.Headers)
+	if len(c.Headers) == 0 {
+		c.Headers = htmlscout.CloneHeaders(htmlscout.BrowserLikeHeaders)
+	}
 	return c
 }
 
@@ -146,40 +163,4 @@ func (c Config) Validate() error {
 		return fmt.Errorf("%w: %s", rootscout.ErrConfigFieldEmpty, "span_name")
 	}
 	return nil
-}
-
-func extractAlternateLink(links []entryLink) string {
-	for _, link := range links {
-		if strings.TrimSpace(link.Rel) == "alternate" {
-			return strings.TrimSpace(link.Href)
-		}
-	}
-	for _, link := range links {
-		if href := strings.TrimSpace(link.Href); href != "" {
-			return href
-		}
-	}
-	return ""
-}
-
-func parsePublishTime(published, updated string, loc *time.Location) (time.Time, bool) {
-	for _, raw := range []string{published, updated} {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-
-		for _, layout := range []string{time.RFC3339, time.RFC3339Nano} {
-			t, err := time.Parse(layout, raw)
-			if err != nil {
-				continue
-			}
-			if loc != nil {
-				return t.In(loc), true
-			}
-			return t, true
-		}
-	}
-
-	return time.Time{}, false
 }

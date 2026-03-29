@@ -3,6 +3,8 @@ package htmlscout
 import (
 	"context"
 	"fmt"
+	"io"
+	"iter"
 	"log/slog"
 	"net/http"
 	neturl "net/url"
@@ -16,20 +18,33 @@ import (
 )
 
 type RuleConfig struct {
-	ItemSelector        string
-	LinkSelector        string
-	LinkAttr            string
-	TitleSelector       string
-	DateSelector        string
-	DateLayout          string
-	DescriptionSelector string
+	ItemSelector        string `yaml:"item_selector" json:"item_selector"`
+	LinkSelector        string `yaml:"link_selector" json:"link_selector"`
+	LinkAttr            string `yaml:"link_attr" json:"link_attr"`
+	TitleSelector       string `yaml:"title_selector" json:"title_selector"`
+	DateSelector        string `yaml:"date_selector" json:"date_selector"`
+	DateLayout          string `yaml:"date_layout" json:"date_layout"`
+	DescriptionSelector string `yaml:"description_selector" json:"description_selector"`
 }
 
 type Config struct {
-	Name     string
-	Format   string
-	SpanName string
-	Rules    []RuleConfig
+	Name     string            `yaml:"name" json:"name"`
+	Format   string            `yaml:"format" json:"format"`
+	SpanName string            `yaml:"span_name" json:"span_name"`
+	Headers  map[string]string `yaml:"headers" json:"headers"`
+	Rules    []RuleConfig      `yaml:"rules" json:"rules"`
+}
+
+var BrowserLikeHeaders = map[string]string{
+	"User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+	"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+	"Accept-Language":           "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+	"Referer":                   "https://www.google.com/",
+	"Sec-Ch-Ua":                 `"Chromium";v="136", "Not(A:Brand";v="24", "Google Chrome";v="136"`,
+	"Sec-Fetch-Dest":            "document",
+	"Sec-Fetch-Mode":            "navigate",
+	"Sec-Fetch-Site":            "cross-site",
+	"Upgrade-Insecure-Requests": "1",
 }
 
 type Scout struct {
@@ -69,7 +84,7 @@ func (s *Scout) Discover(ctx context.Context, rawURL string) ([]model.Candidates
 	ctx, span := s.tracer.Start(ctx, s.cfg.SpanName)
 	defer span.End()
 
-	body, err := rootscout.Fetch(ctx, s.client, rawURL)
+	body, err := Fetch(ctx, s.client, rawURL, s.cfg.Headers)
 	if err != nil {
 		return nil, err
 	}
@@ -207,10 +222,15 @@ func (c Config) Normalize() Config {
 	c.Format = strings.TrimSpace(c.Format)
 	c.SpanName = strings.TrimSpace(c.SpanName)
 
+	header := map[string]string{}
+	for key, val := range NormalizeHeaders(c.Headers) {
+		header[key] = val
+	}
+	c.Headers = header
+
 	for i, rule := range c.Rules {
 		c.Rules[i] = rule.Normalize()
 	}
-
 	return c
 }
 
@@ -268,4 +288,60 @@ func (r RuleConfig) Validate(i int) error {
 		return fmt.Errorf("%w: rules[%d].date_layout", rootscout.ErrConfigFieldEmpty, i)
 	}
 	return nil
+}
+
+func Fetch(ctx context.Context, client *http.Client, rawURL string, headers map[string]string) (io.ReadCloser, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	for key, value := range NormalizeHeaders(headers) {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer func() { _ = resp.Body.Close() }()
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("fetch %s: status %d: %s", rawURL, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	return resp.Body, nil
+}
+
+func NormalizeHeaders(headers map[string]string) iter.Seq2[string, string] {
+	return func(yield func(string, string) bool) {
+		for key, val := range headers {
+			key = strings.TrimSpace(key)
+			val = strings.TrimSpace(val)
+			if key == "" || val == "" {
+				continue
+			}
+
+			if !yield(key, val) {
+				return
+			}
+		}
+	}
+}
+
+func CloneHeaders(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+
+	dst := make(map[string]string, len(src))
+	for key, val := range src {
+		dst[key] = val
+	}
+	return dst
 }

@@ -15,9 +15,9 @@ import (
 )
 
 type Config struct {
-	Name     string
-	Format   string
-	SpanName string
+	Name     string `yaml:"name" json:"name"`
+	Format   string `yaml:"format" json:"format"`
+	SpanName string `yaml:"span_name" json:"span_name"`
 }
 
 type rssFeed struct {

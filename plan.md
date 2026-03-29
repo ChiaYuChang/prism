@@ -176,7 +176,22 @@ Current implementation status:
 * [ ] 2.4 Discovery Worker:
   * [ ] Implement `cmd/discovery-worker`.
   * [ ] Route tasks by `source_type` / `base_url`.
-  * [ ] Integrate at least one party directory scout.
+  * [x] Establish scout core packages under `internal/discovery/scout/{html,rss,atom}`.
+  * [x] Implement config-driven `HTMLScout` for party directory pages.
+  * [x] Implement config-driven `RSSScout` for standard RSS XML feeds.
+  * [x] Implement config-driven `AtomScout` for Atom feeds.
+  * [x] Establish centralized scout config schema with `version` and YAML/JSON-compatible tags.
+  * [x] Implement scout config repository and factory for `html`, `rss`, `atom`, and `custom` scouts.
+  * [x] Consolidate scout definitions into a single `scouts.yaml` config document.
+  * [x] Verify current scout fixtures:
+    * [x] DPP HTML directory page
+    * [x] TPP HTML directory page
+    * [x] CNA RSS feed
+    * [x] TTV RSS feed
+    * [x] PTS Atom feed
+    * [x] KMT Atom feed
+    * [x] Yahoo embedded-JSON page
+  * [ ] Load scout instances from runtime app config instead of package-local test config.
   * [ ] Integrate at least one media search provider.
   * [ ] Consume runnable `tasks`.
   * [ ] Persist discovered article briefs into `candidates`.
@@ -212,7 +227,8 @@ Current implementation status:
 
 ## 5. Future Roadmap
 
-* [ ] RSS and official API ingestion for media sources that support them.
+* [ ] Runtime application wiring for config-driven scout registration and enable/disable controls.
+* [ ] RSS and official API ingestion for additional media sources that support them.
 * [ ] More robust search-provider abstraction and quota management.
 * [ ] LLM-assisted quality control for parser drift detection.
 * [ ] TUI and Web dashboard.
@@ -226,6 +242,9 @@ Current implementation status:
 * `candidates` and `contents` are intentionally separate lifecycle stages.
 * Discovery should remain cheap, broad, and replaceable.
 * `Scout` consumes request-oriented tasks, not keyword-only queue rows.
+* Scout definitions should be config-centered; selector-based HTML, RSS, and Atom scouts should prefer shared implementations built from config.
+* Feed-like media sources should prefer shared `RSSScout` / `AtomScout` with source config rather than one thin wrapper package per source.
+* Source-specific custom scout packages remain appropriate for non-standard sources such as Yahoo embedded JSON pages.
 * `Planner` creates MEDIA tasks after one PARTY batch completes.
 * `batch_id` should exist in both persisted task rows and MQ messages.
 * Semantic extraction and clustering are still useful, but they belong to the analysis side of the system.
@@ -235,4 +254,3 @@ Current implementation status:
 * Repository boundaries are worker-oriented rather than table-oriented.
 * Read-side contracts and write-side params are intentionally separated inside `internal/repo`.
 * Validation tags in repo params should remain conservative until worker flows are stable.
-

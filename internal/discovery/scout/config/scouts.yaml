@@ -1,0 +1,74 @@
+version: 1
+
+scout:
+  html:
+    defaults:
+      enabled: true
+      headers:
+        User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+        Accept-Language: "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7"
+        Referer: "https://www.google.com/"
+        Sec-Ch-Ua: "\"Chromium\";v=\"136\", \"Not(A:Brand\";v=\"24\", \"Google Chrome\";v=\"136\""
+        Sec-Fetch-Dest: "document"
+        Sec-Fetch-Mode: "navigate"
+        Sec-Fetch-Site: "cross-site"
+        Upgrade-Insecure-Requests: "1"
+    scouts:
+      - name: dpp
+        hosts:
+          - www.dpp.org.tw
+        span_name: discovery.scout.html.dpp.discover
+        rules:
+          - item_selector: a.news_abtn
+            link_attr: href
+            title_selector: h3
+            date_selector: p.news_date
+            date_layout: "2006-01-02"
+            description_selector: p:not(.news_date)
+          - item_selector: div.bar.PL15
+            link_selector: a.news_list
+            link_attr: href
+            title_selector: a.news_list
+            date_selector: p.news_list_date
+            date_layout: "2006-01-02"
+      - name: tpp
+        hosts:
+          - www.tpp.org.tw
+        span_name: discovery.scout.html.tpp.discover
+        rules:
+          - item_selector: div.latest_outer div.list_frame
+            link_selector: a
+            link_attr: href
+            title_selector: div.list_name
+            date_selector: div.list_date
+            date_layout: "2006年01月02日"
+            description_selector: span.inner_tags
+  rss:
+    defaults:
+      enabled: true
+    scouts:
+      - name: cna
+        hosts:
+          - feeds.feedburner.com
+        span_name: discovery.scout.rss.cna.discover
+  atom:
+    defaults:
+      enabled: true
+    scouts:
+      - name: pts
+        hosts:
+          - news.pts.org.tw
+        span_name: discovery.scout.atom.pts.discover
+      - name: kmt
+        hosts:
+          - www.kmt.org.tw
+        span_name: discovery.scout.atom.kmt.discover
+  custom:
+    defaults:
+      enabled: true
+    scouts:
+      - name: yahoo
+        hosts:
+          - tw.news.yahoo.com
+        span_name: discovery.scout.custom.yahoo.discover
