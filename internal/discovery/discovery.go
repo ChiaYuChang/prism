@@ -2,9 +2,22 @@ package discovery
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ChiaYuChang/prism/internal/model"
 )
+
+const ScoutDiscoverSpanNamePattern = "discovery.scout.%s.%s.discover"
+
+func ScoutDiscoverSpanName(format, name string) string {
+	return fmt.Sprintf(ScoutDiscoverSpanNamePattern, format, name)
+}
+
+// Scout is responsible for discovering news articles.
+type Scout interface {
+	// DiscoverNews executes a search and returns initial media reports and metadata.
+	Discover(ctx context.Context, url string) (out []model.Candidates, err error)
+}
 
 // Extractor is responsible for extracting search keywords using AI.
 type Extractor interface {

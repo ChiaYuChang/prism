@@ -6,29 +6,52 @@ import (
 	"time"
 )
 
+type Reader struct {
+	data []byte
+	pos  int
+}
+
+func NewReader(data []byte) *Reader {
+	return &Reader{data: data}
+}
+
+func (r *Reader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, io.EOF
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
+func (r *Reader) Close() error {
+	return nil
+}
+
 // ErrTest provides a standard error for unit testing failure scenarios.
 var ErrTest = errors.New("test error")
 
 // DelayedReader simulates network latency or slow data streams.
 type DelayedReader struct {
-	Data  []byte
-	Delay time.Duration
+	r     *Reader
+	delay time.Duration
+}
+
+func NewDelayedReader(data []byte, delay time.Duration) *DelayedReader {
+	return &DelayedReader{r: NewReader(data), delay: delay}
 }
 
 // Read implements the io.Reader interface with a one-time delay.
 func (r *DelayedReader) Read(p []byte) (int, error) {
-	if r.Delay > 0 {
-		time.Sleep(r.Delay)
-		r.Delay = 0 // Delay only occurs on the first read
+	if r.delay > 0 {
+		time.Sleep(r.delay)
+		r.delay = 0 // Delay only occurs on the first read
 	}
+	return r.r.Read(p)
+}
 
-	if len(r.Data) == 0 {
-		return 0, io.EOF
-	}
-
-	n := copy(p, r.Data)
-	r.Data = r.Data[n:]
-	return n, nil
+func (r *DelayedReader) Close() error {
+	return r.r.Close()
 }
 
 // ErrorReader always returns an error during the read operation.
