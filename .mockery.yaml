@@ -17,6 +17,9 @@ packages:
   github.com/ChiaYuChang/prism/internal/discovery:
     config:
       all: true
+  github.com/ChiaYuChang/prism/internal/discovery/backfiller:
+    config:
+      all: true
   github.com/ChiaYuChang/prism/internal/llm:
     config:
       all: true

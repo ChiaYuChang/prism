@@ -93,7 +93,7 @@ func LoadConfig(args []string) (*Config, error) {
 	v.AutomaticEnv()
 
 	fs := pflag.NewFlagSet("scheduler", pflag.ContinueOnError)
-	
+
 	// Add config file flag
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 

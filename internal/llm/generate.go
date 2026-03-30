@@ -40,10 +40,10 @@ func NewGenerateRequest(model, instruction, prompt string) *GenerateRequest {
 
 // GenerateResponse holds the result and any underlying provider-specific data.
 type GenerateResponse struct {
-	Model      string     `json:"model"`
-	Text       string     `json:"text"`
-	Usage      Usage      `json:"usage"`
-	Raw        any        `json:"raw"`
+	Model      string               `json:"model"`
+	Text       string               `json:"text"`
+	Usage      Usage                `json:"usage"`
+	Raw        any                  `json:"raw"`
 	JsonSchema pkgschema.JSONSchema `json:"jsonschema"`
 }
 

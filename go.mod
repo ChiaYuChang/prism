@@ -26,6 +26,7 @@ require (
 	golang.org/x/net v0.52.0
 	golang.org/x/text v0.35.0
 	google.golang.org/genai v1.49.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -116,7 +117,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	google.golang.org/grpc v1.66.2 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 tool github.com/vektra/mockery/v3

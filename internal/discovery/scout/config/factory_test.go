@@ -17,7 +17,10 @@ import (
 )
 
 func TestBuildRegistry(t *testing.T) {
-	repo, err := scoutconfig.Load(filepath.Join("scouts.yaml"))
+	cfg, err := scoutconfig.ReadFile(filepath.Join("scouts.yaml"))
+	require.NoError(t, err)
+
+	repo, err := scoutconfig.New(cfg)
 	require.NoError(t, err)
 
 	client := &http.Client{

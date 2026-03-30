@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ChiaYuChang/prism/internal/model"
 )
@@ -17,6 +18,26 @@ func ScoutDiscoverSpanName(format, name string) string {
 type Scout interface {
 	// DiscoverNews executes a search and returns initial media reports and metadata.
 	Discover(ctx context.Context, url string) (out []model.Candidates, err error)
+}
+
+// BackfillRequest describes one historical backfill run.
+type BackfillRequest struct {
+	StartURL string
+	Until    time.Time
+	MaxPages int
+}
+
+// BackfillResult summarizes one historical backfill run.
+type BackfillResult struct {
+	PagesVisited        int       `json:"pages_visited,omitempty"`
+	CandidatesSeen      int       `json:"candidates_seen,omitempty"`
+	CandidatesProcessed int       `json:"candidates_processed,omitempty"`
+	OldestPublishedAt   time.Time `json:"oldest_published_at,omitempty"`
+}
+
+// Backfiller replays older listing pages until the requested lower-bound date is reached.
+type Backfiller interface {
+	Run(ctx context.Context, req BackfillRequest) (BackfillResult, error)
 }
 
 // Extractor is responsible for extracting search keywords using AI.

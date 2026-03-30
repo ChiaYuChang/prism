@@ -9,7 +9,10 @@ import (
 )
 
 func TestLoad(t *testing.T) {
-	repo, err := scoutconfig.Load(filepath.Join("scouts.yaml"))
+	cfg, err := scoutconfig.ReadFile(filepath.Join("scouts.yaml"))
+	require.NoError(t, err)
+
+	repo, err := scoutconfig.New(cfg)
 	require.NoError(t, err)
 
 	require.Equal(t, scoutconfig.CurrentVersion, repo.Config().Version)

@@ -111,7 +111,10 @@ func TestHTMLScoutDiscover(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			repo, err := scoutconfig.Load(tt.configPath)
+			cfg, err := scoutconfig.ReadFile(tt.configPath)
+			require.NoError(t, err)
+
+			repo, err := scoutconfig.New(cfg)
 			require.NoError(t, err)
 
 			spec, ok := repo.HTML(tt.name)

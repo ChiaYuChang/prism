@@ -191,10 +191,11 @@ Current implementation status:
     * [x] PTS Atom feed
     * [x] KMT Atom feed
     * [x] Yahoo embedded-JSON page
-  * [ ] Load scout instances from runtime app config instead of package-local test config.
-  * [ ] Integrate at least one media search provider.
-  * [ ] Consume runnable `tasks`.
-  * [ ] Persist discovered article briefs into `candidates`.
+* [ ] Load scout instances from runtime app config instead of package-local test config.
+* [ ] Integrate at least one media search provider.
+* [ ] Consume runnable `tasks`.
+* [ ] Persist discovered article briefs into `candidates`.
+* [x] Implement config-driven backfiller that reuses scouts + a generic `IndexPager` (`cmd/backfiller` with `sources.*`, `--source`, `--until`).
 * [ ] 2.5 Candidate Promotion:
   * [ ] Fetch selected candidates into full `contents`.
   * [ ] Avoid refetch when content already exists by URL or candidate ID.

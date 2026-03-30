@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	rssscout "github.com/ChiaYuChang/prism/internal/discovery/scout/rss"
 	"go.opentelemetry.io/otel/trace"
 )
+
+var ErrScoutNotFound = errors.New("scout config not found")
 
 func BuildRegistry(repo *Repository, logger *slog.Logger, tracer trace.Tracer, client *http.Client) (*rootscout.Registry, error) {
 	if repo == nil {
@@ -81,4 +84,32 @@ func BuildRegistry(repo *Repository, logger *slog.Logger, tracer trace.Tracer, c
 	}
 
 	return rootscout.NewRegistry(logger, tracer, scouts)
+}
+
+func BuildScoutByName(repo *Repository, name string, logger *slog.Logger, tracer trace.Tracer, client *http.Client) (discovery.Scout, error) {
+	if repo == nil {
+		return nil, fmt.Errorf("scout config repo is nil")
+	}
+
+	if spec, ok := repo.HTML(name); ok && spec.Enabled {
+		return htmlscout.New(logger, tracer, client, spec.Config)
+	}
+	if spec, ok := repo.RSS(name); ok && spec.Enabled {
+		cfg := spec.Config.(rssscout.Config)
+		return rssscout.New(logger, tracer, client, cfg)
+	}
+	if spec, ok := repo.Atom(name); ok && spec.Enabled {
+		cfg := spec.Config.(atomscout.Config)
+		return atomscout.New(logger, tracer, client, cfg)
+	}
+	if spec, ok := repo.Custom(name); ok && spec.Enabled {
+		switch cfg := spec.Config.(type) {
+		case yahooscout.Config:
+			return yahooscout.New(logger, tracer, client, cfg)
+		default:
+			return nil, fmt.Errorf("%w: %T", ErrUnknownCustomScout, spec.Config)
+		}
+	}
+
+	return nil, fmt.Errorf("%w: %s", ErrScoutNotFound, name)
 }

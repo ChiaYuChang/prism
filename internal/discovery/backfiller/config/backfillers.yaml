@@ -1,0 +1,39 @@
+version: 1
+backfiller:
+  sources:
+    dpp:
+      source_id: 1
+      format: html
+      pager:
+        type: "index"
+        mode: "index"
+        url_template: "https://www.dpp.org.tw/media/{{.Value}}"
+        first: 0
+        step: 10
+        omit_first: true
+
+    tpp:
+      source_id: 2
+      format: html
+      pager:
+        type: "index"
+        mode: "index"
+        url_template: "https://www.tpp.org.tw/media"
+        first: 1
+        step: 1
+        params:
+          page: "{{.Value}}"
+        omit_first: true
+
+    kmt:
+      source_id: 3
+      format: atom
+      pager:
+        type: "index"
+        mode: "index"
+        url_template: "https://www.kmt.org.tw/feeds/posts/summary/-/新聞稿"
+        first: 1
+        step: 10
+        params:
+          start-index: "{{.Value}}"
+          max-results: "10"
