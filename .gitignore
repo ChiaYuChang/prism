@@ -49,3 +49,6 @@ tmp/
 # .vscode/
 
 SESSION_SUMMARY.md
+.codex
+.task/*
+build/*

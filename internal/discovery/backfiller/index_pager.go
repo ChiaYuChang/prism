@@ -9,12 +9,21 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/ChiaYuChang/prism/internal/obs"
 	"go.opentelemetry.io/otel/trace"
 )
 
-var (
-	ErrEmptyPagerURLTemplate = fmt.Errorf("%w: url_template", ErrParamMissing)
+type PagerMode string
+
+const (
+	PageModeIndex     PagerMode = "index"
+	PageModeCursor    PagerMode = "cursor"
+	PageModeDateRange PagerMode = "date-range"
+
+	SpanNameIndexPagerNext = "discovery.backfiller.index_pager.next"
 )
+
+var ErrEmptyPagerURLTemplate = fmt.Errorf("%w: url_template", ErrParamMissing)
 
 var TemplateFuncMap = map[string]any{
 	"add": func(a, b int) int { return a + b },
@@ -23,24 +32,17 @@ var TemplateFuncMap = map[string]any{
 	"div": func(a, b int) int { return a / b },
 }
 
-type PagerMode string
-
-const (
-	PageModeIndex     PagerMode = "index"
-	PageModeCursor    PagerMode = "cursor"
-	PageModeDateRange PagerMode = "date-range"
-)
-
 type IndexPagerConfig struct {
+	BaseURL     string            `json:"base_url,omitempty"`
 	URLTemplate string            `json:"url_template,omitempty"`
 	First       int               `json:"first,omitempty"`
 	Step        int               `json:"step,omitempty"`
 	Mode        PagerMode         `json:"mode,omitempty"`
 	Params      map[string]string `json:"params,omitempty"`
-	OmitFirst   bool              `json:"omit_first,omitempty"`
 }
 
 type PagerVars struct {
+	BaseURL     string `json:"base_url,omitempty"`
 	URLTemplate string `json:"url_template,omitempty"`
 	Value       int    `json:"value,omitempty"`
 	First       int    `json:"first,omitempty"`
@@ -105,9 +107,11 @@ func (p *IndexPager) Next(ctx context.Context) (string, error) {
 	if p == nil {
 		return "", nil
 	}
+	ctx, span := p.tracer.Start(ctx, SpanNameIndexPagerNext)
+	defer span.End()
+	traceID := obs.ExtractTraceID(ctx)
 
 	current := p.state
-	isFirst := p.first
 
 	if p.first {
 		p.first = false
@@ -117,6 +121,7 @@ func (p *IndexPager) Next(ctx context.Context) (string, error) {
 	}
 
 	vars := PagerVars{
+		BaseURL:     p.cfg.BaseURL,
 		URLTemplate: p.cfg.URLTemplate,
 		Value:       current,
 		First:       p.cfg.First,
@@ -133,21 +138,20 @@ func (p *IndexPager) Next(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("parse rendered url: %w", err)
 	}
 
-	if !isFirst || !p.cfg.OmitFirst {
-		query := u.Query()
-		for k, tmpl := range p.paramsTmpls {
-			var pBuf bytes.Buffer
-			if err := tmpl.Execute(&pBuf, vars); err != nil {
-				return "", fmt.Errorf("execute param template [%s]: %w", k, err)
-			}
-			query.Set(k, pBuf.String())
+	query := u.Query()
+	for k, tmpl := range p.paramsTmpls {
+		var pBuf bytes.Buffer
+		if err := tmpl.Execute(&pBuf, vars); err != nil {
+			return "", fmt.Errorf("execute param template [%s]: %w", k, err)
 		}
-		u.RawQuery = query.Encode()
+		query.Set(k, pBuf.String())
 	}
+	u.RawQuery = query.Encode()
 
 	finalURL := u.String()
 
 	p.logger.DebugContext(ctx, "index pager resolved next url",
+		slog.String("trace_id", traceID),
 		slog.String("url", finalURL),
 		slog.Int("state", current),
 		slog.String("mode", string(p.cfg.Mode)),

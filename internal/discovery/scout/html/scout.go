@@ -58,10 +58,10 @@ type Scout struct {
 
 func New(logger *slog.Logger, tracer trace.Tracer, client *http.Client, cfg Config) (*Scout, error) {
 	if logger == nil {
-		return nil, rootscout.ErrNilLogger
+		return nil, fmt.Errorf("%w: logger", rootscout.ErrParamMissing)
 	}
 	if tracer == nil {
-		return nil, rootscout.ErrNilTracer
+		return nil, fmt.Errorf("%w: tracer", rootscout.ErrParamMissing)
 	}
 
 	cfg = cfg.Normalize()

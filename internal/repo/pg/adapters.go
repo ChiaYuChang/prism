@@ -40,7 +40,7 @@ func dbSourceToRepoSource(s Source) repo.Source {
 func dbCandidateToRepoCandidate(c Candidate) repo.Candidate {
 	return repo.Candidate{
 		ID:              c.ID,
-		BatchID:         pgconv.PgUUIDToUUIDPtr(c.BatchID),
+		BatchID:         pgconv.PgUUIDToUUID(c.BatchID),
 		Fingerprint:     c.Fingerprint,
 		SourceID:        c.SourceID,
 		Title:           c.Title,
@@ -58,10 +58,10 @@ func dbCandidateToRepoCandidate(c Candidate) repo.Candidate {
 func dbContentToRepoContent(c Content) repo.Content {
 	return repo.Content{
 		ID:          c.ID,
-		BatchID:     pgconv.PgUUIDToUUIDPtr(c.BatchID),
+		BatchID:     pgconv.PgUUIDToUUID(c.BatchID),
 		Type:        string(c.Type),
 		SourceID:    c.SourceID,
-		CandidateID: pgconv.PgUUIDToUUIDPtr(c.CandidateID),
+		CandidateID: pgconv.PgUUIDToUUID(c.CandidateID),
 		URL:         c.Url,
 		Title:       c.Title,
 		Content:     c.Content,

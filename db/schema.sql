@@ -3,7 +3,7 @@
 --
 
 
--- Dumped from database version 18.2 (Debian 18.2-1.pgdg12+1)
+-- Dumped from database version 18.3 (Debian 18.3-1.pgdg12+1)
 -- Dumped by pg_dump version 18.3
 
 SET statement_timeout = 0;

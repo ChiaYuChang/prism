@@ -47,7 +47,9 @@ func (c Config) WriteFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("create config file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	format := strings.TrimPrefix(filepath.Ext(path), ".")
 	return c.Write(f, format)

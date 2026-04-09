@@ -9,22 +9,34 @@ import (
 	"github.com/ChiaYuChang/prism/internal/discovery/backfiller"
 	"github.com/ChiaYuChang/prism/internal/discovery/backfiller/mocks"
 	discoverymocks "github.com/ChiaYuChang/prism/internal/discovery/mocks"
+	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/model"
 	"github.com/ChiaYuChang/prism/pkg/testutils"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
+type stubCandidateSink struct {
+	handle func(ctx context.Context, req discoverysink.CandidateSinkRequest) error
+}
+
+func (s stubCandidateSink) Handle(ctx context.Context, req discoverysink.CandidateSinkRequest) error {
+	if s.handle != nil {
+		return s.handle(ctx, req)
+	}
+	return nil
+}
+
 func TestBackfillerTimeout(t *testing.T) {
 	scout := discoverymocks.NewMockScout(t)
 	pager := mocks.NewMockPager(t)
-	sink := mocks.NewMockSink(t)
+	sink := stubCandidateSink{}
 
 	pageURL := "https://example.com/page-1"
 	pager.On("Next", mock.Anything).Return(pageURL, nil)
 
-	// Scout will take 100ms
 	scout.On("Discover", mock.Anything, pageURL).
 		Run(func(args mock.Arguments) {
 			ctx := args.Get(0).(context.Context)
@@ -34,11 +46,10 @@ func TestBackfillerTimeout(t *testing.T) {
 			}
 		}).Return(nil, context.DeadlineExceeded)
 
-	// Set timeout shorter than scout delay
 	runner, err := backfiller.New(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
-		scout, pager, sink, 10*time.Millisecond)
+		scout, pager, sink, 3, 10*time.Millisecond)
 	require.NoError(t, err)
 
 	_, err = runner.Run(
@@ -51,12 +62,11 @@ func TestBackfillerTimeout(t *testing.T) {
 func TestBackfillerGlobalTimeout(t *testing.T) {
 	scout := discoverymocks.NewMockScout(t)
 	pager := mocks.NewMockPager(t)
-	sink := mocks.NewMockSink(t)
+	sink := stubCandidateSink{}
 
 	pageURL := "https://example.com/page-1"
 	pager.On("Next", mock.Anything).Return(pageURL, nil)
 
-	// Scout will take 100ms
 	scout.On("Discover", mock.Anything, pageURL).
 		Run(func(args mock.Arguments) {
 			ctx := args.Get(0).(context.Context)
@@ -66,17 +76,13 @@ func TestBackfillerGlobalTimeout(t *testing.T) {
 			}
 		}).Return(nil, context.DeadlineExceeded)
 
-	// Backfiller has no internal timeout
 	runner, err := backfiller.New(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
-		scout, pager, sink, 0)
+		scout, pager, sink, 3, 0)
 	require.NoError(t, err)
 
-	// Context has 15ms timeout
-	ctx, cancel := context.WithTimeout(
-		context.Background(),
-		15*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
 	defer cancel()
 
 	_, err = runner.Run(ctx, discovery.BackfillRequest{Until: time.Now()})
@@ -84,14 +90,13 @@ func TestBackfillerGlobalTimeout(t *testing.T) {
 	require.Contains(t, err.Error(), context.DeadlineExceeded.Error())
 }
 
-func TestRunnerRunStopsWhenOldestBeforeUntil(t *testing.T) {
+func TestBackfillerRunBuildsCandidateSinkRequest(t *testing.T) {
 	until := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	page1 := "https://example.com/page-1"
 	page2 := "https://example.com/page-2"
 
 	scout := discoverymocks.NewMockScout(t)
 	pager := mocks.NewMockPager(t)
-	sink := mocks.NewMockSink(t)
 
 	pager.On("Next", mock.Anything).Return(page1, nil).Once()
 	pager.On("Next", mock.Anything).Return(page2, nil).Once()
@@ -121,29 +126,45 @@ func TestRunnerRunStopsWhenOldestBeforeUntil(t *testing.T) {
 	scout.On("Discover", mock.Anything, page1).Return(c1, nil).Once()
 	scout.On("Discover", mock.Anything, page2).Return(c2, nil).Once()
 
-	sink.On("Handle", mock.Anything, page1,
-		mock.MatchedBy(func(in []model.Candidates) bool {
-			return len(in) == 2
-		})).Return(nil).Once()
-
-	sink.On("Handle", mock.Anything, page2,
-		mock.MatchedBy(func(in []model.Candidates) bool {
-			return len(in) == 1 && in[0].URL == "https://example.com/c"
-		})).Return(nil).Once()
+	var got []discoverysink.CandidateSinkRequest
+	batchID := uuid.MustParse("018fef42-4df1-7e68-98fb-e6d4f6b3d9e1")
+	sink := stubCandidateSink{
+		handle: func(_ context.Context, req discoverysink.CandidateSinkRequest) error {
+			got = append(got, req)
+			return nil
+		},
+	}
 
 	runner, err := backfiller.New(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
-		scout, pager, sink, 0)
+		scout, pager, sink, 3, 0)
 	require.NoError(t, err)
 
 	result, err := runner.Run(
 		context.Background(),
-		discovery.BackfillRequest{Until: until})
+		discovery.BackfillRequest{BatchID: batchID, Until: until})
 	require.NoError(t, err)
 	require.Equal(t, 2, result.PagesVisited)
 	require.Equal(t, 4, result.CandidatesSeen)
 	require.Equal(t, 3, result.CandidatesProcessed)
 	require.NotNil(t, result.OldestPublishedAt)
 	require.Equal(t, oldest, result.OldestPublishedAt)
+
+	require.Len(t, got, 2)
+	require.Equal(t, page1, got[0].SourceURL)
+	require.Equal(t, int32(3), got[0].SourceID)
+	require.Equal(t, "PARTY", got[0].SourceType)
+	require.Equal(t, "DIRECTORY", got[0].IngestionMethod)
+	require.NotNil(t, got[0].BatchID)
+	require.Equal(t, batchID, got[0].BatchID)
+	require.Len(t, got[0].Candidates, 2)
+	require.Equal(t, page2, got[1].SourceURL)
+	require.Equal(t, int32(3), got[1].SourceID)
+	require.Equal(t, "PARTY", got[1].SourceType)
+	require.Equal(t, "DIRECTORY", got[1].IngestionMethod)
+	require.NotNil(t, got[1].BatchID)
+	require.Equal(t, batchID, got[1].BatchID)
+	require.Len(t, got[1].Candidates, 1)
+	require.Equal(t, "https://example.com/c", got[1].Candidates[0].URL)
 }

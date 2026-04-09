@@ -19,12 +19,15 @@ import (
 var (
 	DefaultTemperature = 0.2
 
-	ErrNilExtractionInput      = errors.New("extraction input is nil")
-	ErrFailedToCreateExtractor = errors.New("failed to create extractor")
-	ErrFailedToDecodeOutput    = errors.New("failed to decode extraction output")
+	ErrNilExtractionInput   = errors.New("extraction input is nil")
+	ErrParamMissing         = errors.New("param missing")
+	ErrFailedToDecodeOutput = errors.New("failed to decode extraction output")
 )
 
-// Extractor handles the high-level business logic of extracting keywords from news.
+// Extractor handles the high-level business logic of generating recall-oriented
+// keyword groups from seed texts (e.g., party press releases). These extracted
+// outputs are intended to be persisted in 'content_extractions' and used downstream
+// by the Planner to create MEDIA + DIRECTORY_FETCH search tasks.
 type Extractor struct {
 	generator llm.Generator
 	model     string
@@ -33,26 +36,27 @@ type Extractor struct {
 	tracer    trace.Tracer
 }
 
-// NewExtractor creates a new Keyword Extractor.
+// NewExtractor creates a new Extractor instance, binding it to a specific LLM generator,
+// model, and prompt contract.
 func NewExtractor(generator llm.Generator, logger *slog.Logger, tracer trace.Tracer, model, prompt string) (*Extractor, error) {
 	if generator == nil {
-		return nil, fmt.Errorf("%w: generator is nil", ErrFailedToCreateExtractor)
+		return nil, fmt.Errorf("%w: generator", ErrParamMissing)
 	}
 
 	if model == "" {
-		return nil, fmt.Errorf("%w: model is empty", ErrFailedToCreateExtractor)
+		return nil, fmt.Errorf("%w: model", ErrParamMissing)
 	}
 
 	if prompt == "" {
-		return nil, fmt.Errorf("%w: prompt is empty", ErrFailedToCreateExtractor)
+		return nil, fmt.Errorf("%w: prompt", ErrParamMissing)
 	}
 
 	if logger == nil {
-		return nil, fmt.Errorf("%w: logger is nil", ErrFailedToCreateExtractor)
+		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
 
 	if tracer == nil {
-		return nil, fmt.Errorf("%w: tracer is nil", ErrFailedToCreateExtractor)
+		return nil, fmt.Errorf("%w: tracer", ErrParamMissing)
 	}
 
 	return &Extractor{
@@ -64,7 +68,10 @@ func NewExtractor(generator llm.Generator, logger *slog.Logger, tracer trace.Tra
 	}, nil
 }
 
-// Extract analyzes the content and returns structured insights.
+// Extract analyzes the content and returns structured keyword insights. Bounded,
+// high-signal seed inputs are processed to produce sets of keywords. Ensure that
+// the associated extraction tasks happen only after the corresponding seed batch
+// (like PARTY batch) completes.
 func (e *Extractor) Extract(ctx context.Context, in *model.ExtractionInput) (*model.ExtractionOutput, error) {
 	tid := obs.ExtractTraceID(ctx)
 	uid := obs.ExtractUserID(ctx)

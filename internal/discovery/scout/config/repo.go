@@ -82,7 +82,9 @@ func ReadFile(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("open config file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	format := strings.TrimPrefix(filepath.Ext(path), ".")
 	return Read(f, format)

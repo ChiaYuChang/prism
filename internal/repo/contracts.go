@@ -56,7 +56,7 @@ type Prompt struct {
 
 type Candidate struct {
 	ID              uuid.UUID
-	BatchID         *uuid.UUID
+	BatchID         uuid.UUID
 	Fingerprint     string
 	SourceID        int32
 	Title           string
@@ -72,10 +72,10 @@ type Candidate struct {
 
 type Content struct {
 	ID          uuid.UUID
-	BatchID     *uuid.UUID
+	BatchID     uuid.UUID
 	Type        string
 	SourceID    int32
-	CandidateID *uuid.UUID
+	CandidateID uuid.UUID
 	URL         string
 	Title       string
 	Content     string

@@ -56,7 +56,7 @@ func ReadFile(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("open config file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	format := strings.TrimPrefix(filepath.Ext(path), ".")
 	return Read(f, format)
@@ -89,6 +89,7 @@ func New(cfg Config) (*Repository, error) {
 
 		source.Name = name
 		source.Format = strings.TrimSpace(strings.ToLower(source.Format))
+		source.BaseURL = strings.TrimRight(strings.TrimSpace(source.BaseURL), "/")
 		source.Pager.Type = strings.TrimSpace(strings.ToLower(source.Pager.Type))
 		source.Pager.URLTemplate = strings.TrimSpace(source.Pager.URLTemplate)
 		source.Pager.Mode = strings.TrimSpace(strings.ToLower(source.Pager.Mode))

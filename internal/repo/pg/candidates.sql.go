@@ -12,6 +12,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countCandidatesByBatchID = `-- name: CountCandidatesByBatchID :one
+SELECT COUNT(*)
+FROM candidates
+WHERE batch_id = $1
+`
+
+func (q *Queries) CountCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countCandidatesByBatchID, batchID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCandidate = `-- name: CreateCandidate :one
 INSERT INTO candidates (
     batch_id,

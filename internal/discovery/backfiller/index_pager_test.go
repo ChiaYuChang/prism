@@ -12,7 +12,8 @@ import (
 
 func TestIndexPagerOffsetPath(t *testing.T) {
 	pager, err := backfiller.NewIndexPager(testutils.Logger(), noop.NewTracerProvider().Tracer("test"), backfiller.IndexPagerConfig{
-		URLTemplate: "https://www.dpp.org.tw/media/{{.Value}}",
+		BaseURL:     "https://www.dpp.org.tw",
+		URLTemplate: "{{.BaseURL}}/media/{{printf \"%02d\" .Value}}",
 		First:       0,
 		Step:        10,
 		Mode:        backfiller.PageModeIndex,
@@ -21,7 +22,7 @@ func TestIndexPagerOffsetPath(t *testing.T) {
 
 	first, err := pager.Next(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, "https://www.dpp.org.tw/media/0", first)
+	require.Equal(t, "https://www.dpp.org.tw/media/00", first)
 
 	second, err := pager.Next(context.Background())
 	require.NoError(t, err)
@@ -30,7 +31,8 @@ func TestIndexPagerOffsetPath(t *testing.T) {
 
 func TestIndexPagerPageQuery(t *testing.T) {
 	pager, err := backfiller.NewIndexPager(testutils.Logger(), noop.NewTracerProvider().Tracer("test"), backfiller.IndexPagerConfig{
-		URLTemplate: "https://www.tpp.org.tw/media",
+		BaseURL:     "https://www.tpp.org.tw",
+		URLTemplate: "{{.BaseURL}}/media",
 		First:       1,
 		Step:        1,
 		Mode:        backfiller.PageModeIndex,
@@ -51,7 +53,8 @@ func TestIndexPagerPageQuery(t *testing.T) {
 
 func TestIndexPagerStructuredParams(t *testing.T) {
 	pager, err := backfiller.NewIndexPager(testutils.Logger(), noop.NewTracerProvider().Tracer("test"), backfiller.IndexPagerConfig{
-		URLTemplate: "https://api.example.com/v1/news/{{.Value}}",
+		BaseURL:     "https://api.example.com",
+		URLTemplate: "{{.BaseURL}}/v1/news/{{.Value}}",
 		First:       1,
 		Step:        1,
 		Params: map[string]string{
@@ -75,24 +78,24 @@ func TestIndexPagerStructuredParams(t *testing.T) {
 	require.Contains(t, second, "offset=40")
 }
 
-func TestIndexPagerOmitFirstStructured(t *testing.T) {
+func TestIndexPagerAlwaysAppliesParams(t *testing.T) {
 	pager, err := backfiller.NewIndexPager(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
 		backfiller.IndexPagerConfig{
-			URLTemplate: "https://example.com/news",
+			BaseURL:     "https://example.com",
+			URLTemplate: "{{.BaseURL}}/news",
 			First:       1,
 			Step:        1,
 			Params: map[string]string{
 				"p": "{{.Value}}",
 			},
-			OmitFirst: true,
 		})
 	require.NoError(t, err)
 
 	first, err := pager.Next(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, "https://example.com/news", first)
+	require.Equal(t, "https://example.com/news?p=1", first)
 
 	second, err := pager.Next(context.Background())
 	require.NoError(t, err)

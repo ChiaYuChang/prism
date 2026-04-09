@@ -27,18 +27,18 @@ type SourceConfig struct {
 	Name     string        `yaml:"-"         json:"-"`
 	SourceID int32         `yaml:"source_id" json:"source_id" validate:"required"`
 	Format   string        `yaml:"format"    json:"format"    validate:"required,oneof=html rss atom custom"`
+	BaseURL  string        `yaml:"base_url"  json:"base_url"  validate:"required,url"`
 	Pager    PagerConfig   `yaml:"pager"     json:"pager"     validate:"required"`
-	Timeout  time.Duration `yaml:"timeout"    json:"timeout"    validate:"min=0"`
+	Timeout  time.Duration `yaml:"timeout"   json:"timeout"   validate:"min=0"`
 }
 
 type PagerConfig struct {
 	Type        string            `yaml:"type"         json:"type"         validate:"required,oneof=index"`
-	URLTemplate string            `yaml:"url_template" json:"url_template" validate:"required,url|uri"`
+	URLTemplate string            `yaml:"url_template" json:"url_template" validate:"required"`
 	First       int               `yaml:"first"        json:"first"        validate:"min=0"`
 	Step        int               `yaml:"step"         json:"step"         validate:"required,min=1"`
 	Mode        string            `yaml:"mode"         json:"mode"         validate:"required,oneof=index cursor date-range"`
 	Params      map[string]string `yaml:"params"       json:"params"`
-	OmitFirst   bool              `yaml:"omit_first"   json:"omit_first"`
 }
 
 // Write writes the Config to an io.Writer in the specified format (json, yaml, yml).
@@ -69,7 +69,9 @@ func (c Config) WriteFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("create config file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	format := strings.TrimPrefix(filepath.Ext(path), ".")
 	return c.Write(f, format)

@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"context"
 	"log/slog"
 	"sync/atomic"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -26,7 +28,7 @@ func init() {
 	SetLogger(slog.Default())
 	SetValidator(newDefaultValidator())
 	SetTransformer(newDefaultTransformer())
-	SetTracer(otel.Tracer("prism"))
+	_ = InitAndSetTracer("prism")
 }
 
 // Logger returns the project-wide default logger.
@@ -98,4 +100,15 @@ func SetTracer(t trace.Tracer) {
 	if t != nil {
 		defaultTracer.Store(t)
 	}
+}
+
+// InitAndSetTracer initializes a real OpenTelemetry SDK tracer provider and stores
+// the named tracer as the project-wide default tracer.
+func InitAndSetTracer(name string) func(context.Context) error {
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+	)
+	otel.SetTracerProvider(tp)
+	SetTracer(tp.Tracer(name))
+	return tp.Shutdown
 }

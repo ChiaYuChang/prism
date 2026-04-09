@@ -6,69 +6,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ChiaYuChang/prism/internal/infra"
-	"github.com/ChiaYuChang/prism/pkg/utils"
+	app "github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
-// MessengerConfig defines a polymorphic interface for different message queue backends.
-type MessengerConfig interface {
-	NewMessenger(logger *slog.Logger) (*infra.Messenger, error)
-}
-
-// NatsConfig implements MessengerConfig for NATS JetStream.
-type NatsConfig struct {
-	URL string `mapstructure:"nats-url" validate:"required,url"`
-}
-
-func (n *NatsConfig) NewMessenger(logger *slog.Logger) (*infra.Messenger, error) {
-	return infra.NewNatsMessenger(n.URL, logger)
-}
-
-// GoChannelConfig implements MessengerConfig for in-memory Go Channels.
-type GoChannelConfig struct{}
-
-func (g *GoChannelConfig) NewMessenger(logger *slog.Logger) (*infra.Messenger, error) {
-	return infra.NewGoChannelMessenger(logger)
-}
-
-// PostgresConfig holds the database connection details.
-type PostgresConfig struct {
-	Host     string `mapstructure:"host"     validate:"required"`
-	Port     int    `mapstructure:"port"     validate:"required,min=1,max=65535"`
-	User     string `mapstructure:"user"     validate:"required"`
-	Password string `mapstructure:"password" validate:"required"`
-	DBName   string `mapstructure:"db"       validate:"required"`
-	SSLMode  string `mapstructure:"sslmode"  validate:"oneof=disable require verify-ca verify-full"`
-}
-
-// ConnString returns the DSN for pgx/pq.
-func (p *PostgresConfig) ConnString() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		p.User, p.Password, p.Host, p.Port, p.DBName, p.SSLMode)
-}
-
-// String returns a string representation of the config with the password masked.
-func (p PostgresConfig) String() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s db=%s sslmode=%s",
-		p.Host, p.Port, p.User, utils.SecretMask(p.Password), p.DBName, p.SSLMode)
-}
-
 // Config holds the scheduler's runtime configuration.
 type Config struct {
-	Interval      time.Duration  `mapstructure:"interval"       validate:"required,min=1m"`
-	HealthPort    int            `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	ValkeyAddr    string         `mapstructure:"valkey-addr"    validate:"required"`
-	Postgres      PostgresConfig `mapstructure:",squash"`
-	LogPath       string         `mapstructure:"log-path"`
-	LogLevel      string         `mapstructure:"log-level"      validate:"oneof=debug info warn error"`
-	MessengerType string         `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
-	BatchSize     int            `mapstructure:"batch-size"     validate:"required,min=1,max=200"`
-
-	// Messenger holds the concrete configuration for the chosen messenger type.
-	Messenger MessengerConfig `mapstructure:"-"`
+	Interval      time.Duration       `mapstructure:"interval"       validate:"required,min=1m"`
+	HealthPort    int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
+	Valkey        app.ValkeyConfig    `mapstructure:"valkey"`
+	LogPath       string              `mapstructure:"log-path"`
+	LogLevel      string              `mapstructure:"log-level"      validate:"oneof=debug info warn error"`
+	BatchSize     int                 `mapstructure:"batch-size"     validate:"required,min=1,max=200"`
+	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
+	MessengerType string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
+	Messenger     app.MessengerConfig `mapstructure:"-"`
 }
 
 // GetLogLevel converts the string representation into a slog.Level.
@@ -99,17 +53,26 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs.Duration("interval", 10*time.Minute, "The ticker interval for the scheduler (min: 1m, default: 10m)")
 	fs.Int("health-port", 8080, "The port for the health check server (default: 8080)")
-	fs.String("valkey-addr", "localhost:6379", "The address of the Valkey/Redis instance (default: localhost:6379)")
+	fs.String("valkey-host", "localhost", "The host of the Valkey/Redis instance")
+	fs.Int("valkey-port", 6379, "The port of the Valkey/Redis instance")
+	fs.String("valkey-username", "", "The username for the Valkey/Redis instance")
+	fs.String("valkey-password", "", "The password for the Valkey/Redis instance")
+	fs.Int("valkey-db", 0, "The database index for the Valkey/Redis instance")
 
 	// Postgres individual flags
-	fs.String("host", "localhost", "Postgres host")
-	fs.Int("port", 5432, "Postgres port")
-	fs.String("user", "postgres", "Postgres user")
-	fs.String("password", "postgres", "Postgres password")
-	fs.String("db", "prism", "Postgres database name")
-	fs.String("sslmode", "disable", "Postgres SSL mode (disable, require, etc.)")
+	fs.String("pg-host", "localhost", "Postgres host")
+	fs.Int("pg-port", 5432, "Postgres port")
+	fs.String("pg-username", "postgres", "Postgres username")
+	fs.String("pg-password", "postgres", "Postgres password")
+	fs.String("pg-db", "prism", "Postgres database name")
+	fs.String("pg-sslmode", "disable", "Postgres SSL mode (disable, require, etc.)")
 
 	fs.String("nats-url", "nats://localhost:4222", "The URL for the NATS server (default: nats://localhost:4222)")
+	fs.String("queue-group", "", "Queue group for NATS subscribers (unused by scheduler publisher)")
+	fs.Int("subscribers-count", 1, "Subscriber count for NATS consumers (unused by scheduler publisher)")
+	fs.Duration("ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscribers (unused by scheduler publisher)")
+	fs.Int64("channel-buffer", 100, "GoChannel output buffer size")
+	fs.Bool("persistent", true, "Whether GoChannel should persist messages in memory")
 	fs.String("log-path", "", "The file path for logs (empty for stdout)")
 	fs.String("log-level", "info", "The log level (debug, info, warn, error, default: info)")
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel, default: nats)")
@@ -132,6 +95,39 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
 	}
+	if err := v.BindPFlag("valkey.host", fs.Lookup("valkey-host")); err != nil {
+		return nil, fmt.Errorf("failed to bind valkey.host: %w", err)
+	}
+	if err := v.BindPFlag("valkey.port", fs.Lookup("valkey-port")); err != nil {
+		return nil, fmt.Errorf("failed to bind valkey.port: %w", err)
+	}
+	if err := v.BindPFlag("valkey.username", fs.Lookup("valkey-username")); err != nil {
+		return nil, fmt.Errorf("failed to bind valkey.username: %w", err)
+	}
+	if err := v.BindPFlag("valkey.password", fs.Lookup("valkey-password")); err != nil {
+		return nil, fmt.Errorf("failed to bind valkey.password: %w", err)
+	}
+	if err := v.BindPFlag("valkey.db", fs.Lookup("valkey-db")); err != nil {
+		return nil, fmt.Errorf("failed to bind valkey.db: %w", err)
+	}
+	if err := v.BindPFlag("postgres.host", fs.Lookup("pg-host")); err != nil {
+		return nil, fmt.Errorf("failed to bind postgres.host: %w", err)
+	}
+	if err := v.BindPFlag("postgres.port", fs.Lookup("pg-port")); err != nil {
+		return nil, fmt.Errorf("failed to bind postgres.port: %w", err)
+	}
+	if err := v.BindPFlag("postgres.username", fs.Lookup("pg-username")); err != nil {
+		return nil, fmt.Errorf("failed to bind postgres.username: %w", err)
+	}
+	if err := v.BindPFlag("postgres.password", fs.Lookup("pg-password")); err != nil {
+		return nil, fmt.Errorf("failed to bind postgres.password: %w", err)
+	}
+	if err := v.BindPFlag("postgres.db", fs.Lookup("pg-db")); err != nil {
+		return nil, fmt.Errorf("failed to bind postgres.db: %w", err)
+	}
+	if err := v.BindPFlag("postgres.sslmode", fs.Lookup("pg-sslmode")); err != nil {
+		return nil, fmt.Errorf("failed to bind postgres.sslmode: %w", err)
+	}
 
 	var config Config
 	if err := v.Unmarshal(&config); err != nil {
@@ -141,13 +137,22 @@ func LoadConfig(args []string) (*Config, error) {
 	// Polymorphic initialization based on MessengerType
 	switch config.MessengerType {
 	case "nats":
-		var natsCfg NatsConfig
+		var natsCfg app.NatsConfig
 		if err := v.Unmarshal(&natsCfg); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal nats config: %w", err)
 		}
+		natsCfg.SubscribersCount = 1
+		natsCfg.AckWaitTimeout = 30 * time.Second
 		config.Messenger = &natsCfg
 	case "gochannel":
-		config.Messenger = &GoChannelConfig{}
+		var goChannelCfg app.GoChannelConfig
+		if err := v.Unmarshal(&goChannelCfg); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal gochannel config: %w", err)
+		}
+		if goChannelCfg.ChannelBuffer == 0 {
+			goChannelCfg.ChannelBuffer = 100
+		}
+		config.Messenger = &goChannelCfg
 	}
 
 	validate := validator.New()

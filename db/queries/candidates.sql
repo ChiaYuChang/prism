@@ -80,3 +80,8 @@ WHERE title ILIKE '%' || $1 || '%'
 ORDER BY published_at DESC NULLS LAST, discovered_at DESC, created_at DESC
 LIMIT $2
 OFFSET $3;
+
+-- name: CountCandidatesByBatchID :one
+SELECT COUNT(*)
+FROM candidates
+WHERE batch_id = $1;

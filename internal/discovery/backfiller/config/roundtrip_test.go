@@ -18,9 +18,10 @@ func TestConfig_RoundTrip_Stream(t *testing.T) {
 				"abc": {
 					SourceID: 1,
 					Format:   "html",
+					BaseURL:  "https://example.com",
 					Pager: config.PagerConfig{
 						Type:        "index",
-						URLTemplate: "http://example.com/{{.Value}}",
+						URLTemplate: "{{.BaseURL}}/{{.Value}}",
 						First:       0,
 						Step:        10,
 						Mode:        "index",
@@ -28,7 +29,6 @@ func TestConfig_RoundTrip_Stream(t *testing.T) {
 							"a": "1",
 							"b": "2",
 						},
-						OmitFirst: true,
 					},
 				},
 			},
@@ -66,9 +66,10 @@ func TestConfig_RoundTrip_File(t *testing.T) {
 				"test-source": {
 					SourceID: 99,
 					Format:   "rss",
+					BaseURL:  "https://test.com",
 					Pager: config.PagerConfig{
 						Type:        "index",
-						URLTemplate: "http://test.com/{{.Value}}",
+						URLTemplate: "{{.BaseURL}}/{{.Value}}",
 						Step:        1,
 						Mode:        "index",
 					},
@@ -91,6 +92,7 @@ func TestConfig_RoundTrip_File(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, int32(99), spec.SourceID)
 	assert.Equal(t, "rss", spec.Format)
+	assert.Equal(t, "https://test.com", spec.BaseURL)
 }
 
 func TestConfig_UnsupportedFormat(t *testing.T) {

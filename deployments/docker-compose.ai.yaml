@@ -6,13 +6,13 @@ services:
     image: ollama/ollama:0.13.5
     container_name: prism-ollama
     ports:
-      - "127.0.0.1:11434:11434"
+      - "127.0.0.1:11435:11434"
     volumes:
       - ollama_data:/root/.ollama
     networks:
       - prism-net
     healthcheck:
-      test: [ "CMD-SHELL", "ollama list > /dev/null || exit 1" ]
+      test: ["CMD-SHELL", "ollama list > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -45,6 +45,10 @@ type PGAnalysis struct {
 	q *Queries
 }
 
+type PGBatchTrigger struct {
+	q *Queries
+}
+
 // Repository root getters.
 func (r *PGRepository) Scheduler() repo.Scheduler {
 	return &PGScheduler{q: r.q}
@@ -68,6 +72,10 @@ func (r *PGRepository) Embedding() repo.Embeddings {
 
 func (r *PGRepository) Analysis() repo.Analysis {
 	return &PGAnalysis{q: r.q}
+}
+
+func (r *PGRepository) BatchTrigger() repo.BatchTrigger {
+	return &PGBatchTrigger{q: r.q}
 }
 
 // Scheduler repository.
@@ -112,6 +120,18 @@ func (r *PGScout) GetSourceByID(ctx context.Context, id int32) (repo.Source, err
 	return dbSourceToRepoSource(row), nil
 }
 
+func (r *PGScout) ListSourcesByType(ctx context.Context, sourceType string) ([]repo.Source, error) {
+	rows, err := r.q.ListSourcesByType(ctx, SourceType(sourceType))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Source, len(rows))
+	for i, row := range rows {
+		out[i] = dbSourceToRepoSource(row)
+	}
+	return out, nil
+}
+
 func (r *PGScout) GetCandidateByFingerprint(ctx context.Context, fingerprint string) (repo.Candidate, error) {
 	row, err := r.q.GetCandidateByFingerprint(ctx, fingerprint)
 	if err != nil {
@@ -120,9 +140,13 @@ func (r *PGScout) GetCandidateByFingerprint(ctx context.Context, fingerprint str
 	return dbCandidateToRepoCandidate(row), nil
 }
 
+func (r *PGScout) CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error) {
+	return r.q.CountCandidatesByBatchID(ctx, pgconv.UUIDToPgUUID(batchID))
+}
+
 func (r *PGScout) CreateCandidate(ctx context.Context, arg repo.CreateCandidateParams) (repo.Candidate, error) {
 	row, err := r.q.CreateCandidate(ctx, CreateCandidateParams{
-		BatchID:         pgconv.UUIDPtrToPgUUID(arg.BatchID),
+		BatchID:         pgconv.UUIDToPgUUID(arg.BatchID),
 		Fingerprint:     arg.Fingerprint,
 		SourceID:        arg.SourceID,
 		Title:           arg.Title,
@@ -141,7 +165,7 @@ func (r *PGScout) CreateCandidate(ctx context.Context, arg repo.CreateCandidateP
 
 func (r *PGScout) UpsertCandidate(ctx context.Context, arg repo.UpsertCandidateParams) (repo.Candidate, error) {
 	row, err := r.q.UpsertCandidate(ctx, UpsertCandidateParams{
-		BatchID:         pgconv.UUIDPtrToPgUUID(arg.BatchID),
+		BatchID:         pgconv.UUIDToPgUUID(arg.BatchID),
 		Fingerprint:     arg.Fingerprint,
 		SourceID:        arg.SourceID,
 		Title:           arg.Title,
@@ -225,10 +249,10 @@ func (r *PGPipeline) GetContentByCandidateID(ctx context.Context, candidateID uu
 
 func (r *PGPipeline) CreateContent(ctx context.Context, arg repo.CreateContentParams) (repo.Content, error) {
 	row, err := r.q.CreateContent(ctx, CreateContentParams{
-		BatchID:     pgconv.UUIDPtrToPgUUID(arg.BatchID),
+		BatchID:     pgconv.UUIDToPgUUID(arg.BatchID),
 		Type:        ContentType(arg.Type),
 		SourceID:    arg.SourceID,
-		CandidateID: pgconv.UUIDPtrToPgUUID(arg.CandidateID),
+		CandidateID: pgconv.UUIDToPgUUID(arg.CandidateID),
 		Url:         arg.URL,
 		Title:       arg.Title,
 		Content:     arg.Content,
@@ -271,6 +295,47 @@ func (r *PGPipeline) ListContentsByBatchID(ctx context.Context, batchID uuid.UUI
 
 func (r *PGPipeline) ListRecentSeedContents(ctx context.Context, limit int32) ([]repo.Content, error) {
 	rows, err := r.q.ListRecentSeedContents(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Content, len(rows))
+	for i, row := range rows {
+		out[i] = dbContentToRepoContent(row)
+	}
+	return out, nil
+}
+
+// Batch Trigger repository.
+func (r *PGBatchTrigger) ListRecentSeedContents(ctx context.Context, limit int32) ([]repo.Content, error) {
+	rows, err := r.q.ListRecentSeedContents(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Content, len(rows))
+	for i, row := range rows {
+		out[i] = dbContentToRepoContent(row)
+	}
+	return out, nil
+}
+
+func (r *PGBatchTrigger) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]repo.Task, error) {
+	rows, err := r.q.ListTasksByBatchID(ctx, batchID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Task, len(rows))
+	for i, row := range rows {
+		out[i] = dbTaskToRepoTask(row)
+	}
+	return out, nil
+}
+
+func (r *PGBatchTrigger) CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error) {
+	return r.q.CountCandidatesByBatchID(ctx, pgconv.UUIDToPgUUID(batchID))
+}
+
+func (r *PGBatchTrigger) ListContentsByBatchID(ctx context.Context, batchID uuid.UUID) ([]repo.Content, error) {
+	rows, err := r.q.ListContentsByBatchID(ctx, pgtype.UUID{Bytes: batchID, Valid: true})
 	if err != nil {
 		return nil, err
 	}

@@ -22,9 +22,10 @@ func TestConfig_Validation(t *testing.T) {
 						"dpp": {
 							SourceID: 1,
 							Format:   "html",
+							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
 								Type:        "index",
-								URLTemplate: "http://example.com/{{.Value}}",
+								URLTemplate: "{{.BaseURL}}/{{.Value}}",
 								Step:        1,
 								Mode:        "index",
 							},
@@ -43,9 +44,10 @@ func TestConfig_Validation(t *testing.T) {
 						"dpp": {
 							SourceID: 1,
 							Format:   "html",
+							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
 								Type:        "index",
-								URLTemplate: "http://example.com",
+								URLTemplate: "{{.BaseURL}}",
 								Step:        1,
 								Mode:        "unknown",
 							},
@@ -64,6 +66,7 @@ func TestConfig_Validation(t *testing.T) {
 						"dpp": {
 							SourceID: 1,
 							Format:   "html",
+							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
 								Type: "index",
 								Step: 1,
@@ -84,9 +87,10 @@ func TestConfig_Validation(t *testing.T) {
 						"dpp": {
 							SourceID: 1,
 							Format:   "pdf",
+							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
 								Type:        "index",
-								URLTemplate: "http://example.com",
+								URLTemplate: "{{.BaseURL}}",
 								Step:        1,
 								Mode:        "index",
 							},
@@ -105,9 +109,31 @@ func TestConfig_Validation(t *testing.T) {
 						"dpp": {
 							SourceID: 1,
 							Format:   "html",
+							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
 								Type:        "index",
-								URLTemplate: "http://example.com/{{.Value}", // Missing closing brace
+								URLTemplate: "{{.BaseURL}}/{{.Value}", // Missing closing brace
+								Step:        1,
+								Mode:        "index",
+							},
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing base url",
+			cfg: config.Config{
+				Version: 1,
+				Backfiller: config.BackfillSection{
+					Sources: map[string]config.SourceConfig{
+						"dpp": {
+							SourceID: 1,
+							Format:   "html",
+							Pager: config.PagerConfig{
+								Type:        "index",
+								URLTemplate: "{{.BaseURL}}/{{.Value}}",
 								Step:        1,
 								Mode:        "index",
 							},

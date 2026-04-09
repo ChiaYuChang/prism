@@ -14,6 +14,7 @@ import (
 type Querier interface {
 	ClaimTasks(ctx context.Context, limit int32) ([]Task, error)
 	CompleteTask(ctx context.Context, id uuid.UUID) error
+	CountCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) (int64, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
 	CreateCandidateEmbeddingGemma2025(ctx context.Context, arg CreateCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
 	CreateContent(ctx context.Context, arg CreateContentParams) (Content, error)

@@ -18,8 +18,8 @@ import (
 
 	lg "github.com/ChiaYuChang/prism/pkg/logger"
 
+	"github.com/ChiaYuChang/prism/internal/repo"
 	wm "github.com/ThreeDotsLabs/watermill/message"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -29,6 +29,10 @@ const (
 	// LockTTL ensures the lock is released if the scheduler crashes.
 	LockTTL = 30 * time.Second
 )
+
+type taskPublisher interface {
+	Publish(topic string, messages ...*wm.Message) error
+}
 
 func main() {
 	// 1. Load Configuration
@@ -62,10 +66,14 @@ func main() {
 
 	// 4. Resource Initialization (Valkey & Locker)
 	vClient, err := infra.NewValkeyClient(ctx, &redis.Options{
-		Addr: config.ValkeyAddr,
+		Addr:     config.Valkey.Addr(),
+		Username: config.Valkey.Username,
+		Password: config.Valkey.Password,
+		DB:       config.Valkey.DB,
 	})
+
 	if err != nil {
-		logger.Error("failed to connect to Valkey", "addr", config.ValkeyAddr, "error", err)
+		logger.Error("failed to connect to Valkey", "addr", config.Valkey.Addr(), "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to connect to Valkey")
 		os.Exit(1)
 	}
@@ -96,27 +104,29 @@ func main() {
 		}
 	}()
 
-	// 6. Postgres Initialization (pgxpool)
-	pgPool, err := pgxpool.New(ctx, config.Postgres.ConnString())
+	// 6. Repository Initialization
+	dbRepo, dbRepoCloser, err := pg.NewFactory(config.Postgres).NewRepository(ctx)
 	if err != nil {
-		logger.Error("failed to connect to Postgres", "host", config.Postgres.Host, "error", err)
+		logger.Error("failed to initialize repository", "backend", "postgres", "host", config.Postgres.Host, "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to connect to Postgres")
 		os.Exit(1)
 	}
-	defer pgPool.Close()
+	defer func() {
+		if err := dbRepoCloser.Close(); err != nil {
+			logger.Error("failed to close repository resources", "error", err)
+		}
+	}()
 
-	// Initialize structured repository (wrapper around sqlc)
-	repo := pg.NewPostgresRepository(pgPool)
 	logger = lg.WithHook(logger,
 		lg.SinceHook("uptime", time.Now()),
 		lg.AttrHook("pid", fmt.Sprintf("%d", os.Getpid())),
 		lg.ServiceHook("scheduler"),
 	)
-	scheduler := repo.Scheduler()
+	scheduler := dbRepo.Scheduler()
 
 	logger.Info("Scheduler starting",
 		"interval", config.Interval,
-		"valkey_addr", config.ValkeyAddr,
+		"valkey_addr", config.Valkey.Addr(),
 		"messenger", config.MessengerType,
 		"batch_size", config.BatchSize)
 
@@ -165,48 +175,8 @@ func main() {
 
 			logger.Info("Tasks claimed", "count", len(tasks))
 
-			// 2. Wrap and Publish to Messenger
-			for _, task := range tasks {
-				// Enrich logger for this specific task
-				tLogger := lg.WithHook(logger,
-					lg.AttrHook("task_id", task.ID.String()),
-					lg.AttrHook("trace_id", task.TraceID),
-					lg.AttrHook("retry_count", strconv.Itoa(task.RetryCount)),
-					lg.SinceHook("dispatch_time", time.Now()),
-				)
-
-				sig := &message.TaskSignal{
-					TaskID:     task.ID,
-					BatchID:    task.BatchID,
-					Kind:       task.Kind,
-					SourceType: task.SourceType,
-					SourceID:   task.SourceID,
-					URL:        task.URL,
-					Payload:    task.Payload,
-					TraceID:    task.TraceID,
-					SentAt:     time.Now(),
-				}
-
-				payload, err := sig.Marshal()
-				if err != nil {
-					tLogger.Error("failed to marshal search signal", "error", err)
-					continue
-				}
-
-				msg := wm.NewMessage(uuid.Must(uuid.NewV7()).String(), payload)
-				// Propagate TraceID to Watermill metadata
-				msg.Metadata.Set("trace_id", task.TraceID)
-
-				if err := msgr.Publish(message.TaskTopic, msg); err != nil {
-					tLogger.Error("failed to publish search signal", "error", err)
-					// Mark the task as FAILED in Postgres
-					if err := scheduler.FailTask(ctx, task.ID); err != nil {
-						tLogger.Error("failed to mark task as failed", "error", err)
-					}
-					continue
-				}
-
-				tLogger.Debug("Dispatched search task")
+			if err := dispatchTasks(ctx, logger, msgr, scheduler, tasks); err != nil {
+				logger.Error("dispatch loop finished with error", "error", err)
 			}
 
 		release:
@@ -218,4 +188,48 @@ func main() {
 			}
 		}
 	}
+}
+
+func dispatchTasks(ctx context.Context, logger *slog.Logger, publisher taskPublisher, scheduler repo.Scheduler, tasks []repo.Task) error {
+	for _, task := range tasks {
+		tLogger := lg.WithHook(logger,
+			lg.AttrHook("task_id", task.ID.String()),
+			lg.AttrHook("trace_id", task.TraceID),
+			lg.AttrHook("retry_count", strconv.Itoa(task.RetryCount)),
+			lg.SinceHook("dispatch_time", time.Now()),
+		)
+
+		sig := &message.TaskSignal{
+			TaskID:     task.ID,
+			BatchID:    task.BatchID,
+			Kind:       task.Kind,
+			SourceType: task.SourceType,
+			SourceID:   task.SourceID,
+			URL:        task.URL,
+			Payload:    task.Payload,
+			TraceID:    task.TraceID,
+			SentAt:     time.Now(),
+		}
+
+		payload, err := sig.Marshal()
+		if err != nil {
+			tLogger.Error("failed to marshal search signal", "error", err)
+			continue
+		}
+
+		msg := wm.NewMessage(uuid.Must(uuid.NewV7()).String(), payload)
+		msg.Metadata.Set("trace_id", task.TraceID)
+
+		if err := publisher.Publish(message.TaskTopic, msg); err != nil {
+			tLogger.Error("failed to publish search signal", "error", err)
+			if failErr := scheduler.FailTask(ctx, task.ID); failErr != nil {
+				tLogger.Error("failed to mark task as failed", "error", failErr)
+			}
+			continue
+		}
+
+		tLogger.Debug("dispatched search task")
+	}
+
+	return nil
 }

@@ -19,8 +19,7 @@ const (
 )
 
 var ErrNoMatchingScout = errors.New("no matching scout registered for URL")
-var ErrNilLogger = errors.New("logger is nil")
-var ErrNilTracer = errors.New("tracer is nil")
+var ErrParamMissing = errors.New("param missing")
 var ErrNoCandidatesFound = errors.New("no candidates found")
 var ErrConfigFieldEmpty = errors.New("scout config field is empty")
 
@@ -33,10 +32,10 @@ type Registry struct {
 
 func NewRegistry(logger *slog.Logger, tracer trace.Tracer, scouts map[string]discovery.Scout) (*Registry, error) {
 	if logger == nil {
-		return nil, ErrNilLogger
+		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
 	if tracer == nil {
-		return nil, ErrNilTracer
+		return nil, fmt.Errorf("%w: tracer", ErrParamMissing)
 	}
 
 	cloned := make(map[string]discovery.Scout, len(scouts))

@@ -7,7 +7,7 @@ import (
 )
 
 type CreateCandidateParams struct {
-	BatchID         *uuid.UUID `validate:"omitempty"`
+	BatchID         uuid.UUID  `validate:"omitempty"`
 	Fingerprint     string     `validate:"required"`
 	SourceID        int32      `validate:"required"`
 	Title           string     `validate:"required"`
@@ -35,10 +35,10 @@ type CreateTaskParams struct {
 }
 
 type CreateContentParams struct {
-	BatchID     *uuid.UUID `validate:"omitempty"`
+	BatchID     uuid.UUID  `validate:"omitempty"`
 	Type        string     `validate:"required"`
 	SourceID    int32      `validate:"required"`
-	CandidateID *uuid.UUID `validate:"omitempty"`
+	CandidateID uuid.UUID  `validate:"omitempty"`
 	URL         string     `validate:"required,url"`
 	Title       string     `validate:"required"`
 	Content     string     `validate:"required"`

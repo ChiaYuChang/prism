@@ -22,6 +22,13 @@ func PgUUIDToUUIDPtr(v pgtype.UUID) *uuid.UUID {
 	return &id
 }
 
+func PgUUIDToUUID(v pgtype.UUID) uuid.UUID {
+	if !v.Valid {
+		return uuid.Nil
+	}
+	return uuid.UUID(v.Bytes)
+}
+
 func PgTextToStringPtr(v pgtype.Text) *string {
 	if !v.Valid {
 		return nil
@@ -77,4 +84,11 @@ func UUIDPtrToPgUUID(v *uuid.UUID) pgtype.UUID {
 		return pgtype.UUID{}
 	}
 	return pgtype.UUID{Bytes: *v, Valid: true}
+}
+
+func UUIDToPgUUID(v uuid.UUID) pgtype.UUID {
+	if v == uuid.Nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: v, Valid: true}
 }

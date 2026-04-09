@@ -13,6 +13,7 @@ type Repository interface {
 	Pipeline() Pipeline
 	Embedding() Embeddings
 	Analysis() Analysis
+	BatchTrigger() BatchTrigger
 }
 
 type Scheduler interface {
@@ -24,7 +25,9 @@ type Scheduler interface {
 
 type Scout interface {
 	GetSourceByID(ctx context.Context, id int32) (Source, error)
+	ListSourcesByType(ctx context.Context, sourceType string) ([]Source, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
+	CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 }
@@ -43,6 +46,13 @@ type Pipeline interface {
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
 	ListContentsByBatchID(ctx context.Context, batchID uuid.UUID) ([]Content, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
+}
+
+type BatchTrigger interface {
+	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
+	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
+	ListContentsByBatchID(ctx context.Context, batchID uuid.UUID) ([]Content, error)
 }
 
 type Embeddings interface {

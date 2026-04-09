@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/ChiaYuChang/prism/internal/repo"
+	"github.com/google/uuid"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -36,6 +37,72 @@ type MockScout_Expecter struct {
 
 func (_m *MockScout) EXPECT() *MockScout_Expecter {
 	return &MockScout_Expecter{mock: &_m.Mock}
+}
+
+// CountCandidatesByBatchID provides a mock function for the type MockScout
+func (_mock *MockScout) CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error) {
+	ret := _mock.Called(ctx, batchID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CountCandidatesByBatchID")
+	}
+
+	var r0 int64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (int64, error)); ok {
+		return returnFunc(ctx, batchID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) int64); ok {
+		r0 = returnFunc(ctx, batchID)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, batchID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockScout_CountCandidatesByBatchID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CountCandidatesByBatchID'
+type MockScout_CountCandidatesByBatchID_Call struct {
+	*mock.Call
+}
+
+// CountCandidatesByBatchID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+func (_e *MockScout_Expecter) CountCandidatesByBatchID(ctx interface{}, batchID interface{}) *MockScout_CountCandidatesByBatchID_Call {
+	return &MockScout_CountCandidatesByBatchID_Call{Call: _e.mock.On("CountCandidatesByBatchID", ctx, batchID)}
+}
+
+func (_c *MockScout_CountCandidatesByBatchID_Call) Run(run func(ctx context.Context, batchID uuid.UUID)) *MockScout_CountCandidatesByBatchID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockScout_CountCandidatesByBatchID_Call) Return(n int64, err error) *MockScout_CountCandidatesByBatchID_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *MockScout_CountCandidatesByBatchID_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID) (int64, error)) *MockScout_CountCandidatesByBatchID_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // CreateCandidate provides a mock function for the type MockScout
@@ -232,6 +299,74 @@ func (_c *MockScout_GetSourceByID_Call) Return(source repo.Source, err error) *M
 }
 
 func (_c *MockScout_GetSourceByID_Call) RunAndReturn(run func(ctx context.Context, id int32) (repo.Source, error)) *MockScout_GetSourceByID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListSourcesByType provides a mock function for the type MockScout
+func (_mock *MockScout) ListSourcesByType(ctx context.Context, sourceType string) ([]repo.Source, error) {
+	ret := _mock.Called(ctx, sourceType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSourcesByType")
+	}
+
+	var r0 []repo.Source
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]repo.Source, error)); ok {
+		return returnFunc(ctx, sourceType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []repo.Source); ok {
+		r0 = returnFunc(ctx, sourceType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Source)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, sourceType)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockScout_ListSourcesByType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListSourcesByType'
+type MockScout_ListSourcesByType_Call struct {
+	*mock.Call
+}
+
+// ListSourcesByType is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sourceType string
+func (_e *MockScout_Expecter) ListSourcesByType(ctx interface{}, sourceType interface{}) *MockScout_ListSourcesByType_Call {
+	return &MockScout_ListSourcesByType_Call{Call: _e.mock.On("ListSourcesByType", ctx, sourceType)}
+}
+
+func (_c *MockScout_ListSourcesByType_Call) Run(run func(ctx context.Context, sourceType string)) *MockScout_ListSourcesByType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockScout_ListSourcesByType_Call) Return(sources []repo.Source, err error) *MockScout_ListSourcesByType_Call {
+	_c.Call.Return(sources, err)
+	return _c
+}
+
+func (_c *MockScout_ListSourcesByType_Call) RunAndReturn(run func(ctx context.Context, sourceType string) ([]repo.Source, error)) *MockScout_ListSourcesByType_Call {
 	_c.Call.Return(run)
 	return _c
 }

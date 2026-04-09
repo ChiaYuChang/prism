@@ -120,12 +120,14 @@ func NewNatsMessenger(url string, logger *slog.Logger, opts ...Option[NatsConfig
 
 // NewGoChannelMessenger creates a Messenger using in-memory Go Channels.
 // This is ideal for testing and local development without NATS.
-func NewGoChannelMessenger(logger *slog.Logger) (*Messenger, error) {
+func NewGoChannelMessenger(logger *slog.Logger, buffer int64, persistent bool) (*Messenger, error) {
 	watermillLogger := watermill.NewSlogLogger(logger)
 
 	// Use GoChannel as both Publisher and Subscriber
 	pubSub := gochannel.NewGoChannel(
 		gochannel.Config{
+			OutputChannelBuffer:            buffer,
+			Persistent:                     persistent,
 			BlockPublishUntilSubscriberAck: true,
 		},
 		watermillLogger,

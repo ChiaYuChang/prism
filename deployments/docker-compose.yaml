@@ -93,6 +93,29 @@ services:
       timeout: 5s
       retries: 5
 
+  # -------------------------------------------------------------------------
+  # Cache & Lock: Valkey
+  # -------------------------------------------------------------------------
+  valkey:
+    image: valkey/valkey:9
+    container_name: prism-valkey
+    restart: always
+    secrets:
+      - valkey_acl
+    ports:
+      - "127.0.0.1:${VALKEY_PORT:-6379}:6379"
+    volumes:
+      - valkey_data:/data
+      - ../build/infra/valkey/valkey.conf:/etc/valkey/valkey.conf
+    command: ["valkey-server", "/etc/valkey/valkey.conf"]
+    networks:
+      - prism-net
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 networks:
   prism-net:
     driver: bridge
@@ -108,8 +131,11 @@ secrets:
     file: ../${SEAWEEDFS_ACCESS_KEY_FILE}
   sw_secret_key:
     file: ../${SEAWEEDFS_SECRET_KEY_FILE}
+  valkey_acl:
+    file: ../build/infra/valkey/valkey_acl
 
 volumes:
   postgres_data:
   nats_data:
   seaweedfs_data:
+  valkey_data:

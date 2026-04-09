@@ -4,34 +4,35 @@ backfiller:
     dpp:
       source_id: 1
       format: html
+      base_url: https://www.dpp.org.tw
       pager:
         type: "index"
         mode: "index"
-        url_template: "https://www.dpp.org.tw/media/{{.Value}}"
+        url_template: "{{.BaseURL}}/media/{{printf \"%02d\" .Value}}"
         first: 0
         step: 10
-        omit_first: true
 
     tpp:
       source_id: 2
       format: html
+      base_url: https://www.tpp.org.tw
       pager:
         type: "index"
         mode: "index"
-        url_template: "https://www.tpp.org.tw/media"
+        url_template: "{{.BaseURL}}/media"
         first: 1
         step: 1
         params:
           page: "{{.Value}}"
-        omit_first: true
 
     kmt:
       source_id: 3
       format: atom
+      base_url: https://www.kmt.org.tw
       pager:
         type: "index"
         mode: "index"
-        url_template: "https://www.kmt.org.tw/feeds/posts/summary/-/新聞稿"
+        url_template: "{{.BaseURL}}/feeds/posts/summary/-/新聞稿"
         first: 1
         step: 10
         params:
