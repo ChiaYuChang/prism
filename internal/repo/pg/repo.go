@@ -2,10 +2,13 @@ package pg
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/pkg/pgconv"
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	pgvector "github.com/pgvector/pgvector-go"
 )
@@ -205,21 +208,37 @@ func (r *PGTasks) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 
 func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
 	row, err := r.q.CreateTask(ctx, CreateTaskParams{
-		BatchID:    arg.BatchID,
-		Kind:       TaskKind(arg.Kind),
-		SourceType: SourceType(arg.SourceType),
-		SourceID:   arg.SourceID,
-		Url:        arg.URL,
-		Payload:    arg.Payload,
-		TraceID:    arg.TraceID,
-		Frequency:  pgconv.DurationPtrToPgInterval(arg.Frequency),
-		NextRunAt:  pgconv.TimePtrToPgTimestamptz(arg.NextRunAt),
-		ExpiresAt:  pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
+		BatchID:     arg.BatchID,
+		Kind:        TaskKind(arg.Kind),
+		SourceType:  SourceType(arg.SourceType),
+		SourceID:    arg.SourceID,
+		Url:         arg.URL,
+		Payload:     arg.Payload,
+		PayloadHash: pgconv.StringPtrToPgText(arg.PayloadHash),
+		TraceID:     arg.TraceID,
+		Frequency:   pgconv.DurationPtrToPgInterval(arg.Frequency),
+		NextRunAt:   pgconv.TimePtrToPgTimestamptz(arg.NextRunAt),
+		ExpiresAt:   pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) &&
+			pgErr.Code == pgerrcode.UniqueViolation &&
+			pgErr.ConstraintName == "uq_tasks_active_payload" {
+			return repo.Task{}, repo.ErrTaskAlreadyActive
+		}
 		return repo.Task{}, err
 	}
 	return dbTaskToRepoTask(row), nil
+}
+
+func (r *PGTasks) ExtendActiveTaskExpiry(ctx context.Context, arg repo.ExtendActiveTaskExpiryParams) error {
+	return r.q.ExtendActiveTaskExpiry(ctx, ExtendActiveTaskExpiryParams{
+		SourceID:    arg.SourceID,
+		Kind:        TaskKind(arg.Kind),
+		PayloadHash: pgconv.StringPtrToPgText(&arg.PayloadHash),
+		ExpiresAt:   pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
+	})
 }
 
 // Pipeline repository.

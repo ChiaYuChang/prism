@@ -32,6 +32,9 @@ tasks:
   codex:
     cmds:
       - codex resume {{.CODEX_SESSION_ID}}
+  claude:
+    cmds:
+      - claude --resume {{.CLAUDE_SESSION_ID}}
   gemini:
     cmds:
       - gemini --resume {{.GEMINI_SESSION_ID}}
@@ -82,9 +85,6 @@ tasks:
 
   db-dump:
     desc: Dump the database to a file
-    vars:
-      POSTGRES_ADMIN_PASSWORD: "$(cat {{.POSTGRES_ADMIN_PASSWORD_FILE}})"
-      POSTGRES_URL: "postgres://{{.POSTGRES_ADMIN_USER}}:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{.POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
     cmds:
       - pg_dump "{{.POSTGRES_URL}}" -f {{.DB_DIR}}/schema.sql --schema-only
       - grep -v '\\unrestrict ' {{.DB_DIR}}/schema.sql | grep -v '\\restrict' > {{.DB_DIR}}/schema.sql.tmp && mv {{.DB_DIR}}/schema.sql.tmp {{.DB_DIR}}/schema.sql

@@ -105,6 +105,63 @@ func (_c *MockTasks_CreateTask_Call) RunAndReturn(run func(ctx context.Context, 
 	return _c
 }
 
+// ExtendActiveTaskExpiry provides a mock function for the type MockTasks
+func (_mock *MockTasks) ExtendActiveTaskExpiry(ctx context.Context, arg repo.ExtendActiveTaskExpiryParams) error {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ExtendActiveTaskExpiry")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.ExtendActiveTaskExpiryParams) error); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTasks_ExtendActiveTaskExpiry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ExtendActiveTaskExpiry'
+type MockTasks_ExtendActiveTaskExpiry_Call struct {
+	*mock.Call
+}
+
+// ExtendActiveTaskExpiry is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.ExtendActiveTaskExpiryParams
+func (_e *MockTasks_Expecter) ExtendActiveTaskExpiry(ctx interface{}, arg interface{}) *MockTasks_ExtendActiveTaskExpiry_Call {
+	return &MockTasks_ExtendActiveTaskExpiry_Call{Call: _e.mock.On("ExtendActiveTaskExpiry", ctx, arg)}
+}
+
+func (_c *MockTasks_ExtendActiveTaskExpiry_Call) Run(run func(ctx context.Context, arg repo.ExtendActiveTaskExpiryParams)) *MockTasks_ExtendActiveTaskExpiry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.ExtendActiveTaskExpiryParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.ExtendActiveTaskExpiryParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTasks_ExtendActiveTaskExpiry_Call) Return(err error) *MockTasks_ExtendActiveTaskExpiry_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTasks_ExtendActiveTaskExpiry_Call) RunAndReturn(run func(ctx context.Context, arg repo.ExtendActiveTaskExpiryParams) error) *MockTasks_ExtendActiveTaskExpiry_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetTaskByID provides a mock function for the type MockTasks
 func (_mock *MockTasks) GetTaskByID(ctx context.Context, id uuid.UUID) (repo.Task, error) {
 	ret := _mock.Called(ctx, id)

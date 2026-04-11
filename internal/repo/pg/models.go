@@ -407,7 +407,7 @@ type TaskKind string
 
 const (
 	TaskKindDIRECTORYFETCH TaskKind = "DIRECTORY_FETCH"
-	TaskKindPAGEFETCH      TaskKind = "PAGE_FETCH"
+	TaskKindKEYWORDSEARCH  TaskKind = "KEYWORD_SEARCH"
 )
 
 func (e *TaskKind) Scan(src interface{}) error {
@@ -448,7 +448,7 @@ func (ns NullTaskKind) Value() (driver.Value, error) {
 func (e TaskKind) Valid() bool {
 	switch e {
 	case TaskKindDIRECTORYFETCH,
-		TaskKindPAGEFETCH:
+		TaskKindKEYWORDSEARCH:
 		return true
 	}
 	return false
@@ -457,7 +457,7 @@ func (e TaskKind) Valid() bool {
 func AllTaskKindValues() []TaskKind {
 	return []TaskKind{
 		TaskKindDIRECTORYFETCH,
-		TaskKindPAGEFETCH,
+		TaskKindKEYWORDSEARCH,
 	}
 }
 
@@ -656,20 +656,21 @@ type Source struct {
 }
 
 type Task struct {
-	ID         uuid.UUID          `db:"id" json:"id"`
-	BatchID    uuid.UUID          `db:"batch_id" json:"batch_id"`
-	Kind       TaskKind           `db:"kind" json:"kind"`
-	SourceType SourceType         `db:"source_type" json:"source_type"`
-	SourceID   int32              `db:"source_id" json:"source_id"`
-	Url        string             `db:"url" json:"url"`
-	Payload    []byte             `db:"payload" json:"payload"`
-	TraceID    string             `db:"trace_id" json:"trace_id"`
-	Frequency  pgtype.Interval    `db:"frequency" json:"frequency"`
-	NextRunAt  pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
-	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	Status     TaskStatus         `db:"status" json:"status"`
-	RetryCount int32              `db:"retry_count" json:"retry_count"`
-	LastRunAt  pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
-	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID          uuid.UUID          `db:"id" json:"id"`
+	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Kind        TaskKind           `db:"kind" json:"kind"`
+	SourceType  SourceType         `db:"source_type" json:"source_type"`
+	SourceID    int32              `db:"source_id" json:"source_id"`
+	Url         string             `db:"url" json:"url"`
+	Payload     []byte             `db:"payload" json:"payload"`
+	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt   pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Status      TaskStatus         `db:"status" json:"status"`
+	RetryCount  int32              `db:"retry_count" json:"retry_count"`
+	LastRunAt   pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }

@@ -2,6 +2,9 @@ package planner
 
 import (
 	"context"
+	"crypto/sha256"
+
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,8 +19,8 @@ import (
 )
 
 const (
-	TaskKindDirectoryFetch = "DIRECTORY_FETCH"
-	SourceTypeMedia        = "MEDIA"
+	TaskKindKeywordSearch = "KEYWORD_SEARCH"
+	SourceTypeMedia       = "MEDIA"
 )
 
 var (
@@ -129,19 +132,35 @@ func (p *Planner) Plan(ctx context.Context, req discovery.PlannerRequest) (disco
 			if err != nil {
 				return result, fmt.Errorf("marshal task payload for source %d: %w", target.SourceID, err)
 			}
-			if _, err := p.tasks.CreateTask(ctx, repo.CreateTaskParams{
-				BatchID:    req.BatchID,
-				Kind:       TaskKindDirectoryFetch,
-				SourceType: SourceTypeMedia,
-				SourceID:   target.SourceID,
-				URL:        target.URL,
-				Payload:    payload,
-				TraceID:    req.TraceID,
-				Frequency:  req.Frequency,
-				NextRunAt:  req.NextRunAt,
-				ExpiresAt:  req.ExpiresAt,
-			}); err != nil {
-				return result, fmt.Errorf("create task for source %d phrase %q: %w", target.SourceID, phrase, err)
+			sum := sha256.Sum256(payload)
+			hash := hex.EncodeToString(sum[:])
+			if _, createErr := p.tasks.CreateTask(ctx, repo.CreateTaskParams{
+				BatchID:     req.BatchID,
+				Kind:        TaskKindKeywordSearch,
+				SourceType:  SourceTypeMedia,
+				SourceID:    target.SourceID,
+				URL:         target.URL,
+				Payload:     payload,
+				PayloadHash: &hash,
+				TraceID:     req.TraceID,
+				Frequency:   req.Frequency,
+				NextRunAt:   req.NextRunAt,
+				ExpiresAt:   req.ExpiresAt,
+			}); createErr != nil {
+				if !errors.Is(createErr, repo.ErrTaskAlreadyActive) {
+					return result, fmt.Errorf("create task for source %d phrase %q: %w", target.SourceID, phrase, createErr)
+				}
+				if req.ExpiresAt != nil {
+					if extErr := p.tasks.ExtendActiveTaskExpiry(ctx, repo.ExtendActiveTaskExpiryParams{
+						SourceID:    target.SourceID,
+						Kind:        TaskKindKeywordSearch,
+						PayloadHash: hash,
+						ExpiresAt:   req.ExpiresAt,
+					}); extErr != nil {
+						return result, fmt.Errorf("extend task expiry for source %d phrase %q: %w", target.SourceID, phrase, extErr)
+					}
+				}
+				continue
 			}
 			result.TasksCreated++
 		}

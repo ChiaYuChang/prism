@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -18,26 +17,12 @@ const (
 
 type Config struct {
 	HealthPort      int                       `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	LogPath         string                    `mapstructure:"log-path"`
-	LogLevel        string                    `mapstructure:"log-level"      validate:"oneof=debug info warn error"`
+	Logger          appconfig.LoggerConfig    `mapstructure:"logger"`
 	ScoutConfigPath string                    `mapstructure:"scout-config"   validate:"required"`
 	HTTPTimeout     time.Duration             `mapstructure:"http-timeout"   validate:"required,min=1s"`
 	Postgres        appconfig.PostgresConfig  `mapstructure:"postgres"`
 	MessengerType   string                    `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
 	Messenger       appconfig.MessengerConfig `mapstructure:"-"`
-}
-
-func (c *Config) GetLogLevel() slog.Level {
-	switch strings.ToLower(c.LogLevel) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -84,26 +69,13 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
 	}
-	if err := v.BindPFlag("postgres.host", fs.Lookup("pg-host")); err != nil {
-		return nil, fmt.Errorf("failed to bind postgres.host: %w", err)
-	}
-	if err := v.BindPFlag("postgres.port", fs.Lookup("pg-port")); err != nil {
-		return nil, fmt.Errorf("failed to bind postgres.port: %w", err)
-	}
-	if err := v.BindPFlag("postgres.username", fs.Lookup("pg-username")); err != nil {
-		return nil, fmt.Errorf("failed to bind postgres.username: %w", err)
-	}
-	if err := v.BindPFlag("postgres.password", fs.Lookup("pg-password")); err != nil {
-		return nil, fmt.Errorf("failed to bind postgres.password: %w", err)
-	}
-	if err := v.BindPFlag("postgres.db", fs.Lookup("pg-db")); err != nil {
-		return nil, fmt.Errorf("failed to bind postgres.db: %w", err)
-	}
-	if err := v.BindPFlag("postgres.sslmode", fs.Lookup("pg-sslmode")); err != nil {
-		return nil, fmt.Errorf("failed to bind postgres.sslmode: %w", err)
-	}
-
 	var config Config
+	if err := config.Postgres.BindFlags(v, fs); err != nil {
+		return nil, err
+	}
+	if err := config.Logger.BindFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}

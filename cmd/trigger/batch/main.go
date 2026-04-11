@@ -30,7 +30,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger, logFile, err := obs.InitLogger(config.LogPath, config.GetLogLevel())
+	logger, logFile, err := obs.InitLogger(config.Logger.Path, config.Logger.GetLogLevel())
 	if err != nil {
 		slog.Error("failed to initialize logger", "error", err)
 		os.Exit(1)

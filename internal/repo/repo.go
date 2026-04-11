@@ -36,6 +36,7 @@ type Tasks interface {
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
 }
 
 type Pipeline interface {

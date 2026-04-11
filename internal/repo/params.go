@@ -27,11 +27,19 @@ type CreateTaskParams struct {
 	SourceType string         `validate:"required"`
 	SourceID   int32          `validate:"required"`
 	URL        string         `validate:"required,url"`
-	Payload    []byte         `validate:"omitempty"`
-	TraceID    string         `validate:"required"`
+	Payload     []byte         `validate:"omitempty"`
+	PayloadHash *string        `validate:"omitempty,len=64"`
+	TraceID     string         `validate:"required"`
 	Frequency  *time.Duration `validate:"omitempty"`
 	NextRunAt  *time.Time     `validate:"omitempty"`
 	ExpiresAt  *time.Time     `validate:"omitempty"`
+}
+
+type ExtendActiveTaskExpiryParams struct {
+	SourceID    int32      `validate:"required"`
+	Kind        string     `validate:"required"`
+	PayloadHash string     `validate:"required,len=64"`
+	ExpiresAt   *time.Time `validate:"omitempty"`
 }
 
 type CreateContentParams struct {

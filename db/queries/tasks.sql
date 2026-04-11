@@ -18,6 +18,7 @@ INSERT INTO tasks (
     source_id,
     url,
     payload,
+    payload_hash,
     trace_id,
     frequency,
     next_run_at,
@@ -29,6 +30,7 @@ INSERT INTO tasks (
     sqlc.arg(source_id),
     sqlc.arg(url),
     sqlc.narg(payload),
+    sqlc.narg(payload_hash),
     sqlc.arg(trace_id),
     sqlc.narg(frequency),
     COALESCE(sqlc.narg(next_run_at), NOW()),
@@ -83,6 +85,17 @@ UPDATE tasks
 SET status = 'FAILED',
     updated_at = NOW()
 WHERE id = sqlc.arg(id);
+
+-- name: ExtendActiveTaskExpiry :exec
+-- Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
+-- Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
+UPDATE tasks
+SET expires_at = sqlc.narg(expires_at),
+    updated_at = NOW()
+WHERE source_id    = sqlc.arg(source_id)
+  AND kind         = sqlc.arg(kind)
+  AND payload_hash = sqlc.arg(payload_hash)
+  AND status IN ('PENDING', 'RUNNING');
 
 -- name: ListRunnableTasks :many
 SELECT *

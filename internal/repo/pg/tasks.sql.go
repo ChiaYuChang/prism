@@ -34,7 +34,7 @@ WHERE id IN (
     LIMIT $1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, batch_id, kind, source_type, source_id, url, payload, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+RETURNING id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 `
 
 func (q *Queries) ClaimTasks(ctx context.Context, limit int32) ([]Task, error) {
@@ -54,6 +54,7 @@ func (q *Queries) ClaimTasks(ctx context.Context, limit int32) ([]Task, error) {
 			&i.SourceID,
 			&i.Url,
 			&i.Payload,
+			&i.PayloadHash,
 			&i.TraceID,
 			&i.Frequency,
 			&i.NextRunAt,
@@ -106,6 +107,7 @@ INSERT INTO tasks (
     source_id,
     url,
     payload,
+    payload_hash,
     trace_id,
     frequency,
     next_run_at,
@@ -119,23 +121,25 @@ INSERT INTO tasks (
     $6,
     $7,
     $8,
-    COALESCE($9, NOW()),
-    $10
+    $9,
+    COALESCE($10, NOW()),
+    $11
 )
-RETURNING id, batch_id, kind, source_type, source_id, url, payload, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+RETURNING id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 `
 
 type CreateTaskParams struct {
-	BatchID    uuid.UUID          `db:"batch_id" json:"batch_id"`
-	Kind       TaskKind           `db:"kind" json:"kind"`
-	SourceType SourceType         `db:"source_type" json:"source_type"`
-	SourceID   int32              `db:"source_id" json:"source_id"`
-	Url        string             `db:"url" json:"url"`
-	Payload    []byte             `db:"payload" json:"payload"`
-	TraceID    string             `db:"trace_id" json:"trace_id"`
-	Frequency  pgtype.Interval    `db:"frequency" json:"frequency"`
-	NextRunAt  interface{}        `db:"next_run_at" json:"next_run_at"`
-	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Kind        TaskKind           `db:"kind" json:"kind"`
+	SourceType  SourceType         `db:"source_type" json:"source_type"`
+	SourceID    int32              `db:"source_id" json:"source_id"`
+	Url         string             `db:"url" json:"url"`
+	Payload     []byte             `db:"payload" json:"payload"`
+	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt   interface{}        `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
@@ -146,6 +150,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.SourceID,
 		arg.Url,
 		arg.Payload,
+		arg.PayloadHash,
 		arg.TraceID,
 		arg.Frequency,
 		arg.NextRunAt,
@@ -160,6 +165,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.SourceID,
 		&i.Url,
 		&i.Payload,
+		&i.PayloadHash,
 		&i.TraceID,
 		&i.Frequency,
 		&i.NextRunAt,
@@ -171,6 +177,35 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const extendActiveTaskExpiry = `-- name: ExtendActiveTaskExpiry :exec
+UPDATE tasks
+SET expires_at = $1,
+    updated_at = NOW()
+WHERE source_id    = $2
+  AND kind         = $3
+  AND payload_hash = $4
+  AND status IN ('PENDING', 'RUNNING')
+`
+
+type ExtendActiveTaskExpiryParams struct {
+	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	SourceID    int32              `db:"source_id" json:"source_id"`
+	Kind        TaskKind           `db:"kind" json:"kind"`
+	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+}
+
+// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
+// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
+func (q *Queries) ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error {
+	_, err := q.db.Exec(ctx, extendActiveTaskExpiry,
+		arg.ExpiresAt,
+		arg.SourceID,
+		arg.Kind,
+		arg.PayloadHash,
+	)
+	return err
 }
 
 const failTask = `-- name: FailTask :exec
@@ -186,7 +221,7 @@ func (q *Queries) FailTask(ctx context.Context, id uuid.UUID) error {
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, batch_id, kind, source_type, source_id, url, payload, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 FROM tasks
 WHERE id = $1
 LIMIT 1
@@ -203,6 +238,7 @@ func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.SourceID,
 		&i.Url,
 		&i.Payload,
+		&i.PayloadHash,
 		&i.TraceID,
 		&i.Frequency,
 		&i.NextRunAt,
@@ -217,7 +253,7 @@ func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error) {
 }
 
 const listRunnableTasks = `-- name: ListRunnableTasks :many
-SELECT id, batch_id, kind, source_type, source_id, url, payload, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 FROM tasks
 WHERE (
         status = 'PENDING'
@@ -249,6 +285,7 @@ func (q *Queries) ListRunnableTasks(ctx context.Context, limit int32) ([]Task, e
 			&i.SourceID,
 			&i.Url,
 			&i.Payload,
+			&i.PayloadHash,
 			&i.TraceID,
 			&i.Frequency,
 			&i.NextRunAt,
@@ -270,7 +307,7 @@ func (q *Queries) ListRunnableTasks(ctx context.Context, limit int32) ([]Task, e
 }
 
 const listTasksByBatchID = `-- name: ListTasksByBatchID :many
-SELECT id, batch_id, kind, source_type, source_id, url, payload, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 FROM tasks
 WHERE batch_id = $1
 ORDER BY created_at ASC, next_run_at ASC
@@ -293,6 +330,7 @@ func (q *Queries) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 			&i.SourceID,
 			&i.Url,
 			&i.Payload,
+			&i.PayloadHash,
 			&i.TraceID,
 			&i.Frequency,
 			&i.NextRunAt,

@@ -20,7 +20,7 @@ type TaskSignal struct {
 	// BatchID groups all tasks created by one cron- or trigger-generated batch.
 	BatchID uuid.UUID `json:"batch_id"`
 
-	// Kind identifies the executable task kind, e.g. DIRECTORY_FETCH or PAGE_FETCH.
+	// Kind identifies the executable task kind, e.g. DIRECTORY_FETCH or KEYWORD_SEARCH.
 	Kind string `json:"kind"`
 
 	// SourceType identifies the logical source family, e.g. PARTY or MEDIA.

@@ -49,6 +49,9 @@ tmp/
 # .vscode/
 
 SESSION_SUMMARY.md
+CLAUDE.md
 .codex
 .task/*
-build/*
+build/ok*
+
+build/infra/valkey/*

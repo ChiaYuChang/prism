@@ -46,7 +46,7 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'task_kind') THEN
-        CREATE TYPE task_kind AS ENUM ('DIRECTORY_FETCH', 'PAGE_FETCH');
+        CREATE TYPE task_kind AS ENUM ('DIRECTORY_FETCH', 'KEYWORD_SEARCH');
     END IF;
 END
 $$;
@@ -208,6 +208,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     source_id      INT NOT NULL REFERENCES sources(id),
     url            TEXT NOT NULL,
     payload        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    payload_hash   CHAR(64),
     trace_id       VARCHAR(100) NOT NULL,
     frequency      INTERVAL SECOND(0),
     next_run_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -227,6 +228,12 @@ CREATE INDEX IF NOT EXISTS idx_tasks_trace_id ON tasks(trace_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_source_id ON tasks(source_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_kind_source_type ON tasks(kind, source_type);
 CREATE INDEX IF NOT EXISTS idx_tasks_url ON tasks(url);
+
+-- Prevent duplicate active KEYWORD_SEARCH tasks for the same (source, phrase).
+-- payload_hash = hex(SHA-256(canonical JSON payload)), computed in application code.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tasks_active_payload
+    ON tasks(source_id, kind, payload_hash)
+    WHERE status IN ('PENDING', 'RUNNING') AND payload_hash IS NOT NULL;
 
 ALTER TABLE tasks SET (fillfactor = 80);
 

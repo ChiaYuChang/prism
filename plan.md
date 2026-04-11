@@ -33,7 +33,7 @@ Prism does **not** attempt to crawl all Taiwanese news. The current discovery st
 3. Party press release article pages are then fetched immediately into full `contents`.
 4. After one PARTY batch finishes, `Planner` loads that batch's party press release contents.
 5. An LLM extracts a bounded number of short keyword groups from those seed texts.
-6. `Planner` creates one or more `MEDIA + DIRECTORY_FETCH` tasks.
+6. `Planner` creates one or more `MEDIA + KEYWORD_SEARCH` tasks.
 7. The scheduler claims runnable tasks and dispatches scout workers.
 8. Scout workers call search APIs such as Google or Brave and persist discovered news briefs into `candidates`.
 9. Discovery ends when candidate briefs have been persisted into `candidates`.
@@ -125,13 +125,13 @@ Current implementation status:
 3. `Planner` receives that signal
 4. load all party press release `contents` associated with that batch
 5. request the LLM to extract short recall-oriented keyword groups
-6. create one or more `MEDIA + DIRECTORY_FETCH` tasks
+6. create one or more `MEDIA + KEYWORD_SEARCH` tasks
 7. persist extraction outputs into `content_extractions` when analysis persistence is enabled
 
 ### Brief Discovery
 
 1. scheduler trigger
-2. claim runnable `MEDIA + DIRECTORY_FETCH` tasks
+2. claim runnable `MEDIA + KEYWORD_SEARCH` tasks
 3. call search APIs such as Google or Brave with the request details stored in task `payload`
 4. persist returned article briefs into `candidates`
 
@@ -240,8 +240,8 @@ Current implementation status:
   * [x] Persist discovered article briefs into `candidates` from `cmd/worker/discovery`.
   * [x] Emit `page_fetch` messages after candidate persistence for PARTY discovery.
   * [ ] Integrate at least one media search provider.
-  * [x] Establish `internal/discovery/planner` with tests for seed-content extraction and MEDIA task creation.
-  * [ ] Connect planner to a concrete executable worker / trigger path.
+  * [x] Establish internal/discovery/planner with tests for seed-content extraction and MEDIA task creation.
+  * [x] Connect planner to a concrete executable worker / trigger path (`cmd/worker/planner`).
 * [ ] 2.5 Candidate Promotion:
   * [ ] Fetch selected candidates into full `contents`.
   * [ ] Avoid refetch when content already exists by URL or candidate ID.
@@ -283,7 +283,7 @@ Current implementation status:
   * [x] add command-level tests for `cmd/backfiller`
   * [x] add dispatch-path tests for `cmd/scheduler`
   * [x] switch command CLI overrides from dotted flags to prefixed flat names such as `--pg-host` and `--valkey-host`
-  * [ ] review whether command-local `LoadConfig()` logic should remain separate or be partially unified
+  * [ ] review whether command-local `LoadConfig()` logic should remain separate or be partially unified (In progress: added `bindflag.go` for unified flag binding)
   * [ ] remove remaining duplicated bootstrap helpers once worker commands stabilize
 * [ ] Rework infra configuration source-of-truth:
   * [x] temporarily exclude generated `build/` artifacts from version control

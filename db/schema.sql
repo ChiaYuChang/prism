@@ -124,7 +124,7 @@ ALTER TYPE public.source_type OWNER TO postgres;
 
 CREATE TYPE public.task_kind AS ENUM (
     'DIRECTORY_FETCH',
-    'PAGE_FETCH'
+    'KEYWORD_SEARCH'
 );
 
 
@@ -510,6 +510,7 @@ CREATE TABLE public.tasks (
     source_id integer NOT NULL,
     url text NOT NULL,
     payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    payload_hash character(64),
     trace_id character varying(100) NOT NULL,
     frequency interval second(0),
     next_run_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -1054,6 +1055,13 @@ CREATE UNIQUE INDEX uq_content_extractions_snapshot ON public.content_extraction
 --
 
 CREATE UNIQUE INDEX uq_entities_canonical_type ON public.entities USING btree (canonical, type);
+
+
+--
+-- Name: uq_tasks_active_payload; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX uq_tasks_active_payload ON public.tasks USING btree (source_id, kind, payload_hash) WHERE ((status = ANY (ARRAY['PENDING'::public.task_status, 'RUNNING'::public.task_status])) AND (payload_hash IS NOT NULL));
 
 
 --

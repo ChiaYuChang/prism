@@ -22,6 +22,9 @@ type Querier interface {
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
+	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
+	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
 	FailTask(ctx context.Context, id uuid.UUID) error
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)

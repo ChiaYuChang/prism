@@ -57,8 +57,7 @@ type Backfiller interface {
 
 // Extractor is responsible for generating short, recall-oriented keyword groups
 // from political party press releases. The extracted composite search phrases are
-// intended to be used downstream by Planner to create MEDIA + DIRECTORY_FETCH
-// discovery tasks.
+// intended to be used downstream by Planner to create MEDIA + KEYWORD_SEARCH tasks.
 type Extractor interface {
 	// Extract analyzes the seed content and returns structured keyword insights.
 	// Bounded, high-signal seed inputs are processed to produce sets of keywords.
@@ -85,10 +84,14 @@ type PlannerRequest struct {
 
 // PlannerResult summarizes one planning run.
 type PlannerResult struct {
-	SeedContents  int
-	Extractions   int
+	// Number of PARTY contents used for extraction.
+	SeedContents int
+	// Number of extractions performed, should be equal to SeedContents if no error occurs.
+	Extractions int
+	// Number of unique keyword phrases generated.
 	UniquePhrases int
-	TasksCreated  int
+	// Number of MEDIA tasks created.
+	TasksCreated int
 }
 
 // Planner is responsible for turning completed PARTY seed contents into

@@ -13,9 +13,10 @@ type Task struct {
 	Kind       string
 	SourceType string
 	SourceID   int32
-	URL        string
-	Payload    []byte
-	Frequency  *time.Duration
+	URL         string
+	Payload     []byte
+	PayloadHash *string
+	Frequency   *time.Duration
 	NextRunAt  time.Time
 	ExpiresAt  *time.Time
 	Status     string

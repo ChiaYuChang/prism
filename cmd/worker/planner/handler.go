@@ -11,13 +11,14 @@ import (
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	wm "github.com/ThreeDotsLabs/watermill/message"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 )
 
 var (
-	ErrParamMissing      = errors.New("param missing")
-	ErrInvalidSignal     = errors.New("invalid batch completed signal")
-	ErrNoPlannerTargets  = errors.New("planner target is missing")
+	ErrParamMissing     = errors.New("param missing")
+	ErrInvalidSignal    = errors.New("invalid batch completed signal")
+	ErrNoPlannerTargets = errors.New("planner target is missing")
 )
 
 type Handler struct {
@@ -48,7 +49,7 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	if err := sig.Unmarshal(msg.Payload); err != nil {
 		return true, fmt.Errorf("%w: %w", ErrInvalidSignal, err)
 	}
-	if sig.BatchID == [16]byte{} {
+	if sig.BatchID == uuid.Nil {
 		return true, fmt.Errorf("%w: batch_id is empty", ErrInvalidSignal)
 	}
 
@@ -60,7 +61,7 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 		return true, err
 	}
 
-	_, err = h.planner.Plan(ctx, discovery.PlannerRequest{
+	result, err := h.planner.Plan(ctx, discovery.PlannerRequest{
 		BatchID: sig.BatchID,
 		TraceID: sig.TraceID,
 		Targets: targets,
@@ -70,9 +71,14 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	}
 
 	h.logger.InfoContext(ctx, "planner completed",
+		slog.String("msg_id", msg.UUID),
 		slog.String("batch_id", sig.BatchID.String()),
 		slog.String("trace_id", sig.TraceID),
 		slog.Int("targets", len(targets)),
+		slog.Int("seed_contents", result.SeedContents),
+		slog.Int("extractions", result.Extractions),
+		slog.Int("unique_phrases", result.UniquePhrases),
+		slog.Int("tasks_created", result.TasksCreated),
 	)
 	return true, nil
 }

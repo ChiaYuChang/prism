@@ -27,7 +27,7 @@ var (
 // Extractor handles the high-level business logic of generating recall-oriented
 // keyword groups from seed texts (e.g., party press releases). These extracted
 // outputs are intended to be persisted in 'content_extractions' and used downstream
-// by the Planner to create MEDIA + DIRECTORY_FETCH search tasks.
+// by the Planner to create MEDIA + KEYWORD_SEARCH tasks.
 type Extractor struct {
 	generator llm.Generator
 	model     string

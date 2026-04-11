@@ -30,7 +30,7 @@ const (
 	LockTTL = 30 * time.Second
 )
 
-type taskPublisher interface {
+type TaskPublisher interface {
 	Publish(topic string, messages ...*wm.Message) error
 }
 
@@ -43,7 +43,7 @@ func main() {
 	}
 
 	// 2. Initialize Shared Logger
-	logger, logFile, err := obs.InitLogger(config.LogPath, config.GetLogLevel())
+	logger, logFile, err := obs.InitLogger(config.Logger.Path, config.Logger.GetLogLevel())
 	if err != nil {
 		slog.Error("failed to initialize logger", "error", err)
 		os.Exit(1)
@@ -190,7 +190,7 @@ func main() {
 	}
 }
 
-func dispatchTasks(ctx context.Context, logger *slog.Logger, publisher taskPublisher, scheduler repo.Scheduler, tasks []repo.Task) error {
+func dispatchTasks(ctx context.Context, logger *slog.Logger, publisher TaskPublisher, scheduler repo.Scheduler, tasks []repo.Task) error {
 	for _, task := range tasks {
 		tLogger := lg.WithHook(logger,
 			lg.AttrHook("task_id", task.ID.String()),
