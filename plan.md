@@ -14,15 +14,20 @@ Project Prism is a headless data pipeline designed to analyze media coverage aro
 Reference:
 - Table-level database semantics are documented in [docs/database-tables.md](/home/cychang/Documents/prism/docs/database-tables.md).
 
-## 2. Core Architecture: Normalized Pipeline (F-T-(S||P))
+## 2. Core Architecture: Normalized Pipeline (F-M-T-(S||P))
 
 The system follows a normalization-first workflow:
 
 1. Fetch (F): synchronously retrieve raw HTML or JSON.
-2. Transform (T): clean the DOM and produce a canonical string.
-3. Parallel Fork:
-   * Save (S): archive canonical payloads into SeaweedFS or S3.
-   * Parse (P): produce structured content and embeddings.
+2. Minify (M): strip noise from the DOM and produce a compact, canonical string. Idempotent — running on already-minified content is a no-op.
+3. Transform (T): semantic transforms on the minified content (currently a no-op for HTML; meaningful for future API response inputs).
+4. Fork after Minify:
+   * Save (S): archive the **minified** payload into SeaweedFS or S3 for recovery via `Archiver.Save`.
+   * Parse (P): produce structured content from the transformed canonical string.
+
+**Error handling:** On Minify failure, the Handler's `errorSaver` (`collector.Saver`) archives the **raw** payload with metadata `{"stage":"raw","recover_from":"minify"}` via `Archiver.Save`. This is not an MQ topic — it writes directly to SeaweedFS/S3 to avoid message size limits (raw HTML is 100–500 KB).
+
+**Recoverer (R):** Implemented as `cmd/recover`, a standalone operator CLI (not part of the collector worker daemon). Uses `Archiver.Load` / `Archiver.Scan` to read archived content and replays it through the pipeline. Since Minify is idempotent, both raw and minified archives are safe to replay through the same Minify→Transform→Parse path.
 
 ## 2.1 Discovery Strategy: Recall First
 
@@ -30,10 +35,10 @@ Prism does **not** attempt to crawl all Taiwanese news. The current discovery st
 
 1. A cron job crawls party press release directory pages.
 2. Directory-page briefs are first stored in `candidates`.
-3. Party press release article pages are then fetched immediately into full `contents`.
+3. Party press release article pages are then fetched via `PAGE_FETCH` tasks into full `contents`.
 4. After one PARTY batch finishes, `Planner` loads that batch's party press release contents.
 5. An LLM extracts a bounded number of short keyword groups from those seed texts.
-6. `Planner` creates one or more `MEDIA + KEYWORD_SEARCH` tasks.
+6. `Planner` creates one or more `MEDIA + KEYWORD_SEARCH` tasks automatically — this is **not** user-triggered.
 7. The scheduler claims runnable tasks and dispatches scout workers.
 8. Scout workers call search APIs such as Google or Brave and persist discovered news briefs into `candidates`.
 9. Discovery ends when candidate briefs have been persisted into `candidates`.
@@ -54,13 +59,23 @@ Discovery does **not** include full-article collection. That boundary begins aft
 
 ## 2.2 Discovery Task Model
 
-The current `tasks` table should be understood as:
+The `tasks` table represents one executable request — one source-aware fetch intent, one batch-aware unit of work.
 
-* one executable request
-* one source-aware fetch intent
-* one batch-aware unit of work
+### Task Kinds
 
-Each row should contain enough information to construct a request for `Scout` or another worker:
+| `kind` | `source_type` | Who creates it | Description |
+|---|---|---|---|
+| `DIRECTORY_FETCH` | `PARTY` | Scheduler (cron) | Scout crawls party press release directory pages (HTML/RSS/Atom) |
+| `DIRECTORY_FETCH` | `MEDIA` | _reserved_ | Scout crawls media directory pages (future) |
+| `KEYWORD_SEARCH` | `MEDIA` | Planner (auto, after PARTY batch) | Scout calls search API (Google Custom Search etc.) with extracted keyword phrases |
+| `PAGE_FETCH` | `PARTY` | Discovery Worker (auto, after PARTY candidate created) | Collector fetches full press release text |
+| `PAGE_FETCH` | `MEDIA` | User selection (manual trigger) | Collector fetches full media article text on demand |
+
+**Critical distinction for KEYWORD_SEARCH:** This task is created automatically by the Planner after a PARTY batch completes. Users never trigger it. Users interact only with the `candidates` pool that KEYWORD_SEARCH tasks populate.
+
+**Critical distinction for PAGE_FETCH:** PARTY press releases are fetched automatically (system-driven). MEDIA articles are fetched only when a user explicitly selects candidates for analysis (user-driven). This avoids fetching articles the user will never read.
+
+Each row contains enough information to construct a request for `Scout` or `Collector`:
 
 * `batch_id`
 * `kind`
@@ -68,69 +83,76 @@ Each row should contain enough information to construct a request for `Scout` or
 * `source_id`
 * `url`
 * `payload`
+* `payload_hash` — SHA-256(canonical JSON payload), used for dedup of KEYWORD_SEARCH tasks via `uq_tasks_active_payload` partial unique index
 
-The scheduler is therefore a **task dispatcher**, not a crawler. It claims runnable tasks from PostgreSQL and publishes them to workers via Watermill.
+### Scheduler Design
 
-More generally, Prism should be understood as using multiple trigger classes:
+Two scheduler instances share the same binary but operate with different `--kinds` filters and poll intervals:
+
+| Instance | `--kinds` | Poll interval | Purpose |
+|---|---|---|---|
+| `scheduler-slow` | `DIRECTORY_FETCH,KEYWORD_SEARCH` | 60s | Background discovery; latency-tolerant |
+| `scheduler-fast` | `PAGE_FETCH` | 3s | Content fetch; low-latency for user-triggered MEDIA fetches |
+
+Rate limiting for PAGE_FETCH is enforced via Valkey using `source_abbr` as the domain key (`rate_limit:{source_abbr}`), checked before emitting a `TaskSignal`.
+
+The scheduler is a **task dispatcher**, not a crawler. It claims runnable tasks from PostgreSQL and publishes them to workers via Watermill.
+
+More generally, Prism uses multiple trigger classes:
 
 * `schedule` trigger: periodic or one-shot time-based activation
 * `resource` trigger: state/lifecycle observation such as batch completion or insert-driven follow-up work
 * `manual` trigger: operator or user initiated actions such as backfill or explicit selection
 
-The current `cmd/scheduler` is therefore best understood as one concrete `schedule` trigger implementation.
-
-Current implementation status:
-
-* `tasks` has replaced the old `search_tasks` model in migrations and query definitions.
-* `TaskSignal` now mirrors the request-oriented task schema used by the scheduler.
-* SQLC query generation is aligned with the current `tasks`, `candidates`, `contents`, `embeddings`, and `extractions` schema.
-* repository contracts are now worker-oriented, while DB adapter code is split into:
-  * `internal/repo/repo.go` for interfaces
-  * `internal/repo/contracts.go` for read-side contracts
-  * `internal/repo/params.go` for write-side params
-  * `internal/repo/pg/adapters.go` for `sqlc -> repo` row mapping
-* shared worker bootstrap config has started moving into `internal/appconfig`:
-  * `PostgresConfig`
-  * `MessengerConfig`
-  * concrete NATS / GoChannel messenger config
-* command wiring no longer constructs Postgres repositories directly:
-  * `cmd/scheduler` and `cmd/worker/discovery` now depend on `repo.Factory`
-  * the current concrete backend is `internal/repo/pg.Factory`
-* repository construction is now abstracted earlier than repository config:
-  * `Messenger` already supports multiple real backends, so command config uses a polymorphic messenger config path
-  * `Repository` currently has only one real backend (`Postgres`), so command config still uses concrete `PostgresConfig`
-  * command-level repository config should remain concrete until a second repository backend actually exists
-* worker/trigger config is now split into:
-  * nested config file structure such as `postgres.host` and `valkey.username`
-  * prefixed flat CLI flags such as `--pg-host` and `--valkey-password`
-* local rendered infra files under `build/` should currently be treated as generated output rather than source-of-truth configuration
+`cmd/scheduler` is one concrete `schedule` trigger implementation.
 
 ## 2.3 High-Level Flow
 
 ### Party Press Release Intake
 
-1. `cron` trigger
-2. create one `PARTY + DIRECTORY_FETCH` batch in `tasks`
-3. `Scheduler` publishes those tasks
-4. `Scout` crawls press release directory pages
-5. persist directory-page briefs into `candidates`
-6. emit `page_fetch` messages
-7. fetch full press release pages
-8. persist full texts into `contents`
+```
+cron
+ └─► CreateTask(PARTY + DIRECTORY_FETCH) in tasks
+      └─► scheduler-slow claims → publishes TaskSignal → [prism.task]
+           └─► Discovery Worker: Scout crawls party directory pages
+                └─► candidates (PARTY) persisted
+                     └─► CreateTask(PARTY + PAGE_FETCH) in tasks
+                          └─► scheduler-fast claims → publishes TaskSignal → [prism.task]
+                               └─► Collector Worker: fetches full press release
+                                    └─► contents (PARTY) persisted
+```
 
-### Discovery Keyword Generation
+### Discovery Keyword Generation (Planner — automatic)
 
-1. one `resource` trigger observes that the current PARTY batch has finished
-2. publish one planner-facing completion signal such as `batch.completed`
-3. `Planner` receives that signal
-4. load all party press release `contents` associated with that batch
-5. request the LLM to extract short recall-oriented keyword groups
-6. create one or more `MEDIA + KEYWORD_SEARCH` tasks
-7. persist extraction outputs into `content_extractions` when analysis persistence is enabled
+```
+cmd/trigger/batch detects completed PARTY batch
+ └─► publishes BatchCompletedSignal → [prism.batch.completed]
+      └─► cmd/worker/planner: loads batch contents
+           └─► LLM extracts keyword phrases
+                └─► CreateTask(MEDIA + KEYWORD_SEARCH) per phrase per MEDIA source
+                     └─► scheduler-slow claims → publishes TaskSignal → [prism.task]
+                          └─► Discovery Worker: Scout calls search API
+                               └─► candidates (MEDIA) persisted
+```
 
-### Brief Discovery
+**Note:** KEYWORD_SEARCH tasks and the MEDIA candidates pool are built entirely by the background pipeline. Users do not trigger this step.
 
-1. scheduler trigger
+### User-Driven Article Fetch
+
+```
+User queries candidates table by keyword/date/source
+ └─► returns candidate list (JSON)
+      └─► User selects candidate_id list
+           └─► system CreateTask(MEDIA + PAGE_FETCH) per selected candidate
+                └─► scheduler-fast claims → publishes TaskSignal → [prism.task]
+                     └─► Collector Worker: fetches full article
+                          └─► contents (MEDIA) persisted
+                               └─► User polls GET /contents/{candidate_id} → JSON
+```
+
+### Brief Discovery (KEYWORD_SEARCH execution)
+
+1. scheduler-slow trigger
 2. claim runnable `MEDIA + KEYWORD_SEARCH` tasks
 3. call search APIs such as Google or Brave with the request details stored in task `payload`
 4. persist returned article briefs into `candidates`
@@ -147,19 +169,6 @@ Current implementation status:
 2. request embeddings for full content
 3. persist vectors into `content_embeddings_gemma_2025`
 
-### Collector
-
-1. `discovery` or user selection hands off one or more candidates
-2. publish a `page_fetch` message
-3. fetch, transform, archive, and parse the selected article into `contents`
-
-### News Article Fetch
-
-1. user selection trigger
-2. resolve the selected candidate URL
-3. publish a `page_fetch` message
-4. fetch, transform, archive, and parse the selected article into `contents`
-
 ## 3. Infrastructure Mapping
 
 | Component | Local Environment | Cloud Environment (AWS) | Transfer Strategy |
@@ -175,7 +184,7 @@ Current implementation status:
 ### Phase 1: Foundation and Data Contracts
 
 * [x] 1.1 Infrastructure Deployment: Docker Compose with Postgres 18, NATS, and Valkey.
-* [x] 1.2 Interface Definitions: Fetcher, Transformer, Saver, and Parser in `internal/collector`.
+* [x] 1.2 Interface Definitions: Fetcher, Minifier, Transformer, Saver, and Parser in `internal/collector`. (`Saver` is a narrow write-only interface; full archive operations live in `internal/collector/archiver`.)
 * [x] 1.3 Utility Implementation: URL fingerprinting and Gzip/Base64 helpers.
 * [x] 1.4 Database Management: Repository abstraction (`internal/repo`) and Postgres adapter (`internal/repo/pg`).
 * [x] 1.5 Database Management: Initial migration with **uuidv7** support.
@@ -212,7 +221,16 @@ Current implementation status:
   * [x] Extractor moved under `internal/discovery/extractor`.
   * [x] Extraction I/O contracts in `internal/model/extraction.go`.
   * [x] Focused `internal/llm` unit tests.
-* [ ] 2.4 Discovery Worker:
+* [x] 2.3 Scheduler Enhancement (PAGE_FETCH support):
+  * [x] Add `--kinds` filter to `ClaimTasks` query (`AND kind = ANY($kinds::task_kind[])`).
+  * [x] Add `--kinds` flag to scheduler config.
+  * [x] Add `PAGE_FETCH` back to `task_kind` ENUM and `uq_tasks_active_page_fetch` dedup index on `(kind, url)` WHERE active.
+  * [x] Add `scheduler-fast` and `scheduler-slow` Taskfile entries.
+  * [x] Add source-type priority split: MEDIA PAGE_FETCH claimed first (user-waiting), PARTY fills remainder via two-step ClaimTasks.
+  * [x] Add `source_types` optional filter to `ClaimTasks`; add `ReleaseTasks :exec` for over-claim release.
+  * [x] Add in-memory token-bucket rate limiter (`InMemoryRateLimiter`) with per-source config (`assets/ratelimits/scheduler.yaml`).
+  * [x] Refactor free functions into `Scheduler` struct methods; dispatch tests updated.
+* [x] 2.4 Discovery Worker (KEYWORD_SEARCH execution path):
   * [x] Implement `cmd/worker/discovery`.
   * [x] Add command-level config and handler tests for `cmd/worker/discovery`.
   * [x] Route `PARTY + DIRECTORY_FETCH` tasks by `source_type` / `base_url`.
@@ -223,28 +241,44 @@ Current implementation status:
   * [x] Establish centralized scout config schema with `version` and YAML/JSON-compatible tags.
   * [x] Implement scout config repository and factory for `html`, `rss`, `atom`, and `custom` scouts.
   * [x] Consolidate scout definitions into a single `scouts.yaml` config document.
-  * [x] Verify current scout fixtures:
-    * [x] DPP HTML directory page
-    * [x] TPP HTML directory page
-    * [x] CNA RSS feed
-    * [x] TTV RSS feed
-    * [x] PTS Atom feed
-    * [x] KMT Atom feed
-    * [x] Yahoo embedded-JSON page
-  * [x] Implement config-driven backfiller that reuses scouts + a generic `IndexPager` (`cmd/backfiller` with `sources.*`, `--source`, `--until`).
+  * [x] Verify current scout fixtures (DPP, TPP, CNA, TTV, PTS, KMT, Yahoo).
+  * [x] Implement config-driven backfiller that reuses scouts + a generic `IndexPager`.
   * [x] Add `CandidateSink` contract and first persistence implementation for discovered briefs.
-  * [x] Pass `SourceID`, `BatchID`, and `IngestionMethod=DIRECTORY` through the backfiller path into `CandidateSinkRequest`.
-  * [x] Use `base_url` in backfiller source config and confirm it against scout host config before execution.
-  * [ ] Load scout instances from runtime app config instead of package-local test config.
   * [x] Consume runnable `tasks`.
   * [x] Persist discovered article briefs into `candidates` from `cmd/worker/discovery`.
-  * [x] Emit `page_fetch` messages after candidate persistence for PARTY discovery.
-  * [ ] Integrate at least one media search provider.
-  * [x] Establish internal/discovery/planner with tests for seed-content extraction and MEDIA task creation.
+  * [x] Replace direct `prism.page_fetch` MQ publish with `CreateTask(PAGE_FETCH, PARTY)` after PARTY candidate persistence.
+  * [x] Remove `PageFetchSignal` and `PageFetchTopic` from `internal/message` once Collector Worker uses `prism.task`.
+  * [x] Load scout instances from runtime app config instead of package-local test config.
+  * [x] Establish `internal/discovery/planner` with tests for seed-content extraction and MEDIA task creation.
   * [x] Connect planner to a concrete executable worker / trigger path (`cmd/worker/planner`).
-* [ ] 2.5 Candidate Promotion:
-  * [ ] Fetch selected candidates into full `contents`.
-  * [ ] Avoid refetch when content already exists by URL or candidate ID.
+  * [x] Seed `brave` source row in `000003_seed_sources.up.sql` (`MEDIA`, `https://api.search.brave.com`).
+  * [x] Implement `internal/discovery/search/brave/client.go` — `SearchClient` calling Brave News Search API (POST `/res/v1/news/search`).
+  * [x] Add `searchClients map[string]discovery.SearchClient` to discovery `Handler`; update `NewHandler` signature.
+  * [x] Add `handleKeywordSearch()` to handler: decode `MediaTaskPayload{Query, Site}` from `sig.Payload`, call client, sink with `IngestionMethod=SEARCH`.
+  * [x] Expand `process()` routing: `KEYWORD_SEARCH + MEDIA` → `handleKeywordSearch()`; keep `DIRECTORY_FETCH + PARTY` path unchanged.
+  * [x] Add `--brave-api-key` flag to discovery worker config; wire `BraveClient` into handler in `main.go`.
+  * [x] Add KEYWORD_SEARCH handler tests: happy path with mock `SearchClient`, missing client error path.
+* [ ] 2.5 Collector Worker (`cmd/worker/collector`):
+  * [x] Subscribe to `prism.task`, filter `kind=PAGE_FETCH`.
+  * [x] Implement F→M→T→(S||P) pipeline with `Dispatcher` struct (`internal/collector/dispatcher.go`).
+  * [x] Implement `Minifier` interface and `HTMLMinifier` (`internal/collector/minifier/html.go`).
+  * [x] Implement `NoOpTransformer` placeholder (`internal/collector/transformer/noop.go`).
+  * [x] Implement host-aware `Parser` registry with HTML + JSON-LD composite parsers.
+  * [x] `html.RuleConfig` uses slice fields `Title/Author/Date/Content []string`; `DateLayouts` at `ParserConfig` top level.
+  * [x] `parser/config/parsers.yaml` defines per-host parser rules (DPP, TPP, Yahoo).
+  * [x] JSON-LD extraction via regex (not goquery); handles multi-block and `@graph` structures.
+  * [x] LLM parser (`parser/llm`) generates `ToConfigSnippet()` YAML for human review; no automatic promotion to registry.
+  * [x] Prompt updated to `assets/prompts/collector/article_parser.md` (primary: extract content; secondary: record CSS selectors).
+  * [x] Avoid refetch when content already exists by URL or candidate ID (`GetContentByCandidateID` + `GetContentByURL` checks).
+  * [x] Handle PARTY PAGE_FETCH (automatic) and MEDIA PAGE_FETCH (user-triggered) via same worker; `sourceTypeToContentType()` maps to `PARTY_RELEASE` / `ARTICLE`.
+  * [x] Wire error Saver for Minify failures: `errorSaver collector.Saver` added to Handler; `saveOnMinifyError()` archives raw content with `stage:"raw"` metadata; `--archive-dir` flag enables it.
+  * [x] Refactor `internal/collector/saver/` + `internal/collector/fetcher/recover.go` → `internal/collector/archiver/`: `Archiver` interface (embeds `collector.Saver`, plus Load / Scan / Remove), `LocalArchiver` (file://), `S3Archiver` stub (s3://), `ParseURI` factory. `saver/` and `fetcher/recover.go` deleted.
+  * [ ] Implement `cmd/recover` operator CLI: `status` / `list` / `run` / `clean` subcommands using `archiver.Archiver`; `--archive` flag accepts URI (`file://` or `s3://`); `--dry-run`, `--since`, `--until`, `--limit`, `--trace-id`.
+  * [ ] Promote `LocalArchiver` → `S3Archiver` for production; wire archive publisher.
+* [ ] 2.6 User-Facing Candidate Query API:
+  * [ ] `GET /candidates` — query candidates by keyword, source, date range; returns JSON.
+  * [ ] `POST /page_fetch` — accepts `candidate_id` list, creates `PAGE_FETCH` tasks; returns task IDs.
+  * [ ] `GET /contents/{candidate_id}` — returns content if fetched, 404 if pending.
 
 ### Phase 3: Analysis Assets
 
@@ -307,6 +341,11 @@ Current implementation status:
 * Keyword extraction and query generation belong to discovery, because they create the next wave of discovery tasks.
 * Full article fetch/transform/save/parse belongs to the collector side of the system, not discovery.
 * Discovery should remain cheap, broad, and replaceable.
+* **KEYWORD_SEARCH tasks are always system-generated by Planner.** Users never trigger keyword searches. The MEDIA candidates pool is built proactively by the background pipeline.
+* **Users interact with the system only at two points:** (1) querying existing `candidates` to find relevant articles, and (2) selecting which candidates to promote to full `contents` via PAGE_FETCH.
+* **PAGE_FETCH has two distinct triggers:** PARTY press releases are fetched automatically by the Discovery Worker after candidate persistence; MEDIA articles are fetched only on explicit user selection. Both go through the `tasks` table and `scheduler-fast`.
+* `prism.page_fetch` topic and `PageFetchSignal` are deprecated in favour of `PAGE_FETCH` tasks dispatched via `prism.task`. Collector Worker subscribes to `prism.task` and filters by `kind=PAGE_FETCH`.
+* Two scheduler instances share one binary: `scheduler-slow` handles `DIRECTORY_FETCH` and `KEYWORD_SEARCH` (60s poll); `scheduler-fast` handles `PAGE_FETCH` (3s poll). Rate limiting for PAGE_FETCH uses Valkey key `rate_limit:{source_abbr}`.
 * `scheduler` should be treated as one `schedule` trigger implementation, not as the generic name for all orchestration.
 * Prism should distinguish at least three trigger classes:
   * `schedule` for time-based activation
@@ -319,23 +358,42 @@ Current implementation status:
 * `Planner` creates MEDIA tasks after one PARTY batch completes.
 * `batch_id` should exist in both persisted task rows and MQ messages.
 * Historical backfill runs should also generate one explicit `BatchID`, created in `cmd/backfiller` and carried through sink requests.
-* `SourceID` in backfiller config is expected to match the DB `sources.id`, but `base_url` is the more stable runtime identity and should be confirmed against scout host config before execution.
+* `sources.abbr` is the PRIMARY KEY of the `sources` table (Pattern 1 / natural key). All FK references in `tasks`, `candidates`, and `contents` use `source_abbr VARCHAR(16)`. Integer surrogate IDs no longer exist. Backfiller config uses the map key (YAML key = abbr) as the source identity; no `source_id` field.
 * Backfill and daily directory discovery currently share the same ingestion method: `DIRECTORY`.
 * Semantic extraction and clustering are still useful, but they belong to the analysis side of the system.
 * `fingerprint` is a dedup key, not a first-class discovery table.
+* `payload_hash` on `tasks` is SHA-256(canonical JSON payload), used for KEYWORD_SEARCH dedup via `uq_tasks_active_payload`. PAGE_FETCH dedup uses URL via `uq_tasks_active_page_fetch`.
 * Prompt identity is persisted independently in `prompts`.
 * Schema metadata such as schema name and schema version are contract metadata, not ad hoc extractor state.
 * Repository boundaries are worker-oriented rather than table-oriented.
 * Read-side contracts and write-side params are intentionally separated inside `internal/repo`.
 * Validation tags in repo params should remain conservative until worker flows are stable.
+* Domain-level enum string constants (`TaskKind*`, `SourceType*`, `IngestionMethod*`) belong in `internal/repo/constants.go` as plain `string` constants. The SQLC-generated typed versions (`pg.TaskKind`, `pg.SourceType`) are for DB-driver scanning only and must not leak outside `internal/repo/pg/`. Other packages import from `internal/repo`, not from `internal/repo/pg`.
 * `Backfiller` should keep only orchestration plus a narrow discovery-facing sink contract; concrete sink implementations should remain discovery-specific until repeated patterns prove a shared sink framework is worthwhile.
 * Constructor-style dependency checks should prefer one package-local `ErrParamMissing` sentinel with wrapped field names; full-struct validation should be reserved for one-shot config loads.
 * Tracing should be provider-centered, not tracer-centered: the process should initialize one shared OTel tracer provider, and components should obtain named tracers from it.
+* **Collector pipeline is F→M→T→(S||P):** Minify (M) and Transform (T) are separate pipeline stages. Minify strips DOM noise and is idempotent. Transform handles semantic normalization (currently a no-op for HTML). The fork point for S is after Minify, not after Transform.
+* **`collector.Saver` is a narrow write-only interface** (`Save` only). The full archive abstraction lives in `internal/collector/archiver/`. `Archiver` (Save / Load / Scan / Remove) implements `collector.Saver`; the Handler accepts the narrower `collector.Saver` for `errorSaver` — it only needs to call `Save`.
+* **`internal/collector/saver/` will be deleted** once `internal/collector/archiver/` is implemented. `LocalArchiver` replaces `LocalSaver`; `S3Archiver` replaces the `S3Saver` stub. The `Archiver` URI scheme: `file:///path` for local, `s3://bucket/prefix` for S3.
+* **Error queue is a Saver, not an MQ topic.** Raw HTML is 100–500 KB, which exceeds SQS 256 KB limits. The error handler writes directly to SeaweedFS/S3 via `Archiver.Save`.
+* **R (Recoverer) is `cmd/recover`, a standalone operator CLI** — not part of the collector worker daemon. Recovery is a manual operation triggered after a bug fix. Uses `Archiver.Scan` to find failed archives and `Archiver.Load` to read them; replays through Minify→Transform→Parse→DB. Minify idempotency makes both raw and minified archives safe to replay through the same path.
+* **`cmd/recover` subcommands** mirror `migrate`-style ergonomics: `status` (summary, no DB required), `list` (details, no DB required), `run` (replay with `--dry-run`, `--since`, `--until`, `--limit`, `--trace-id`), `clean` (remove recovered archives, requires DB to verify).
+* **`html.RuleConfig` uses short field names:** `Title`, `Author`, `Date`, `Content` (all `[]string`). The `html:` YAML nesting provides context, so the longer `TitleSelectors`/`AuthorSelectors` etc. names are redundant. `DateLayouts []string` is at the `ParserConfig` top level (site-wide property), not inside `RuleConfig`.
+* **LLM parser generates config snippets for human review only.** `LLMArticleContent.ToConfigSnippet(host)` produces a YAML fragment suitable for pasting under `parsers:` in `parsers.yaml` after an engineer verifies selector stability. There is no automatic promotion path from LLM output to the parser registry.
+* **JSON-LD extraction uses regex, not goquery.** The pattern `(?is)<script[^>]+type=["']application/ld\+json["'][^>]*>([\s\S]*?)</script>` handles multi-block pages and arbitrary attribute ordering. The `@graph` array is unwrapped to extract individual typed objects.
+* **`article_parser.md` (renamed from `selector_builder.md`):** The LLM prompt's primary task is accurate article content extraction; selector recording is a secondary by-product for future rule configuration. Do not frame the LLM as a "selector builder."
+* **CSS multi-selector preserves DOM order:** For content that spans interleaved elements (e.g. `<p class="a">` mixed with `<p class="b">`), use a single comma-separated selector `"p.a, p.b"` as one array entry, not separate entries `["p.a", "p.b"]`. Separate entries break reading order because each selector is applied independently.
 
 ## 7. Immediate Next Steps
 
-1. Implement planner-side keyword extraction and MEDIA task creation so discovery is complete through `candidates` plus follow-up query generation.
-2. Add one concrete `resource` trigger path for planner, so a completed PARTY batch can emit `batch.completed` and actually create MEDIA tasks.
-3. Build the collector-side `page_fetch` consumer / pipeline worker that turns selected or promoted candidates into full articles.
-4. Add one MEDIA provider path to discovery worker after the PARTY path and planner trigger path are stable.
-5. After collector intake is stable, start candidate/content embedding workers.
+1. ~~Centralize domain enum constants into `internal/repo/constants.go`.~~ (Done)
+2. ~~Add `PAGE_FETCH` to `task_kind` ENUM; add dedup index; add `--kinds` filter.~~ (Done)
+3. ~~Update Discovery Worker: replace direct `prism.page_fetch` publish with `CreateTask(PAGE_FETCH, PARTY)`.~~ (Done)
+4. ~~Add scheduler-fast/slow priority split, rate limiting, over-claim+release pattern.~~ (Done)
+5. ~~Implement Collector Worker F→M→T→(S||P) pipeline; avoid-refetch; PARTY/MEDIA routing.~~ (Done)
+6. ~~Implement KEYWORD_SEARCH execution path (2.4): Brave client, handler routing, config wiring, handler tests.~~ (Done)
+7. ~~Wire error Saver in Collector Worker (`saveOnMinifyError` + `--archive-dir`).~~ (Done)
+8. ~~Refactor to `internal/collector/archiver/`: `Archiver` interface + `LocalArchiver` + `S3Archiver` stub + `ParseURI`; delete `saver/` and `fetcher/recover.go`.~~ (Done)
+9. **Implement `cmd/recover`:** `status` / `list` / `run` / `clean` subcommands.
+10. **Implement User-Facing Candidate Query API (2.6):** `GET /candidates`, `POST /page_fetch`, `GET /contents/{candidate_id}`.
+11. After collector intake is stable, start candidate/content embedding workers.

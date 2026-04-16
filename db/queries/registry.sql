@@ -1,9 +1,3 @@
--- name: GetSourceByID :one
-SELECT *
-FROM sources
-WHERE id = $1
-LIMIT 1;
-
 -- name: GetSourceByAbbr :one
 SELECT *
 FROM sources

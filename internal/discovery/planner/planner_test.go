@@ -52,8 +52,8 @@ func TestPlannerPlanCreatesMediaTasksFromUniquePhrases(t *testing.T) {
 		BatchID: batchID,
 		TraceID: "trace-123",
 		Targets: []discovery.PlannerTarget{
-			{SourceID: 10, URL: "https://example.com/search"},
-			{SourceID: 20, URL: "https://example.org/search", Site: "news.example.org"},
+			{SourceAbbr: "cna", URL: "https://example.com/search"},
+			{SourceAbbr: "pts", URL: "https://example.org/search", Site: "news.example.org"},
 		},
 	})
 	require.NoError(t, err)
@@ -64,8 +64,8 @@ func TestPlannerPlanCreatesMediaTasksFromUniquePhrases(t *testing.T) {
 	require.Len(t, created, 4)
 	for _, arg := range created {
 		require.Equal(t, batchID, arg.BatchID)
-		require.Equal(t, TaskKindKeywordSearch, arg.Kind)
-		require.Equal(t, SourceTypeMedia, arg.SourceType)
+		require.Equal(t, repo.TaskKindKeywordSearch, arg.Kind)
+		require.Equal(t, repo.SourceTypeMedia, arg.SourceType)
 		require.Equal(t, "trace-123", arg.TraceID)
 		require.NotEmpty(t, arg.Payload)
 	}
@@ -85,7 +85,7 @@ func TestPlannerPlanReturnsNoSeedContents(t *testing.T) {
 	_, err = p.Plan(context.Background(), discovery.PlannerRequest{
 		BatchID: batchID,
 		TraceID: "trace-123",
-		Targets: []discovery.PlannerTarget{{SourceID: 1, URL: "https://example.com/search"}},
+		Targets: []discovery.PlannerTarget{{SourceAbbr: "cna", URL: "https://example.com/search"}},
 	})
 	require.ErrorIs(t, err, ErrNoSeedContents)
 }

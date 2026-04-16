@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/ChiaYuChang/prism/internal/discovery"
+	"github.com/ChiaYuChang/prism/internal/discovery/search/brave"
 	scoutconfig "github.com/ChiaYuChang/prism/internal/discovery/scout/config"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/infra"
@@ -97,24 +99,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	pageFetchPublisher, err := message.NewWatermillPageFetchPublisher(msgr)
-	if err != nil {
-		logger.Error("failed to build page fetch publisher", "error", err)
-		monitor.SetStatus(obs.LevelError, "Failed to build page fetch publisher")
-		os.Exit(1)
-	}
-
-	sink, err := discoverysink.NewPersistingCandidateSink(logger, tracer, dbRepo.Scout(), pageFetchPublisher)
+	sink, err := discoverysink.NewPersistingCandidateSink(logger, tracer, dbRepo.Scout(), dbRepo.Tasks())
 	if err != nil {
 		logger.Error("failed to build candidate sink", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to build candidate sink")
 		os.Exit(1)
 	}
 
+	searchClients := buildSearchClients(config, &http.Client{Timeout: config.HTTPTimeout}, logger)
+
 	handler, err := NewHandler(
 		logger,
 		tracer,
 		scoutRegistry,
+		searchClients,
 		sink,
 		dbRepo.Scout(),
 		dbRepo.Scheduler(),
@@ -164,4 +162,15 @@ func main() {
 			msg.Nack()
 		}
 	}
+}
+
+func buildSearchClients(config *Config, httpClient *http.Client, logger *slog.Logger) map[string]discovery.SearchClient {
+	clients := map[string]discovery.SearchClient{}
+
+	if config.BraveAPIKey != "" {
+		clients["brave"] = brave.NewClient(httpClient, config.BraveAPIKey, brave.DefaultOptions())
+		logger.Info("brave search client enabled")
+	}
+
+	return clients
 }

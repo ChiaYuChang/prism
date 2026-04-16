@@ -9,7 +9,7 @@ import (
 type CreateCandidateParams struct {
 	BatchID         uuid.UUID  `validate:"omitempty"`
 	Fingerprint     string     `validate:"required"`
-	SourceID        int32      `validate:"required"`
+	SourceAbbr      string     `validate:"required"`
 	Title           string     `validate:"required"`
 	URL             string     `validate:"required,url"`
 	Description     *string    `validate:"omitempty"`
@@ -25,10 +25,11 @@ type CreateTaskParams struct {
 	BatchID    uuid.UUID      `validate:"required"`
 	Kind       string         `validate:"required"`
 	SourceType string         `validate:"required"`
-	SourceID   int32          `validate:"required"`
+	SourceAbbr string         `validate:"required"`
 	URL        string         `validate:"required,url"`
 	Payload     []byte         `validate:"omitempty"`
 	PayloadHash *string        `validate:"omitempty,len=64"`
+	Meta        []byte         `validate:"omitempty"`
 	TraceID     string         `validate:"required"`
 	Frequency  *time.Duration `validate:"omitempty"`
 	NextRunAt  *time.Time     `validate:"omitempty"`
@@ -36,7 +37,7 @@ type CreateTaskParams struct {
 }
 
 type ExtendActiveTaskExpiryParams struct {
-	SourceID    int32      `validate:"required"`
+	SourceAbbr  string     `validate:"required"`
 	Kind        string     `validate:"required"`
 	PayloadHash string     `validate:"required,len=64"`
 	ExpiresAt   *time.Time `validate:"omitempty"`
@@ -45,7 +46,7 @@ type ExtendActiveTaskExpiryParams struct {
 type CreateContentParams struct {
 	BatchID     uuid.UUID  `validate:"omitempty"`
 	Type        string     `validate:"required"`
-	SourceID    int32      `validate:"required"`
+	SourceAbbr  string     `validate:"required"`
 	CandidateID uuid.UUID  `validate:"omitempty"`
 	URL         string     `validate:"required,url"`
 	Title       string     `validate:"required"`

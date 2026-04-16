@@ -237,53 +237,53 @@ func (_c *MockScout_GetCandidateByFingerprint_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
-// GetSourceByID provides a mock function for the type MockScout
-func (_mock *MockScout) GetSourceByID(ctx context.Context, id int32) (repo.Source, error) {
-	ret := _mock.Called(ctx, id)
+// GetSourceByAbbr provides a mock function for the type MockScout
+func (_mock *MockScout) GetSourceByAbbr(ctx context.Context, abbr string) (repo.Source, error) {
+	ret := _mock.Called(ctx, abbr)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetSourceByID")
+		panic("no return value specified for GetSourceByAbbr")
 	}
 
 	var r0 repo.Source
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) (repo.Source, error)); ok {
-		return returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (repo.Source, error)); ok {
+		return returnFunc(ctx, abbr)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) repo.Source); ok {
-		r0 = returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) repo.Source); ok {
+		r0 = returnFunc(ctx, abbr)
 	} else {
 		r0 = ret.Get(0).(repo.Source)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int32) error); ok {
-		r1 = returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, abbr)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockScout_GetSourceByID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSourceByID'
-type MockScout_GetSourceByID_Call struct {
+// MockScout_GetSourceByAbbr_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSourceByAbbr'
+type MockScout_GetSourceByAbbr_Call struct {
 	*mock.Call
 }
 
-// GetSourceByID is a helper method to define mock.On call
+// GetSourceByAbbr is a helper method to define mock.On call
 //   - ctx context.Context
-//   - id int32
-func (_e *MockScout_Expecter) GetSourceByID(ctx interface{}, id interface{}) *MockScout_GetSourceByID_Call {
-	return &MockScout_GetSourceByID_Call{Call: _e.mock.On("GetSourceByID", ctx, id)}
+//   - abbr string
+func (_e *MockScout_Expecter) GetSourceByAbbr(ctx interface{}, abbr interface{}) *MockScout_GetSourceByAbbr_Call {
+	return &MockScout_GetSourceByAbbr_Call{Call: _e.mock.On("GetSourceByAbbr", ctx, abbr)}
 }
 
-func (_c *MockScout_GetSourceByID_Call) Run(run func(ctx context.Context, id int32)) *MockScout_GetSourceByID_Call {
+func (_c *MockScout_GetSourceByAbbr_Call) Run(run func(ctx context.Context, abbr string)) *MockScout_GetSourceByAbbr_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 int32
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].(int32)
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
@@ -293,12 +293,12 @@ func (_c *MockScout_GetSourceByID_Call) Run(run func(ctx context.Context, id int
 	return _c
 }
 
-func (_c *MockScout_GetSourceByID_Call) Return(source repo.Source, err error) *MockScout_GetSourceByID_Call {
+func (_c *MockScout_GetSourceByAbbr_Call) Return(source repo.Source, err error) *MockScout_GetSourceByAbbr_Call {
 	_c.Call.Return(source, err)
 	return _c
 }
 
-func (_c *MockScout_GetSourceByID_Call) RunAndReturn(run func(ctx context.Context, id int32) (repo.Source, error)) *MockScout_GetSourceByID_Call {
+func (_c *MockScout_GetSourceByAbbr_Call) RunAndReturn(run func(ctx context.Context, abbr string) (repo.Source, error)) *MockScout_GetSourceByAbbr_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -14,7 +14,7 @@ LIMIT 1;
 INSERT INTO candidates (
     batch_id,
     fingerprint,
-    source_id,
+    source_abbr,
     title,
     url,
     description,
@@ -25,7 +25,7 @@ INSERT INTO candidates (
 ) VALUES (
     sqlc.narg(batch_id),
     sqlc.arg(fingerprint),
-    sqlc.arg(source_id),
+    sqlc.arg(source_abbr),
     sqlc.arg(title),
     sqlc.arg(url),
     sqlc.narg(description),
@@ -40,7 +40,7 @@ RETURNING *;
 INSERT INTO candidates (
     batch_id,
     fingerprint,
-    source_id,
+    source_abbr,
     title,
     url,
     description,
@@ -51,7 +51,7 @@ INSERT INTO candidates (
 ) VALUES (
     sqlc.narg(batch_id),
     sqlc.arg(fingerprint),
-    sqlc.arg(source_id),
+    sqlc.arg(source_abbr),
     sqlc.arg(title),
     sqlc.arg(url),
     sqlc.narg(description),

@@ -25,20 +25,36 @@ WHERE id IN (
             status = 'PENDING'
         AND next_run_at <= NOW()
         AND (expires_at IS NULL OR expires_at > NOW())
+        AND kind = ANY($1::task_kind[])
+        AND (
+            COALESCE(array_length($2::source_type[], 1), 0) = 0
+            OR source_type = ANY($2::source_type[])
+        )
     ) OR (
             status = 'RUNNING'
         AND last_run_at < NOW() - INTERVAL '30 minutes'
         AND (expires_at IS NULL OR expires_at > NOW())
+        AND kind = ANY($1::task_kind[])
+        AND (
+            COALESCE(array_length($2::source_type[], 1), 0) = 0
+            OR source_type = ANY($2::source_type[])
+        )
     )
     ORDER BY next_run_at ASC
-    LIMIT $1
+    LIMIT $3
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+RETURNING id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 `
 
-func (q *Queries) ClaimTasks(ctx context.Context, limit int32) ([]Task, error) {
-	rows, err := q.db.Query(ctx, claimTasks, limit)
+type ClaimTasksParams struct {
+	Kinds       []TaskKind   `db:"kinds" json:"kinds"`
+	SourceTypes []SourceType `db:"source_types" json:"source_types"`
+	MaxTasks    int32        `db:"max_tasks" json:"max_tasks"`
+}
+
+func (q *Queries) ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task, error) {
+	rows, err := q.db.Query(ctx, claimTasks, arg.Kinds, arg.SourceTypes, arg.MaxTasks)
 	if err != nil {
 		return nil, err
 	}
@@ -51,10 +67,11 @@ func (q *Queries) ClaimTasks(ctx context.Context, limit int32) ([]Task, error) {
 			&i.BatchID,
 			&i.Kind,
 			&i.SourceType,
-			&i.SourceID,
+			&i.SourceAbbr,
 			&i.Url,
 			&i.Payload,
 			&i.PayloadHash,
+			&i.Meta,
 			&i.TraceID,
 			&i.Frequency,
 			&i.NextRunAt,
@@ -104,10 +121,11 @@ INSERT INTO tasks (
     batch_id,
     kind,
     source_type,
-    source_id,
+    source_abbr,
     url,
     payload,
     payload_hash,
+    meta,
     trace_id,
     frequency,
     next_run_at,
@@ -122,20 +140,22 @@ INSERT INTO tasks (
     $7,
     $8,
     $9,
-    COALESCE($10, NOW()),
-    $11
+    $10,
+    COALESCE($11, NOW()),
+    $12
 )
-RETURNING id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+RETURNING id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 `
 
 type CreateTaskParams struct {
 	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
 	Kind        TaskKind           `db:"kind" json:"kind"`
 	SourceType  SourceType         `db:"source_type" json:"source_type"`
-	SourceID    int32              `db:"source_id" json:"source_id"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
 	Url         string             `db:"url" json:"url"`
 	Payload     []byte             `db:"payload" json:"payload"`
 	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta        []byte             `db:"meta" json:"meta"`
 	TraceID     string             `db:"trace_id" json:"trace_id"`
 	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
 	NextRunAt   interface{}        `db:"next_run_at" json:"next_run_at"`
@@ -147,10 +167,11 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.BatchID,
 		arg.Kind,
 		arg.SourceType,
-		arg.SourceID,
+		arg.SourceAbbr,
 		arg.Url,
 		arg.Payload,
 		arg.PayloadHash,
+		arg.Meta,
 		arg.TraceID,
 		arg.Frequency,
 		arg.NextRunAt,
@@ -162,10 +183,11 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.BatchID,
 		&i.Kind,
 		&i.SourceType,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.Url,
 		&i.Payload,
 		&i.PayloadHash,
+		&i.Meta,
 		&i.TraceID,
 		&i.Frequency,
 		&i.NextRunAt,
@@ -183,7 +205,7 @@ const extendActiveTaskExpiry = `-- name: ExtendActiveTaskExpiry :exec
 UPDATE tasks
 SET expires_at = $1,
     updated_at = NOW()
-WHERE source_id    = $2
+WHERE source_abbr    = $2
   AND kind         = $3
   AND payload_hash = $4
   AND status IN ('PENDING', 'RUNNING')
@@ -191,7 +213,7 @@ WHERE source_id    = $2
 
 type ExtendActiveTaskExpiryParams struct {
 	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	SourceID    int32              `db:"source_id" json:"source_id"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
 	Kind        TaskKind           `db:"kind" json:"kind"`
 	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
 }
@@ -201,7 +223,7 @@ type ExtendActiveTaskExpiryParams struct {
 func (q *Queries) ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error {
 	_, err := q.db.Exec(ctx, extendActiveTaskExpiry,
 		arg.ExpiresAt,
-		arg.SourceID,
+		arg.SourceAbbr,
 		arg.Kind,
 		arg.PayloadHash,
 	)
@@ -221,7 +243,7 @@ func (q *Queries) FailTask(ctx context.Context, id uuid.UUID) error {
 }
 
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 FROM tasks
 WHERE id = $1
 LIMIT 1
@@ -235,10 +257,11 @@ func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.BatchID,
 		&i.Kind,
 		&i.SourceType,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.Url,
 		&i.Payload,
 		&i.PayloadHash,
+		&i.Meta,
 		&i.TraceID,
 		&i.Frequency,
 		&i.NextRunAt,
@@ -253,7 +276,7 @@ func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error) {
 }
 
 const listRunnableTasks = `-- name: ListRunnableTasks :many
-SELECT id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 FROM tasks
 WHERE (
         status = 'PENDING'
@@ -282,10 +305,11 @@ func (q *Queries) ListRunnableTasks(ctx context.Context, limit int32) ([]Task, e
 			&i.BatchID,
 			&i.Kind,
 			&i.SourceType,
-			&i.SourceID,
+			&i.SourceAbbr,
 			&i.Url,
 			&i.Payload,
 			&i.PayloadHash,
+			&i.Meta,
 			&i.TraceID,
 			&i.Frequency,
 			&i.NextRunAt,
@@ -307,7 +331,7 @@ func (q *Queries) ListRunnableTasks(ctx context.Context, limit int32) ([]Task, e
 }
 
 const listTasksByBatchID = `-- name: ListTasksByBatchID :many
-SELECT id, batch_id, kind, source_type, source_id, url, payload, payload_hash, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 FROM tasks
 WHERE batch_id = $1
 ORDER BY created_at ASC, next_run_at ASC
@@ -327,10 +351,11 @@ func (q *Queries) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 			&i.BatchID,
 			&i.Kind,
 			&i.SourceType,
-			&i.SourceID,
+			&i.SourceAbbr,
 			&i.Url,
 			&i.Payload,
 			&i.PayloadHash,
+			&i.Meta,
 			&i.TraceID,
 			&i.Frequency,
 			&i.NextRunAt,
@@ -349,4 +374,22 @@ func (q *Queries) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const releaseTasks = `-- name: ReleaseTasks :exec
+UPDATE tasks
+SET status      = 'PENDING',
+    retry_count = GREATEST(retry_count - 1, 0),
+    next_run_at = NOW() + INTERVAL '3 seconds',
+    updated_at  = NOW()
+WHERE id = ANY($1::uuid[])
+  AND status = 'RUNNING'
+`
+
+// Resets RUNNING tasks back to PENDING in bulk, undoing the ClaimTasks
+// retry_count increment. Used when dispatch is skipped (e.g. rate-limited)
+// so tasks are retried on the next scheduler tick without consuming retry slots.
+func (q *Queries) ReleaseTasks(ctx context.Context, ids []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, releaseTasks, ids)
+	return err
 }

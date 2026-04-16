@@ -16,8 +16,7 @@ func TestConfig_RoundTrip_Stream(t *testing.T) {
 		Backfiller: config.BackfillSection{
 			Sources: map[string]config.SourceConfig{
 				"abc": {
-					SourceID: 1,
-					Format:   "html",
+					Format:  "html",
 					BaseURL:  "https://example.com",
 					Pager: config.PagerConfig{
 						Type:        "index",
@@ -64,8 +63,7 @@ func TestConfig_RoundTrip_File(t *testing.T) {
 		Backfiller: config.BackfillSection{
 			Sources: map[string]config.SourceConfig{
 				"test-source": {
-					SourceID: 99,
-					Format:   "rss",
+					Format:  "rss",
 					BaseURL:  "https://test.com",
 					Pager: config.PagerConfig{
 						Type:        "index",
@@ -90,7 +88,6 @@ func TestConfig_RoundTrip_File(t *testing.T) {
 	require.NoError(t, err)
 	spec, ok := repoFinal.Source("test-source")
 	assert.True(t, ok)
-	assert.Equal(t, int32(99), spec.SourceID)
 	assert.Equal(t, "rss", spec.Format)
 	assert.Equal(t, "https://test.com", spec.BaseURL)
 }

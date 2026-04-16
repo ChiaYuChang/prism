@@ -26,14 +26,17 @@ type TaskSignal struct {
 	// SourceType identifies the logical source family, e.g. PARTY or MEDIA.
 	SourceType string `json:"source_type"`
 
-	// SourceID points to sources.id and lets the worker resolve source-specific behavior.
-	SourceID int32 `json:"source_id"`
+	// SourceAbbr identifies the source by its stable abbreviation (sources.abbr PK).
+	SourceAbbr string `json:"source_abbr"`
 
 	// URL is the request target for the worker.
 	URL string `json:"url"`
 
 	// Payload stores provider- or source-specific request details.
 	Payload json.RawMessage `json:"payload"`
+
+	// Meta carries task-kind-specific context for logging and observability (e.g. candidate_id for PAGE_FETCH).
+	Meta json.RawMessage `json:"meta,omitempty"`
 
 	// TraceID propagates OpenTelemetry tracing across workers.
 	TraceID string `json:"trace_id"`

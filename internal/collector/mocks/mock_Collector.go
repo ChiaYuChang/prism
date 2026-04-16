@@ -7,7 +7,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/ChiaYuChang/prism/internal/model"
+	"github.com/ChiaYuChang/prism/internal/collector"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -104,137 +104,12 @@ func (_c *MockCollector_Fetch_Call) RunAndReturn(run func(ctx context.Context, u
 	return _c
 }
 
-// Parse provides a mock function for the type MockCollector
-func (_mock *MockCollector) Parse(ctx context.Context, data string) (*model.ArticleContent, error) {
-	ret := _mock.Called(ctx, data)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Parse")
-	}
-
-	var r0 *model.ArticleContent
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*model.ArticleContent, error)); ok {
-		return returnFunc(ctx, data)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *model.ArticleContent); ok {
-		r0 = returnFunc(ctx, data)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ArticleContent)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, data)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockCollector_Parse_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Parse'
-type MockCollector_Parse_Call struct {
-	*mock.Call
-}
-
-// Parse is a helper method to define mock.On call
-//   - ctx context.Context
-//   - data string
-func (_e *MockCollector_Expecter) Parse(ctx interface{}, data interface{}) *MockCollector_Parse_Call {
-	return &MockCollector_Parse_Call{Call: _e.mock.On("Parse", ctx, data)}
-}
-
-func (_c *MockCollector_Parse_Call) Run(run func(ctx context.Context, data string)) *MockCollector_Parse_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockCollector_Parse_Call) Return(articleContent *model.ArticleContent, err error) *MockCollector_Parse_Call {
-	_c.Call.Return(articleContent, err)
-	return _c
-}
-
-func (_c *MockCollector_Parse_Call) RunAndReturn(run func(ctx context.Context, data string) (*model.ArticleContent, error)) *MockCollector_Parse_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Save provides a mock function for the type MockCollector
-func (_mock *MockCollector) Save(ctx context.Context, record model.ArchiveRecord) error {
-	ret := _mock.Called(ctx, record)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Save")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, model.ArchiveRecord) error); ok {
-		r0 = returnFunc(ctx, record)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockCollector_Save_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Save'
-type MockCollector_Save_Call struct {
-	*mock.Call
-}
-
-// Save is a helper method to define mock.On call
-//   - ctx context.Context
-//   - record model.ArchiveRecord
-func (_e *MockCollector_Expecter) Save(ctx interface{}, record interface{}) *MockCollector_Save_Call {
-	return &MockCollector_Save_Call{Call: _e.mock.On("Save", ctx, record)}
-}
-
-func (_c *MockCollector_Save_Call) Run(run func(ctx context.Context, record model.ArchiveRecord)) *MockCollector_Save_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 model.ArchiveRecord
-		if args[1] != nil {
-			arg1 = args[1].(model.ArchiveRecord)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockCollector_Save_Call) Return(err error) *MockCollector_Save_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockCollector_Save_Call) RunAndReturn(run func(ctx context.Context, record model.ArchiveRecord) error) *MockCollector_Save_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Transform provides a mock function for the type MockCollector
-func (_mock *MockCollector) Transform(ctx context.Context, raw string) (string, error) {
+// Minify provides a mock function for the type MockCollector
+func (_mock *MockCollector) Minify(ctx context.Context, raw string) (string, error) {
 	ret := _mock.Called(ctx, raw)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Transform")
+		panic("no return value specified for Minify")
 	}
 
 	var r0 string
@@ -255,6 +130,203 @@ func (_mock *MockCollector) Transform(ctx context.Context, raw string) (string, 
 	return r0, r1
 }
 
+// MockCollector_Minify_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Minify'
+type MockCollector_Minify_Call struct {
+	*mock.Call
+}
+
+// Minify is a helper method to define mock.On call
+//   - ctx context.Context
+//   - raw string
+func (_e *MockCollector_Expecter) Minify(ctx interface{}, raw interface{}) *MockCollector_Minify_Call {
+	return &MockCollector_Minify_Call{Call: _e.mock.On("Minify", ctx, raw)}
+}
+
+func (_c *MockCollector_Minify_Call) Run(run func(ctx context.Context, raw string)) *MockCollector_Minify_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCollector_Minify_Call) Return(s string, err error) *MockCollector_Minify_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *MockCollector_Minify_Call) RunAndReturn(run func(ctx context.Context, raw string) (string, error)) *MockCollector_Minify_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Parse provides a mock function for the type MockCollector
+func (_mock *MockCollector) Parse(ctx context.Context, url string, data string) (*collector.Article, error) {
+	ret := _mock.Called(ctx, url, data)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Parse")
+	}
+
+	var r0 *collector.Article
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*collector.Article, error)); ok {
+		return returnFunc(ctx, url, data)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *collector.Article); ok {
+		r0 = returnFunc(ctx, url, data)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*collector.Article)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, url, data)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockCollector_Parse_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Parse'
+type MockCollector_Parse_Call struct {
+	*mock.Call
+}
+
+// Parse is a helper method to define mock.On call
+//   - ctx context.Context
+//   - url string
+//   - data string
+func (_e *MockCollector_Expecter) Parse(ctx interface{}, url interface{}, data interface{}) *MockCollector_Parse_Call {
+	return &MockCollector_Parse_Call{Call: _e.mock.On("Parse", ctx, url, data)}
+}
+
+func (_c *MockCollector_Parse_Call) Run(run func(ctx context.Context, url string, data string)) *MockCollector_Parse_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCollector_Parse_Call) Return(article *collector.Article, err error) *MockCollector_Parse_Call {
+	_c.Call.Return(article, err)
+	return _c
+}
+
+func (_c *MockCollector_Parse_Call) RunAndReturn(run func(ctx context.Context, url string, data string) (*collector.Article, error)) *MockCollector_Parse_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Save provides a mock function for the type MockCollector
+func (_mock *MockCollector) Save(ctx context.Context, record collector.Archive) error {
+	ret := _mock.Called(ctx, record)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Save")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, collector.Archive) error); ok {
+		r0 = returnFunc(ctx, record)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockCollector_Save_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Save'
+type MockCollector_Save_Call struct {
+	*mock.Call
+}
+
+// Save is a helper method to define mock.On call
+//   - ctx context.Context
+//   - record collector.Archive
+func (_e *MockCollector_Expecter) Save(ctx interface{}, record interface{}) *MockCollector_Save_Call {
+	return &MockCollector_Save_Call{Call: _e.mock.On("Save", ctx, record)}
+}
+
+func (_c *MockCollector_Save_Call) Run(run func(ctx context.Context, record collector.Archive)) *MockCollector_Save_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 collector.Archive
+		if args[1] != nil {
+			arg1 = args[1].(collector.Archive)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockCollector_Save_Call) Return(err error) *MockCollector_Save_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockCollector_Save_Call) RunAndReturn(run func(ctx context.Context, record collector.Archive) error) *MockCollector_Save_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Transform provides a mock function for the type MockCollector
+func (_mock *MockCollector) Transform(ctx context.Context, minified string) (string, error) {
+	ret := _mock.Called(ctx, minified)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Transform")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
+		return returnFunc(ctx, minified)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = returnFunc(ctx, minified)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, minified)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
 // MockCollector_Transform_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Transform'
 type MockCollector_Transform_Call struct {
 	*mock.Call
@@ -262,12 +334,12 @@ type MockCollector_Transform_Call struct {
 
 // Transform is a helper method to define mock.On call
 //   - ctx context.Context
-//   - raw string
-func (_e *MockCollector_Expecter) Transform(ctx interface{}, raw interface{}) *MockCollector_Transform_Call {
-	return &MockCollector_Transform_Call{Call: _e.mock.On("Transform", ctx, raw)}
+//   - minified string
+func (_e *MockCollector_Expecter) Transform(ctx interface{}, minified interface{}) *MockCollector_Transform_Call {
+	return &MockCollector_Transform_Call{Call: _e.mock.On("Transform", ctx, minified)}
 }
 
-func (_c *MockCollector_Transform_Call) Run(run func(ctx context.Context, raw string)) *MockCollector_Transform_Call {
+func (_c *MockCollector_Transform_Call) Run(run func(ctx context.Context, minified string)) *MockCollector_Transform_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -290,7 +362,7 @@ func (_c *MockCollector_Transform_Call) Return(s string, err error) *MockCollect
 	return _c
 }
 
-func (_c *MockCollector_Transform_Call) RunAndReturn(run func(ctx context.Context, raw string) (string, error)) *MockCollector_Transform_Call {
+func (_c *MockCollector_Transform_Call) RunAndReturn(run func(ctx context.Context, minified string) (string, error)) *MockCollector_Transform_Call {
 	_c.Call.Return(run)
 	return _c
 }

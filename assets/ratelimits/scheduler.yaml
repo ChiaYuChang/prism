@@ -1,0 +1,40 @@
+# Scheduler rate limit config — per source_abbr token bucket settings.
+# rate:  sustained tokens per second
+# burst: bucket capacity (max instantaneous tokens)
+#
+# Rule of thumb:
+#   - Search / REST APIs (brave, google): higher rate, designed for programmatic access
+#   - HTML news sites (pts, dpp, tpp, ...): lower rate, be respectful to the server
+
+defaults:
+  rate: 1.0
+  burst: 2
+
+overrides:
+  brave:
+    rate: 5.0
+    burst: 10
+  google:
+    rate: 3.0
+    burst: 5
+  dpp:
+    rate: 0.5
+    burst: 1
+  tpp:
+    rate: 0.5
+    burst: 1
+  kmt:
+    rate: 0.5
+    burst: 1
+  pts:
+    rate: 1.0
+    burst: 2
+  cna:
+    rate: 1.0
+    burst: 2
+  ttv:
+    rate: 1.0
+    burst: 2
+  yahoo:
+    rate: 2.0
+    burst: 4

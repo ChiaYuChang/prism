@@ -159,6 +159,37 @@ tasks:
     cmds:
       - go run ./cmd/scheduler --messenger-type gochannel --interval 1m --host {{.POSTGRES_HOST}} --port {{.POSTGRES_PORT}} --user {{.POSTGRES_APP_USER}} --password "{{.POSTGRES_APP_PASSWORD}}" --db {{.POSTGRES_APP_DB}}
 
+  test:scheduler-fast:
+    desc: run scheduler-fast in test mode (PAGE_FETCH, 3s interval, MEDIA priority)
+    cmds:
+      - go run ./cmd/scheduler
+          --messenger-type gochannel
+          --kinds PAGE_FETCH
+          --lock-key prism:scheduler:PAGE_FETCH:lock
+          --interval 3s
+          --media-quota 30
+          --buffer 10
+          --rate-limit-config assets/ratelimits/scheduler.yaml
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}}
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
+          --pg-db {{.POSTGRES_APP_DB}}
+          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}"
+
+  test:scheduler-slow:
+    desc: run scheduler-slow in test mode (DIRECTORY_FETCH+KEYWORD_SEARCH, 60s interval)
+    cmds:
+      - go run ./cmd/scheduler
+          --messenger-type gochannel
+          --kinds DIRECTORY_FETCH,KEYWORD_SEARCH
+          --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock
+          --interval 60s
+          --buffer 10
+          --rate-limit-config assets/ratelimits/scheduler.yaml
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}}
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
+          --pg-db {{.POSTGRES_APP_DB}}
+          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}"
+
   test:discovery:
     desc: run discovery worker in test mode (gochannel)
     cmds:

@@ -7,7 +7,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/ChiaYuChang/prism/internal/model"
+	"github.com/ChiaYuChang/prism/internal/collector"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -39,27 +39,27 @@ func (_m *MockParser) EXPECT() *MockParser_Expecter {
 }
 
 // Parse provides a mock function for the type MockParser
-func (_mock *MockParser) Parse(ctx context.Context, data string) (*model.ArticleContent, error) {
-	ret := _mock.Called(ctx, data)
+func (_mock *MockParser) Parse(ctx context.Context, url string, data string) (*collector.Article, error) {
+	ret := _mock.Called(ctx, url, data)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Parse")
 	}
 
-	var r0 *model.ArticleContent
+	var r0 *collector.Article
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*model.ArticleContent, error)); ok {
-		return returnFunc(ctx, data)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*collector.Article, error)); ok {
+		return returnFunc(ctx, url, data)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *model.ArticleContent); ok {
-		r0 = returnFunc(ctx, data)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *collector.Article); ok {
+		r0 = returnFunc(ctx, url, data)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ArticleContent)
+			r0 = ret.Get(0).(*collector.Article)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, data)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, url, data)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -73,12 +73,13 @@ type MockParser_Parse_Call struct {
 
 // Parse is a helper method to define mock.On call
 //   - ctx context.Context
+//   - url string
 //   - data string
-func (_e *MockParser_Expecter) Parse(ctx interface{}, data interface{}) *MockParser_Parse_Call {
-	return &MockParser_Parse_Call{Call: _e.mock.On("Parse", ctx, data)}
+func (_e *MockParser_Expecter) Parse(ctx interface{}, url interface{}, data interface{}) *MockParser_Parse_Call {
+	return &MockParser_Parse_Call{Call: _e.mock.On("Parse", ctx, url, data)}
 }
 
-func (_c *MockParser_Parse_Call) Run(run func(ctx context.Context, data string)) *MockParser_Parse_Call {
+func (_c *MockParser_Parse_Call) Run(run func(ctx context.Context, url string, data string)) *MockParser_Parse_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -88,20 +89,25 @@ func (_c *MockParser_Parse_Call) Run(run func(ctx context.Context, data string))
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
 }
 
-func (_c *MockParser_Parse_Call) Return(articleContent *model.ArticleContent, err error) *MockParser_Parse_Call {
-	_c.Call.Return(articleContent, err)
+func (_c *MockParser_Parse_Call) Return(article *collector.Article, err error) *MockParser_Parse_Call {
+	_c.Call.Return(article, err)
 	return _c
 }
 
-func (_c *MockParser_Parse_Call) RunAndReturn(run func(ctx context.Context, data string) (*model.ArticleContent, error)) *MockParser_Parse_Call {
+func (_c *MockParser_Parse_Call) RunAndReturn(run func(ctx context.Context, url string, data string) (*collector.Article, error)) *MockParser_Parse_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -82,6 +82,7 @@ type ContentType string
 const (
 	ContentTypePARTYRELEASE ContentType = "PARTY_RELEASE"
 	ContentTypeARTICLE      ContentType = "ARTICLE"
+	ContentTypeSOCIAL       ContentType = "SOCIAL"
 )
 
 func (e *ContentType) Scan(src interface{}) error {
@@ -122,7 +123,8 @@ func (ns NullContentType) Value() (driver.Value, error) {
 func (e ContentType) Valid() bool {
 	switch e {
 	case ContentTypePARTYRELEASE,
-		ContentTypeARTICLE:
+		ContentTypeARTICLE,
+		ContentTypeSOCIAL:
 		return true
 	}
 	return false
@@ -132,6 +134,7 @@ func AllContentTypeValues() []ContentType {
 	return []ContentType{
 		ContentTypePARTYRELEASE,
 		ContentTypeARTICLE,
+		ContentTypeSOCIAL,
 	}
 }
 
@@ -408,6 +411,7 @@ type TaskKind string
 const (
 	TaskKindDIRECTORYFETCH TaskKind = "DIRECTORY_FETCH"
 	TaskKindKEYWORDSEARCH  TaskKind = "KEYWORD_SEARCH"
+	TaskKindPAGEFETCH      TaskKind = "PAGE_FETCH"
 )
 
 func (e *TaskKind) Scan(src interface{}) error {
@@ -448,7 +452,8 @@ func (ns NullTaskKind) Value() (driver.Value, error) {
 func (e TaskKind) Valid() bool {
 	switch e {
 	case TaskKindDIRECTORYFETCH,
-		TaskKindKEYWORDSEARCH:
+		TaskKindKEYWORDSEARCH,
+		TaskKindPAGEFETCH:
 		return true
 	}
 	return false
@@ -458,6 +463,7 @@ func AllTaskKindValues() []TaskKind {
 	return []TaskKind{
 		TaskKindDIRECTORYFETCH,
 		TaskKindKEYWORDSEARCH,
+		TaskKindPAGEFETCH,
 	}
 }
 
@@ -528,7 +534,7 @@ func AllTaskStatusValues() []TaskStatus {
 type Candidate struct {
 	ID              uuid.UUID                `db:"id" json:"id"`
 	BatchID         pgtype.UUID              `db:"batch_id" json:"batch_id"`
-	SourceID        int32                    `db:"source_id" json:"source_id"`
+	SourceAbbr      string                   `db:"source_abbr" json:"source_abbr"`
 	TraceID         string                   `db:"trace_id" json:"trace_id"`
 	Fingerprint     string                   `db:"fingerprint" json:"fingerprint"`
 	Url             string                   `db:"url" json:"url"`
@@ -555,7 +561,7 @@ type Content struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	BatchID     pgtype.UUID        `db:"batch_id" json:"batch_id"`
 	Type        ContentType        `db:"type" json:"type"`
-	SourceID    int32              `db:"source_id" json:"source_id"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
 	CandidateID pgtype.UUID        `db:"candidate_id" json:"candidate_id"`
 	Url         string             `db:"url" json:"url"`
 	Title       string             `db:"title" json:"title"`
@@ -646,7 +652,6 @@ type SchemaMigration struct {
 }
 
 type Source struct {
-	ID        int32              `db:"id" json:"id"`
 	Abbr      string             `db:"abbr" json:"abbr"`
 	Name      string             `db:"name" json:"name"`
 	Type      SourceType         `db:"type" json:"type"`
@@ -660,10 +665,11 @@ type Task struct {
 	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
 	Kind        TaskKind           `db:"kind" json:"kind"`
 	SourceType  SourceType         `db:"source_type" json:"source_type"`
-	SourceID    int32              `db:"source_id" json:"source_id"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
 	Url         string             `db:"url" json:"url"`
 	Payload     []byte             `db:"payload" json:"payload"`
 	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta        []byte             `db:"meta" json:"meta"`
 	TraceID     string             `db:"trace_id" json:"trace_id"`
 	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
 	NextRunAt   pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`

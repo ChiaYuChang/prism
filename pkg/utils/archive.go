@@ -56,27 +56,45 @@ func DecompressGzipBase64(encoded string) (string, error) {
 	return string(result), nil
 }
 
-type JsonObject struct {
-	Compressed    bool   `json:"compressed"`
-	Base64Encoded bool   `json:"base64_encoded"`
-	Type          string `json:"type"`
-	Data          string `json:"data"`
+// CompressedBlob is a self-describing container for compressed content.
+// The compression_method field tells the reader how to decompress,
+// making it safe to change algorithms in the future without breaking existing archives.
+type CompressedBlob struct {
+	CompressionMethod string `json:"compression_method"` // e.g. "gzip"
+	Encoding          string `json:"encoding"`           // e.g. "base64"
+	OriginalSize      int    `json:"original_size"`      // bytes before compression
+	Content           string `json:"content"`            // compressed + encoded payload
 }
 
-func CompressJSONGzipBase64(js json.Marshaler) (*JsonObject, error) {
+// CompressBlob compresses data with gzip and base64-encodes it into a CompressedBlob.
+func CompressBlob(data string) (*CompressedBlob, error) {
+	compressed, err := CompressGzipBase64(data)
+	if err != nil {
+		return nil, err
+	}
+	return &CompressedBlob{
+		CompressionMethod: "gzip",
+		Encoding:          "base64",
+		OriginalSize:      len(data),
+		Content:           compressed,
+	}, nil
+}
+
+// Decompress reverses the compression based on compression_method.
+func (b *CompressedBlob) Decompress() (string, error) {
+	switch b.CompressionMethod {
+	case "gzip":
+		return DecompressGzipBase64(b.Content)
+	default:
+		return "", fmt.Errorf("unsupported compression method: %s", b.CompressionMethod)
+	}
+}
+
+// CompressJSONBlob compresses a JSON-marshalable value into a CompressedBlob.
+func CompressJSONBlob(js json.Marshaler) (*CompressedBlob, error) {
 	data, err := js.MarshalJSON()
 	if err != nil {
 		return nil, fmt.Errorf("json marshal error: %w", err)
 	}
-
-	compressed, err := CompressGzipBase64(string(data))
-	if err != nil {
-		return nil, fmt.Errorf("gzip compress error: %w", err)
-	}
-
-	return &JsonObject{
-		Compressed:    true,
-		Base64Encoded: true,
-		Data:          compressed,
-	}, nil
+	return CompressBlob(string(data))
 }

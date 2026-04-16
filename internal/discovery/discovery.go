@@ -67,9 +67,9 @@ type Extractor interface {
 // PlannerTarget describes one downstream MEDIA discovery endpoint that should
 // receive generated keyword-based tasks.
 type PlannerTarget struct {
-	SourceID int32
-	URL      string
-	Site     string
+	SourceAbbr string
+	URL        string
+	Site       string
 }
 
 // PlannerRequest describes one planning run over a completed PARTY batch.

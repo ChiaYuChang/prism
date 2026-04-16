@@ -29,7 +29,7 @@ const createCandidate = `-- name: CreateCandidate :one
 INSERT INTO candidates (
     batch_id,
     fingerprint,
-    source_id,
+    source_abbr,
     title,
     url,
     description,
@@ -49,13 +49,13 @@ INSERT INTO candidates (
     $9,
     $10
 )
-RETURNING id, batch_id, source_id, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
+RETURNING id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
 `
 
 type CreateCandidateParams struct {
 	BatchID         pgtype.UUID              `db:"batch_id" json:"batch_id"`
 	Fingerprint     string                   `db:"fingerprint" json:"fingerprint"`
-	SourceID        int32                    `db:"source_id" json:"source_id"`
+	SourceAbbr      string                   `db:"source_abbr" json:"source_abbr"`
 	Title           string                   `db:"title" json:"title"`
 	Url             string                   `db:"url" json:"url"`
 	Description     pgtype.Text              `db:"description" json:"description"`
@@ -69,7 +69,7 @@ func (q *Queries) CreateCandidate(ctx context.Context, arg CreateCandidateParams
 	row := q.db.QueryRow(ctx, createCandidate,
 		arg.BatchID,
 		arg.Fingerprint,
-		arg.SourceID,
+		arg.SourceAbbr,
 		arg.Title,
 		arg.Url,
 		arg.Description,
@@ -82,7 +82,7 @@ func (q *Queries) CreateCandidate(ctx context.Context, arg CreateCandidateParams
 	err := row.Scan(
 		&i.ID,
 		&i.BatchID,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.TraceID,
 		&i.Fingerprint,
 		&i.Url,
@@ -98,7 +98,7 @@ func (q *Queries) CreateCandidate(ctx context.Context, arg CreateCandidateParams
 }
 
 const getCandidateByFingerprint = `-- name: GetCandidateByFingerprint :one
-SELECT id, batch_id, source_id, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
+SELECT id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
 FROM candidates
 WHERE fingerprint = $1
 LIMIT 1
@@ -110,7 +110,7 @@ func (q *Queries) GetCandidateByFingerprint(ctx context.Context, fingerprint str
 	err := row.Scan(
 		&i.ID,
 		&i.BatchID,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.TraceID,
 		&i.Fingerprint,
 		&i.Url,
@@ -126,7 +126,7 @@ func (q *Queries) GetCandidateByFingerprint(ctx context.Context, fingerprint str
 }
 
 const getCandidateByID = `-- name: GetCandidateByID :one
-SELECT id, batch_id, source_id, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
+SELECT id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
 FROM candidates
 WHERE id = $1
 LIMIT 1
@@ -138,7 +138,7 @@ func (q *Queries) GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate
 	err := row.Scan(
 		&i.ID,
 		&i.BatchID,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.TraceID,
 		&i.Fingerprint,
 		&i.Url,
@@ -154,7 +154,7 @@ func (q *Queries) GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate
 }
 
 const listCandidatesForAnalysis = `-- name: ListCandidatesForAnalysis :many
-SELECT id, batch_id, source_id, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
+SELECT id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
 FROM candidates
 ORDER BY published_at DESC NULLS LAST, discovered_at DESC, created_at DESC
 LIMIT $1
@@ -178,7 +178,7 @@ func (q *Queries) ListCandidatesForAnalysis(ctx context.Context, arg ListCandida
 		if err := rows.Scan(
 			&i.ID,
 			&i.BatchID,
-			&i.SourceID,
+			&i.SourceAbbr,
 			&i.TraceID,
 			&i.Fingerprint,
 			&i.Url,
@@ -201,7 +201,7 @@ func (q *Queries) ListCandidatesForAnalysis(ctx context.Context, arg ListCandida
 }
 
 const searchCandidatesByText = `-- name: SearchCandidatesByText :many
-SELECT id, batch_id, source_id, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
+SELECT id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
 FROM candidates
 WHERE title ILIKE '%' || $1 || '%'
    OR COALESCE(description, '') ILIKE '%' || $1 || '%'
@@ -228,7 +228,7 @@ func (q *Queries) SearchCandidatesByText(ctx context.Context, arg SearchCandidat
 		if err := rows.Scan(
 			&i.ID,
 			&i.BatchID,
-			&i.SourceID,
+			&i.SourceAbbr,
 			&i.TraceID,
 			&i.Fingerprint,
 			&i.Url,
@@ -254,7 +254,7 @@ const upsertCandidate = `-- name: UpsertCandidate :one
 INSERT INTO candidates (
     batch_id,
     fingerprint,
-    source_id,
+    source_abbr,
     title,
     url,
     description,
@@ -277,13 +277,13 @@ INSERT INTO candidates (
 ON CONFLICT (fingerprint) DO UPDATE
 SET discovered_at = NOW(),
     trace_id = EXCLUDED.trace_id
-RETURNING id, batch_id, source_id, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
+RETURNING id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
 `
 
 type UpsertCandidateParams struct {
 	BatchID         pgtype.UUID              `db:"batch_id" json:"batch_id"`
 	Fingerprint     string                   `db:"fingerprint" json:"fingerprint"`
-	SourceID        int32                    `db:"source_id" json:"source_id"`
+	SourceAbbr      string                   `db:"source_abbr" json:"source_abbr"`
 	Title           string                   `db:"title" json:"title"`
 	Url             string                   `db:"url" json:"url"`
 	Description     pgtype.Text              `db:"description" json:"description"`
@@ -297,7 +297,7 @@ func (q *Queries) UpsertCandidate(ctx context.Context, arg UpsertCandidateParams
 	row := q.db.QueryRow(ctx, upsertCandidate,
 		arg.BatchID,
 		arg.Fingerprint,
-		arg.SourceID,
+		arg.SourceAbbr,
 		arg.Title,
 		arg.Url,
 		arg.Description,
@@ -310,7 +310,7 @@ func (q *Queries) UpsertCandidate(ctx context.Context, arg UpsertCandidateParams
 	err := row.Scan(
 		&i.ID,
 		&i.BatchID,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.TraceID,
 		&i.Fingerprint,
 		&i.Url,

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ChiaYuChang/prism/internal/discovery"
+	"github.com/ChiaYuChang/prism/internal/discovery/planner"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
@@ -20,9 +21,7 @@ import (
 )
 
 const (
-	SpanNameHandleMessage  = "worker.discovery.handle_message"
-	TaskKindDirectoryFetch = "DIRECTORY_FETCH"
-	SourceTypeParty        = "PARTY"
+	SpanNameHandleMessage = "worker.discovery.handle_message"
 )
 
 var (
@@ -34,18 +33,20 @@ var (
 )
 
 type Handler struct {
-	logger    *slog.Logger
-	tracer    trace.Tracer
-	scout     discovery.Scout
-	sink      discoverysink.CandidateSink
-	scoutRepo repo.Scout
-	scheduler repo.Scheduler
+	logger        *slog.Logger
+	tracer        trace.Tracer
+	scout         discovery.Scout
+	searchClients map[string]discovery.SearchClient
+	sink          discoverysink.CandidateSink
+	scoutRepo     repo.Scout
+	scheduler     repo.Scheduler
 }
 
 func NewHandler(
 	logger *slog.Logger,
 	tracer trace.Tracer,
 	scout discovery.Scout,
+	searchClients map[string]discovery.SearchClient,
 	sink discoverysink.CandidateSink,
 	scoutRepo repo.Scout,
 	scheduler repo.Scheduler,
@@ -68,14 +69,18 @@ func NewHandler(
 	if scheduler == nil {
 		return nil, fmt.Errorf("%w: scheduler_repository", ErrParamMissing)
 	}
+	if searchClients == nil {
+		searchClients = map[string]discovery.SearchClient{}
+	}
 
 	return &Handler{
-		logger:    logger,
-		tracer:    tracer,
-		scout:     scout,
-		sink:      sink,
-		scoutRepo: scoutRepo,
-		scheduler: scheduler,
+		logger:        logger,
+		tracer:        tracer,
+		scout:         scout,
+		searchClients: searchClients,
+		sink:          sink,
+		scoutRepo:     scoutRepo,
+		scheduler:     scheduler,
 	}, nil
 }
 
@@ -97,7 +102,7 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 		slog.String("trace_id", sig.TraceID),
 		slog.String("kind", sig.Kind),
 		slog.String("source_type", sig.SourceType),
-		slog.Int("source_id", int(sig.SourceID)),
+		slog.String("source_abbr", sig.SourceAbbr),
 		slog.String("url", sig.URL),
 	)
 
@@ -118,16 +123,20 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 }
 
 func (h *Handler) process(ctx context.Context, sig message.TaskSignal) error {
-	if sig.Kind != TaskKindDirectoryFetch {
-		return fmt.Errorf("%w: %s", ErrUnsupportedTaskKind, sig.Kind)
+	switch {
+	case sig.Kind == repo.TaskKindDirectoryFetch && sig.SourceType == repo.SourceTypeParty:
+		return h.handleDirectoryFetch(ctx, sig)
+	case sig.Kind == repo.TaskKindKeywordSearch && sig.SourceType == repo.SourceTypeMedia:
+		return h.handleKeywordSearch(ctx, sig)
+	default:
+		return fmt.Errorf("%w: kind=%s source_type=%s", ErrUnsupportedTaskKind, sig.Kind, sig.SourceType)
 	}
-	if sig.SourceType != SourceTypeParty {
-		return fmt.Errorf("%w: %s", ErrUnsupportedSourceType, sig.SourceType)
-	}
+}
 
-	source, err := h.scoutRepo.GetSourceByID(ctx, sig.SourceID)
+func (h *Handler) handleDirectoryFetch(ctx context.Context, sig message.TaskSignal) error {
+	source, err := h.scoutRepo.GetSourceByAbbr(ctx, sig.SourceAbbr)
 	if err != nil {
-		return fmt.Errorf("get source by id %d: %w", sig.SourceID, err)
+		return fmt.Errorf("get source by abbr %s: %w", sig.SourceAbbr, err)
 	}
 	if source.Type != sig.SourceType {
 		return fmt.Errorf("%w: db source type %s != signal source type %s", ErrSourceMismatch, source.Type, sig.SourceType)
@@ -141,14 +150,13 @@ func (h *Handler) process(ctx context.Context, sig message.TaskSignal) error {
 		return fmt.Errorf("discover candidates from %s: %w", sig.URL, err)
 	}
 
-	batchID := sig.BatchID
 	if err := h.sink.Handle(ctx, discoverysink.CandidateSinkRequest{
 		SourceURL:       sig.URL,
-		SourceID:        sig.SourceID,
+		SourceAbbr:      sig.SourceAbbr,
 		SourceType:      sig.SourceType,
-		BatchID:         batchID,
+		BatchID:         sig.BatchID,
 		TraceID:         sig.TraceID,
-		IngestionMethod: "DIRECTORY",
+		IngestionMethod: repo.IngestionMethodDirectory,
 		DefaultMetadata: map[string]any{
 			"task_id":     sig.TaskID.String(),
 			"task_kind":   sig.Kind,
@@ -157,6 +165,47 @@ func (h *Handler) process(ctx context.Context, sig message.TaskSignal) error {
 		Candidates: candidates,
 	}); err != nil {
 		return fmt.Errorf("sink candidates from %s: %w", sig.URL, err)
+	}
+
+	return nil
+}
+
+func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSignal) error {
+	client, ok := h.searchClients[sig.SourceAbbr]
+	if !ok {
+		return fmt.Errorf("%w: no search client for source %q", ErrUnsupportedSourceType, sig.SourceAbbr)
+	}
+
+	var payload planner.MediaTaskPayload
+	if err := json.Unmarshal(sig.Payload, &payload); err != nil {
+		return fmt.Errorf("decode keyword search payload: %w", err)
+	}
+	if strings.TrimSpace(payload.Query) == "" {
+		return fmt.Errorf("%w: empty query in payload", ErrInvalidTaskSignal)
+	}
+
+	candidates, err := client.DiscoverNews(ctx, payload.Query, payload.Site)
+	if err != nil {
+		return fmt.Errorf("search %q via %s: %w", payload.Query, sig.SourceAbbr, err)
+	}
+
+	if err := h.sink.Handle(ctx, discoverysink.CandidateSinkRequest{
+		SourceURL:       sig.URL,
+		SourceAbbr:      sig.SourceAbbr,
+		SourceType:      sig.SourceType,
+		BatchID:         sig.BatchID,
+		TraceID:         sig.TraceID,
+		IngestionMethod: repo.IngestionMethodSearch,
+		DefaultMetadata: map[string]any{
+			"task_id":     sig.TaskID.String(),
+			"task_kind":   sig.Kind,
+			"source_type": sig.SourceType,
+			"query":       payload.Query,
+			"site":        payload.Site,
+		},
+		Candidates: candidates,
+	}); err != nil {
+		return fmt.Errorf("sink search candidates for %q: %w", payload.Query, err)
 	}
 
 	return nil

@@ -24,12 +24,11 @@ type BackfillSection struct {
 }
 
 type SourceConfig struct {
-	Name     string        `yaml:"-"         json:"-"`
-	SourceID int32         `yaml:"source_id" json:"source_id" validate:"required"`
-	Format   string        `yaml:"format"    json:"format"    validate:"required,oneof=html rss atom custom"`
-	BaseURL  string        `yaml:"base_url"  json:"base_url"  validate:"required,url"`
-	Pager    PagerConfig   `yaml:"pager"     json:"pager"     validate:"required"`
-	Timeout  time.Duration `yaml:"timeout"   json:"timeout"   validate:"min=0"`
+	Name    string        `yaml:"-"         json:"-"`
+	Format  string        `yaml:"format"    json:"format"    validate:"required,oneof=html rss atom custom"`
+	BaseURL string        `yaml:"base_url"  json:"base_url"  validate:"required,url"`
+	Pager   PagerConfig   `yaml:"pager"     json:"pager"     validate:"required"`
+	Timeout time.Duration `yaml:"timeout"   json:"timeout"   validate:"min=0"`
 }
 
 type PagerConfig struct {

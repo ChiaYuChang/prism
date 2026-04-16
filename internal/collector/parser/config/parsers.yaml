@@ -1,0 +1,36 @@
+version: 1
+
+parsers:
+  www.dpp.org.tw:
+    enabled: true
+    jsonld: false
+    date_layouts:
+      - "2006-01-02"
+    html:
+      title:
+        - "h3.news_list_title"
+      date:
+        - "p.news_list_date"
+      content:
+        - "div.news_content"
+        - "div.news_txt"
+
+  www.tpp.org.tw:
+    enabled: true
+    jsonld: false
+    date_layouts:
+      - "2006年01月02日"
+    html:
+      title:
+        - "div.list_name"
+      date:
+        - "div.list_date"
+      content:
+        - "div.latest_outer"
+
+  tw.news.yahoo.com:
+    enabled: true
+    jsonld: true # Yahoo has excellent JSON-LD
+    html:
+      content:
+        - ".caas-body"

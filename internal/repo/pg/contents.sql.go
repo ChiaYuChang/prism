@@ -16,7 +16,7 @@ const createContent = `-- name: CreateContent :one
 INSERT INTO contents (
     batch_id,
     type,
-    source_id,
+    source_abbr,
     candidate_id,
     url,
     title,
@@ -40,13 +40,13 @@ INSERT INTO contents (
     $11,
     $12
 )
-RETURNING id, batch_id, type, source_id, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+RETURNING id, batch_id, type, source_abbr, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
 `
 
 type CreateContentParams struct {
 	BatchID     pgtype.UUID        `db:"batch_id" json:"batch_id"`
 	Type        ContentType        `db:"type" json:"type"`
-	SourceID    int32              `db:"source_id" json:"source_id"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
 	CandidateID pgtype.UUID        `db:"candidate_id" json:"candidate_id"`
 	Url         string             `db:"url" json:"url"`
 	Title       string             `db:"title" json:"title"`
@@ -62,7 +62,7 @@ func (q *Queries) CreateContent(ctx context.Context, arg CreateContentParams) (C
 	row := q.db.QueryRow(ctx, createContent,
 		arg.BatchID,
 		arg.Type,
-		arg.SourceID,
+		arg.SourceAbbr,
 		arg.CandidateID,
 		arg.Url,
 		arg.Title,
@@ -78,7 +78,7 @@ func (q *Queries) CreateContent(ctx context.Context, arg CreateContentParams) (C
 		&i.ID,
 		&i.BatchID,
 		&i.Type,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.CandidateID,
 		&i.Url,
 		&i.Title,
@@ -95,7 +95,7 @@ func (q *Queries) CreateContent(ctx context.Context, arg CreateContentParams) (C
 }
 
 const getContentByCandidateID = `-- name: GetContentByCandidateID :one
-SELECT id, batch_id, type, source_id, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+SELECT id, batch_id, type, source_abbr, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
 FROM contents
 WHERE candidate_id = $1
 LIMIT 1
@@ -108,7 +108,7 @@ func (q *Queries) GetContentByCandidateID(ctx context.Context, candidateID pgtyp
 		&i.ID,
 		&i.BatchID,
 		&i.Type,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.CandidateID,
 		&i.Url,
 		&i.Title,
@@ -125,7 +125,7 @@ func (q *Queries) GetContentByCandidateID(ctx context.Context, candidateID pgtyp
 }
 
 const getContentByID = `-- name: GetContentByID :one
-SELECT id, batch_id, type, source_id, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+SELECT id, batch_id, type, source_abbr, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
 FROM contents
 WHERE id = $1
 LIMIT 1
@@ -138,7 +138,7 @@ func (q *Queries) GetContentByID(ctx context.Context, id uuid.UUID) (Content, er
 		&i.ID,
 		&i.BatchID,
 		&i.Type,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.CandidateID,
 		&i.Url,
 		&i.Title,
@@ -155,7 +155,7 @@ func (q *Queries) GetContentByID(ctx context.Context, id uuid.UUID) (Content, er
 }
 
 const getContentByURL = `-- name: GetContentByURL :one
-SELECT id, batch_id, type, source_id, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+SELECT id, batch_id, type, source_abbr, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
 FROM contents
 WHERE url = $1
 LIMIT 1
@@ -168,7 +168,7 @@ func (q *Queries) GetContentByURL(ctx context.Context, url string) (Content, err
 		&i.ID,
 		&i.BatchID,
 		&i.Type,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.CandidateID,
 		&i.Url,
 		&i.Title,
@@ -185,7 +185,7 @@ func (q *Queries) GetContentByURL(ctx context.Context, url string) (Content, err
 }
 
 const listContentsByBatchID = `-- name: ListContentsByBatchID :many
-SELECT id, batch_id, type, source_id, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+SELECT id, batch_id, type, source_abbr, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
 FROM contents
 WHERE batch_id = $1
   AND deleted_at IS NULL
@@ -205,7 +205,7 @@ func (q *Queries) ListContentsByBatchID(ctx context.Context, batchID pgtype.UUID
 			&i.ID,
 			&i.BatchID,
 			&i.Type,
-			&i.SourceID,
+			&i.SourceAbbr,
 			&i.CandidateID,
 			&i.Url,
 			&i.Title,
@@ -229,7 +229,7 @@ func (q *Queries) ListContentsByBatchID(ctx context.Context, batchID pgtype.UUID
 }
 
 const listRecentSeedContents = `-- name: ListRecentSeedContents :many
-SELECT id, batch_id, type, source_id, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+SELECT id, batch_id, type, source_abbr, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
 FROM contents
 WHERE type = 'PARTY_RELEASE'
   AND deleted_at IS NULL
@@ -250,7 +250,7 @@ func (q *Queries) ListRecentSeedContents(ctx context.Context, limit int32) ([]Co
 			&i.ID,
 			&i.BatchID,
 			&i.Type,
-			&i.SourceID,
+			&i.SourceAbbr,
 			&i.CandidateID,
 			&i.Url,
 			&i.Title,
@@ -279,7 +279,7 @@ SET author = COALESCE($1, author),
     published_at = COALESCE($2, published_at),
     metadata = COALESCE($3, metadata)
 WHERE id = $4
-RETURNING id, batch_id, type, source_id, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+RETURNING id, batch_id, type, source_abbr, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
 `
 
 type UpdateContentMetadataParams struct {
@@ -301,7 +301,7 @@ func (q *Queries) UpdateContentMetadata(ctx context.Context, arg UpdateContentMe
 		&i.ID,
 		&i.BatchID,
 		&i.Type,
-		&i.SourceID,
+		&i.SourceAbbr,
 		&i.CandidateID,
 		&i.Url,
 		&i.Title,

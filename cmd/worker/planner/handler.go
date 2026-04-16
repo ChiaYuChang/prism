@@ -84,7 +84,7 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 }
 
 func (h *Handler) loadTargets(ctx context.Context) ([]discovery.PlannerTarget, error) {
-	sources, err := h.scout.ListSourcesByType(ctx, "MEDIA")
+	sources, err := h.scout.ListSourcesByType(ctx, repo.SourceTypeMedia)
 	if err != nil {
 		return nil, fmt.Errorf("list media sources: %w", err)
 	}
@@ -96,8 +96,8 @@ func (h *Handler) loadTargets(ctx context.Context) ([]discovery.PlannerTarget, e
 			site = u.Hostname()
 		}
 		targets = append(targets, discovery.PlannerTarget{
-			SourceID: source.ID,
-			URL:      source.BaseURL,
+			SourceAbbr: source.Abbr,
+			URL:        source.BaseURL,
 			Site:     site,
 		})
 	}

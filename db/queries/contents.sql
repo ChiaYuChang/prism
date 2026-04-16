@@ -20,7 +20,7 @@ LIMIT 1;
 INSERT INTO contents (
     batch_id,
     type,
-    source_id,
+    source_abbr,
     candidate_id,
     url,
     title,
@@ -33,7 +33,7 @@ INSERT INTO contents (
 ) VALUES (
     sqlc.narg(batch_id),
     sqlc.arg(type),
-    sqlc.arg(source_id),
+    sqlc.arg(source_abbr),
     sqlc.narg(candidate_id),
     sqlc.arg(url),
     sqlc.arg(title),

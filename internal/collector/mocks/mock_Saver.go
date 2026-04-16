@@ -7,7 +7,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/ChiaYuChang/prism/internal/model"
+	"github.com/ChiaYuChang/prism/internal/collector"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -39,7 +39,7 @@ func (_m *MockSaver) EXPECT() *MockSaver_Expecter {
 }
 
 // Save provides a mock function for the type MockSaver
-func (_mock *MockSaver) Save(ctx context.Context, record model.ArchiveRecord) error {
+func (_mock *MockSaver) Save(ctx context.Context, record collector.Archive) error {
 	ret := _mock.Called(ctx, record)
 
 	if len(ret) == 0 {
@@ -47,7 +47,7 @@ func (_mock *MockSaver) Save(ctx context.Context, record model.ArchiveRecord) er
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, model.ArchiveRecord) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, collector.Archive) error); ok {
 		r0 = returnFunc(ctx, record)
 	} else {
 		r0 = ret.Error(0)
@@ -62,20 +62,20 @@ type MockSaver_Save_Call struct {
 
 // Save is a helper method to define mock.On call
 //   - ctx context.Context
-//   - record model.ArchiveRecord
+//   - record collector.Archive
 func (_e *MockSaver_Expecter) Save(ctx interface{}, record interface{}) *MockSaver_Save_Call {
 	return &MockSaver_Save_Call{Call: _e.mock.On("Save", ctx, record)}
 }
 
-func (_c *MockSaver_Save_Call) Run(run func(ctx context.Context, record model.ArchiveRecord)) *MockSaver_Save_Call {
+func (_c *MockSaver_Save_Call) Run(run func(ctx context.Context, record collector.Archive)) *MockSaver_Save_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 model.ArchiveRecord
+		var arg1 collector.Archive
 		if args[1] != nil {
-			arg1 = args[1].(model.ArchiveRecord)
+			arg1 = args[1].(collector.Archive)
 		}
 		run(
 			arg0,
@@ -90,7 +90,7 @@ func (_c *MockSaver_Save_Call) Return(err error) *MockSaver_Save_Call {
 	return _c
 }
 
-func (_c *MockSaver_Save_Call) RunAndReturn(run func(ctx context.Context, record model.ArchiveRecord) error) *MockSaver_Save_Call {
+func (_c *MockSaver_Save_Call) RunAndReturn(run func(ctx context.Context, record collector.Archive) error) *MockSaver_Save_Call {
 	_c.Call.Return(run)
 	return _c
 }

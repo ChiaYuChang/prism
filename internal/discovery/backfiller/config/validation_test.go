@@ -20,7 +20,6 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							SourceID: 1,
 							Format:   "html",
 							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
@@ -42,7 +41,6 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							SourceID: 1,
 							Format:   "html",
 							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
@@ -64,7 +62,6 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							SourceID: 1,
 							Format:   "html",
 							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
@@ -85,7 +82,6 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							SourceID: 1,
 							Format:   "pdf",
 							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
@@ -107,7 +103,6 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							SourceID: 1,
 							Format:   "html",
 							BaseURL:  "https://example.com",
 							Pager: config.PagerConfig{
@@ -129,7 +124,6 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							SourceID: 1,
 							Format:   "html",
 							Pager: config.PagerConfig{
 								Type:        "index",

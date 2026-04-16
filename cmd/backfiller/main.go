@@ -16,7 +16,6 @@ import (
 	scout "github.com/ChiaYuChang/prism/internal/discovery/scout/config"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/infra"
-	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
@@ -139,7 +138,7 @@ func main() {
 
 	logger.Info("backfiller source selected",
 		"source", srcSpec.Name,
-		"source_id", srcSpec.SourceID,
+		"source_abbr", srcSpec.Name,
 		"format", srcSpec.Format,
 		"base_url", srcSpec.BaseURL,
 	)
@@ -157,13 +156,7 @@ func main() {
 		}
 	}()
 
-	pageFetchPublisher, err := message.NewWatermillPageFetchPublisher(msgr)
-	if err != nil {
-		logger.Error("failed to build page fetch publisher", "error", err)
-		os.Exit(1)
-	}
-
-	sink, err := discoverysink.NewPersistingCandidateSink(logger, tracer, repository.Scout(), pageFetchPublisher)
+	sink, err := discoverysink.NewPersistingCandidateSink(logger, tracer, repository.Scout(), repository.Tasks())
 	if err != nil {
 		logger.Error("failed to build candidate sink", "error", err)
 		os.Exit(1)
@@ -190,7 +183,7 @@ func main() {
 
 	logger.Info(
 		"backfiller started",
-		"source_id", srcSpec.SourceID,
+		"source_abbr", srcSpec.Name,
 		"batch_id", batchID.String(),
 		"base_url", srcSpec.BaseURL,
 		"until", opts.until.Format("2006-01-02"))
@@ -207,7 +200,7 @@ func main() {
 
 	logger.Info("backfill completed",
 		"source", opts.source,
-		"source_id", srcSpec.SourceID,
+		"source_abbr", srcSpec.Name,
 		"batch_id", batchID.String(),
 		"base_url", srcSpec.BaseURL,
 		"until", opts.until.Format("2006-01-02"),

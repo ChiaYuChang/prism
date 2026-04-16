@@ -22,7 +22,7 @@ var (
 type PageFetchSignal struct {
 	CandidateID uuid.UUID  `json:"candidate_id"`
 	BatchID     uuid.UUID  `json:"batch_id,omitempty"`
-	SourceID    int32      `json:"source_id"`
+	SourceAbbr  string     `json:"source_abbr"`
 	SourceType  string     `json:"source_type"`
 	URL         string     `json:"url"`
 	TraceID     string     `json:"trace_id"`

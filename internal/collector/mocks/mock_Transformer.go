@@ -38,8 +38,8 @@ func (_m *MockTransformer) EXPECT() *MockTransformer_Expecter {
 }
 
 // Transform provides a mock function for the type MockTransformer
-func (_mock *MockTransformer) Transform(ctx context.Context, raw string) (string, error) {
-	ret := _mock.Called(ctx, raw)
+func (_mock *MockTransformer) Transform(ctx context.Context, minified string) (string, error) {
+	ret := _mock.Called(ctx, minified)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Transform")
@@ -48,15 +48,15 @@ func (_mock *MockTransformer) Transform(ctx context.Context, raw string) (string
 	var r0 string
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
-		return returnFunc(ctx, raw)
+		return returnFunc(ctx, minified)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = returnFunc(ctx, raw)
+		r0 = returnFunc(ctx, minified)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, raw)
+		r1 = returnFunc(ctx, minified)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -70,12 +70,12 @@ type MockTransformer_Transform_Call struct {
 
 // Transform is a helper method to define mock.On call
 //   - ctx context.Context
-//   - raw string
-func (_e *MockTransformer_Expecter) Transform(ctx interface{}, raw interface{}) *MockTransformer_Transform_Call {
-	return &MockTransformer_Transform_Call{Call: _e.mock.On("Transform", ctx, raw)}
+//   - minified string
+func (_e *MockTransformer_Expecter) Transform(ctx interface{}, minified interface{}) *MockTransformer_Transform_Call {
+	return &MockTransformer_Transform_Call{Call: _e.mock.On("Transform", ctx, minified)}
 }
 
-func (_c *MockTransformer_Transform_Call) Run(run func(ctx context.Context, raw string)) *MockTransformer_Transform_Call {
+func (_c *MockTransformer_Transform_Call) Run(run func(ctx context.Context, minified string)) *MockTransformer_Transform_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -98,7 +98,7 @@ func (_c *MockTransformer_Transform_Call) Return(s string, err error) *MockTrans
 	return _c
 }
 
-func (_c *MockTransformer_Transform_Call) RunAndReturn(run func(ctx context.Context, raw string) (string, error)) *MockTransformer_Transform_Call {
+func (_c *MockTransformer_Transform_Call) RunAndReturn(run func(ctx context.Context, minified string) (string, error)) *MockTransformer_Transform_Call {
 	_c.Call.Return(run)
 	return _c
 }

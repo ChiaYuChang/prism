@@ -13,7 +13,7 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'content_type') THEN
-        CREATE TYPE content_type AS ENUM ('PARTY_RELEASE', 'ARTICLE');
+        CREATE TYPE content_type AS ENUM ('PARTY_RELEASE', 'ARTICLE', 'SOCIAL');
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'embedding_category') THEN
@@ -46,7 +46,7 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'task_kind') THEN
-        CREATE TYPE task_kind AS ENUM ('DIRECTORY_FETCH', 'KEYWORD_SEARCH');
+        CREATE TYPE task_kind AS ENUM ('DIRECTORY_FETCH', 'KEYWORD_SEARCH', 'PAGE_FETCH');
     END IF;
 END
 $$;
@@ -66,8 +66,7 @@ CREATE TABLE IF NOT EXISTS models (
 CREATE INDEX IF NOT EXISTS idx_models_type_name ON models(type, name);
 
 CREATE TABLE IF NOT EXISTS sources (
-    id          SERIAL PRIMARY KEY,
-    abbr        VARCHAR(16) UNIQUE NOT NULL,
+    abbr        VARCHAR(16) PRIMARY KEY,
     name        VARCHAR(128) NOT NULL,
     type        source_type NOT NULL,
     base_url    TEXT NOT NULL,
@@ -75,13 +74,13 @@ CREATE TABLE IF NOT EXISTS sources (
     deleted_at  TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXISTS idx_sources_lookup ON sources(abbr, base_url);
+CREATE INDEX IF NOT EXISTS idx_sources_base_url ON sources(base_url);
 CREATE INDEX IF NOT EXISTS idx_sources_deleted_at ON sources(deleted_at);
 
 CREATE TABLE IF NOT EXISTS candidates (
     id               UUID PRIMARY KEY DEFAULT uuidv7(),
     batch_id         UUID,
-    source_id        INT NOT NULL REFERENCES sources(id),
+    source_abbr      VARCHAR(16) NOT NULL REFERENCES sources(abbr),
     trace_id         VARCHAR(100) NOT NULL,
     fingerprint      CHAR(32) UNIQUE NOT NULL,
     url              TEXT NOT NULL,
@@ -94,9 +93,9 @@ CREATE TABLE IF NOT EXISTS candidates (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_candidates_source_id ON candidates(source_id);
+CREATE INDEX IF NOT EXISTS idx_candidates_source_abbr ON candidates(source_abbr);
 CREATE INDEX IF NOT EXISTS idx_candidates_batch_id ON candidates(batch_id);
-CREATE INDEX IF NOT EXISTS idx_candidates_source_published_at ON candidates(source_id, published_at);
+CREATE INDEX IF NOT EXISTS idx_candidates_source_published_at ON candidates(source_abbr, published_at);
 CREATE INDEX IF NOT EXISTS idx_candidates_discovered_at ON candidates(discovered_at);
 CREATE INDEX IF NOT EXISTS idx_candidates_trace_id ON candidates(trace_id);
 CREATE INDEX IF NOT EXISTS idx_candidates_url ON candidates(url);
@@ -105,7 +104,7 @@ CREATE TABLE IF NOT EXISTS contents (
     id           UUID PRIMARY KEY DEFAULT uuidv7(),
     batch_id     UUID,
     type         content_type NOT NULL,
-    source_id    INT NOT NULL REFERENCES sources(id),
+    source_abbr  VARCHAR(16) NOT NULL REFERENCES sources(abbr),
     candidate_id UUID UNIQUE REFERENCES candidates(id) ON DELETE SET NULL,
     url          TEXT UNIQUE NOT NULL,
     title        TEXT NOT NULL,
@@ -121,7 +120,7 @@ CREATE TABLE IF NOT EXISTS contents (
 
 CREATE INDEX IF NOT EXISTS idx_contents_type ON contents(type);
 CREATE INDEX IF NOT EXISTS idx_contents_batch_id ON contents(batch_id);
-CREATE INDEX IF NOT EXISTS idx_contents_source_id ON contents(source_id);
+CREATE INDEX IF NOT EXISTS idx_contents_source_abbr ON contents(source_abbr);
 CREATE INDEX IF NOT EXISTS idx_contents_candidate_id ON contents(candidate_id);
 CREATE INDEX IF NOT EXISTS idx_contents_trace_id ON contents(trace_id);
 CREATE INDEX IF NOT EXISTS idx_contents_published_at ON contents(published_at);
@@ -205,10 +204,11 @@ CREATE TABLE IF NOT EXISTS tasks (
     batch_id       UUID NOT NULL,
     kind           task_kind NOT NULL,
     source_type    source_type NOT NULL,
-    source_id      INT NOT NULL REFERENCES sources(id),
+    source_abbr    VARCHAR(16) NOT NULL REFERENCES sources(abbr),
     url            TEXT NOT NULL,
     payload        JSONB NOT NULL DEFAULT '{}'::jsonb,
     payload_hash   CHAR(64),
+    meta           JSONB,
     trace_id       VARCHAR(100) NOT NULL,
     frequency      INTERVAL SECOND(0),
     next_run_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -225,15 +225,21 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_expiry ON tasks(expires_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_schedule ON tasks(next_run_at, frequency);
 CREATE INDEX IF NOT EXISTS idx_tasks_trace_id ON tasks(trace_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_source_id ON tasks(source_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_source_abbr ON tasks(source_abbr);
 CREATE INDEX IF NOT EXISTS idx_tasks_kind_source_type ON tasks(kind, source_type);
 CREATE INDEX IF NOT EXISTS idx_tasks_url ON tasks(url);
 
 -- Prevent duplicate active KEYWORD_SEARCH tasks for the same (source, phrase).
 -- payload_hash = hex(SHA-256(canonical JSON payload)), computed in application code.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tasks_active_payload
-    ON tasks(source_id, kind, payload_hash)
+    ON tasks(source_abbr, kind, payload_hash)
     WHERE status IN ('PENDING', 'RUNNING') AND payload_hash IS NOT NULL;
+
+-- Prevent duplicate active PAGE_FETCH tasks for the same URL.
+-- URL is the natural identity for page fetch; payload_hash is not used.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tasks_active_page_fetch
+    ON tasks(kind, url)
+    WHERE kind = 'PAGE_FETCH' AND status IN ('PENDING', 'RUNNING');
 
 ALTER TABLE tasks SET (fillfactor = 80);
 

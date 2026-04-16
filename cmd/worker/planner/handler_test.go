@@ -24,7 +24,7 @@ func TestHandlerHandleMessagePlansMediaTasks(t *testing.T) {
 			require.Equal(t, batchID, req.BatchID)
 			require.Equal(t, "trace-123", req.TraceID)
 			require.Len(t, req.Targets, 2)
-			require.Equal(t, int32(10), req.Targets[0].SourceID)
+			require.Equal(t, "cna", req.Targets[0].SourceAbbr)
 			require.Equal(t, "news.example.com", req.Targets[0].Site)
 			return discovery.PlannerResult{TasksCreated: 4}, nil
 		},
@@ -33,8 +33,8 @@ func TestHandlerHandleMessagePlansMediaTasks(t *testing.T) {
 	h, err := NewHandler(testPlannerWorkerLogger(), noop.NewTracerProvider().Tracer("test"), planner, scout)
 	require.NoError(t, err)
 	scout.EXPECT().ListSourcesByType(mock.Anything, "MEDIA").Return([]repo.Source{
-		{ID: 10, BaseURL: "https://news.example.com"},
-		{ID: 20, BaseURL: "https://www.yahoo.com"},
+		{Abbr: "cna", BaseURL: "https://news.example.com"},
+		{Abbr: "yahoo", BaseURL: "https://www.yahoo.com"},
 	}, nil)
 
 	payload, err := (&message.BatchCompletedSignal{

@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/model"
+	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	f "github.com/ChiaYuChang/prism/pkg/functional"
 	"go.opentelemetry.io/otel/trace"
@@ -38,21 +40,22 @@ type Pager interface {
 // This fulfills the discovery strategy's goal to keep the pipeline recall-oriented and
 // ensure candidates are separate from full contents until implicitly promoted.
 type Backfiller struct {
-	logger   *slog.Logger
-	tracer   trace.Tracer
-	scout    discovery.Scout
-	pager    Pager
-	sink     discoverysink.CandidateSink
-	sourceID int32
-	timeout  time.Duration
+	logger     *slog.Logger
+	tracer     trace.Tracer
+	scout      discovery.Scout
+	pager      Pager
+	sink       discoverysink.CandidateSink
+	sourceAbbr string
+	timeout    time.Duration
 }
 
+var _ discovery.Backfiller = (*Backfiller)(nil)
+
 // New creates a new Backfiller instance, binding it to a specific Scout, Pager, and
-// CandidateSink. It requires an explicit sourceID which maps to the 'sources.id' in
-// the database.
+// CandidateSink. It requires a sourceAbbr matching sources.abbr (PK) in the database.
 func New(logger *slog.Logger, tracer trace.Tracer,
 	scout discovery.Scout, pager Pager, sink discoverysink.CandidateSink,
-	sourceID int32, timeout time.Duration) (*Backfiller, error) {
+	sourceAbbr string, timeout time.Duration) (*Backfiller, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
@@ -68,17 +71,17 @@ func New(logger *slog.Logger, tracer trace.Tracer,
 	if sink == nil {
 		return nil, fmt.Errorf("%w: sink", ErrParamMissing)
 	}
-	if sourceID == 0 {
-		return nil, fmt.Errorf("%w: source_id", ErrParamMissing)
+	if strings.TrimSpace(sourceAbbr) == "" {
+		return nil, fmt.Errorf("%w: source_abbr", ErrParamMissing)
 	}
 	return &Backfiller{
-		logger:   logger,
-		tracer:   tracer,
-		scout:    scout,
-		pager:    pager,
-		sink:     sink,
-		sourceID: sourceID,
-		timeout:  timeout,
+		logger:     logger,
+		tracer:     tracer,
+		scout:      scout,
+		pager:      pager,
+		sink:       sink,
+		sourceAbbr: sourceAbbr,
+		timeout:    timeout,
 	}, nil
 }
 
@@ -97,7 +100,7 @@ func (r *Backfiller) Run(ctx context.Context, req discovery.BackfillRequest) (di
 
 	r.logger.InfoContext(ctx, "backfill started",
 		slog.String("trace_id", traceID),
-		slog.Int64("source_id", int64(r.sourceID)),
+		slog.String("source_abbr", r.sourceAbbr),
 		slog.Time("until", req.Until),
 		slog.Int("max_pages", req.MaxPages),
 	)
@@ -146,8 +149,8 @@ func (r *Backfiller) Run(ctx context.Context, req discovery.BackfillRequest) (di
 			result.OldestPublishedAt = oldest
 			if err := r.sink.Handle(pageCtx, discoverysink.CandidateSinkRequest{
 				SourceURL:       currentURL,
-				SourceID:        r.sourceID,
-				SourceType:      "PARTY",
+				SourceAbbr:      r.sourceAbbr,
+				SourceType:      repo.SourceTypeParty,
 				BatchID:         req.BatchID,
 				TraceID:         traceID,
 				IngestionMethod: "DIRECTORY",

@@ -52,7 +52,7 @@ func BuildBackfiller(
 		return nil, fmt.Errorf("build pager for %s: %w", spec.Name, err)
 	}
 
-	return backfiller.New(logger, tracer, scout, pager, sink, spec.SourceID, spec.Timeout)
+	return backfiller.New(logger, tracer, scout, pager, sink, spec.Name, spec.Timeout)
 }
 
 func ConfirmSourceAgainstScout(spec SourceConfig, repo *scoutconfig.Repository) error {

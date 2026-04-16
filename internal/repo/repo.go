@@ -17,14 +17,19 @@ type Repository interface {
 }
 
 type Scheduler interface {
-	ClaimTasks(ctx context.Context, limit int32) ([]Task, error)
+	// ClaimTasks claims up to limit runnable tasks of the given kinds.
+	// sourceTypes filters by source_type; an empty slice matches all source types.
+	ClaimTasks(ctx context.Context, limit int32, kinds []string, sourceTypes []string) ([]Task, error)
 	CompleteTask(ctx context.Context, id uuid.UUID) error
 	FailTask(ctx context.Context, id uuid.UUID) error
+	// ReleaseTasks resets RUNNING tasks back to PENDING, undoing the retry_count
+	// increment from ClaimTasks. Used when dispatch is skipped (e.g. rate-limited).
+	ReleaseTasks(ctx context.Context, ids []uuid.UUID) error
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
 }
 
 type Scout interface {
-	GetSourceByID(ctx context.Context, id int32) (Source, error)
+	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
 	ListSourcesByType(ctx context.Context, sourceType string) ([]Source, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)

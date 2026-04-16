@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/discovery"
 	rootscout "github.com/ChiaYuChang/prism/internal/discovery/scout"
 	"github.com/ChiaYuChang/prism/internal/model"
 	"go.opentelemetry.io/otel/trace"
@@ -43,6 +44,8 @@ type Scout struct {
 	loc    *time.Location
 	cfg    Config
 }
+
+var _ discovery.Scout = (*Scout)(nil)
 
 func New(logger *slog.Logger, tracer trace.Tracer, client *http.Client, cfg Config) (*Scout, error) {
 	if logger == nil {

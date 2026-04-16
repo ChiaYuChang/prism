@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	repomocks "github.com/ChiaYuChang/prism/internal/repo/mocks"
@@ -37,7 +38,7 @@ func TestDispatchTasksPublishesTaskSignal(t *testing.T) {
 		BatchID:    batchID,
 		Kind:       "DIRECTORY_FETCH",
 		SourceType: "PARTY",
-		SourceID:   1,
+		SourceAbbr: "dpp",
 		URL:        "https://example.com/listing",
 		TraceID:    "trace-123",
 	}}
@@ -54,13 +55,14 @@ func TestDispatchTasksPublishesTaskSignal(t *testing.T) {
 		},
 	}
 
-	err := dispatchTasks(context.Background(), testSchedulerLogger(), publisher, scheduler, tasks)
+	svc := newScheduler(testSchedulerLogger(), infra.NoOpRateLimiter{}, scheduler, publisher)
+	err := svc.DispatchTasks(context.Background(), tasks)
 	require.NoError(t, err)
 	require.Equal(t, message.TaskTopic, gotTopic)
 	require.Equal(t, taskID, gotSig.TaskID)
 	require.Equal(t, batchID, gotSig.BatchID)
 	require.Equal(t, "PARTY", gotSig.SourceType)
-	require.Equal(t, int32(1), gotSig.SourceID)
+	require.Equal(t, "dpp", gotSig.SourceAbbr)
 }
 
 func TestDispatchTasksMarksTaskFailedWhenPublishFails(t *testing.T) {
@@ -71,7 +73,7 @@ func TestDispatchTasksMarksTaskFailedWhenPublishFails(t *testing.T) {
 		BatchID:    uuid.Must(uuid.NewV7()),
 		Kind:       "DIRECTORY_FETCH",
 		SourceType: "PARTY",
-		SourceID:   1,
+		SourceAbbr: "dpp",
 		URL:        "https://example.com/listing",
 		TraceID:    "trace-123",
 	}}
@@ -83,7 +85,8 @@ func TestDispatchTasksMarksTaskFailedWhenPublishFails(t *testing.T) {
 		},
 	}
 
-	err := dispatchTasks(context.Background(), testSchedulerLogger(), publisher, scheduler, tasks)
+	svc := newScheduler(testSchedulerLogger(), infra.NoOpRateLimiter{}, scheduler, publisher)
+	err := svc.DispatchTasks(context.Background(), tasks)
 	require.NoError(t, err)
 }
 

@@ -52,7 +52,8 @@ ALTER TYPE public.candidate_ingestion_method OWNER TO postgres;
 
 CREATE TYPE public.content_type AS ENUM (
     'PARTY_RELEASE',
-    'ARTICLE'
+    'ARTICLE',
+    'SOCIAL'
 );
 
 
@@ -124,7 +125,8 @@ ALTER TYPE public.source_type OWNER TO postgres;
 
 CREATE TYPE public.task_kind AS ENUM (
     'DIRECTORY_FETCH',
-    'KEYWORD_SEARCH'
+    'KEYWORD_SEARCH',
+    'PAGE_FETCH'
 );
 
 
@@ -193,7 +195,7 @@ ALTER SEQUENCE public.candidate_embeddings_gemma_2025_id_seq OWNED BY public.can
 CREATE TABLE public.candidates (
     id uuid DEFAULT uuidv7() NOT NULL,
     batch_id uuid,
-    source_id integer NOT NULL,
+    source_abbr character varying(16) NOT NULL,
     trace_id character varying(100) NOT NULL,
     fingerprint character(32) NOT NULL,
     url text NOT NULL,
@@ -339,7 +341,7 @@ CREATE TABLE public.contents (
     id uuid DEFAULT uuidv7() NOT NULL,
     batch_id uuid,
     type public.content_type NOT NULL,
-    source_id integer NOT NULL,
+    source_abbr character varying(16) NOT NULL,
     candidate_id uuid,
     url text NOT NULL,
     title text NOT NULL,
@@ -464,7 +466,6 @@ ALTER TABLE public.schema_migrations OWNER TO postgres;
 --
 
 CREATE TABLE public.sources (
-    id integer NOT NULL,
     abbr character varying(16) NOT NULL,
     name character varying(128) NOT NULL,
     type public.source_type NOT NULL,
@@ -477,28 +478,6 @@ CREATE TABLE public.sources (
 ALTER TABLE public.sources OWNER TO postgres;
 
 --
--- Name: sources_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
---
-
-CREATE SEQUENCE public.sources_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE public.sources_id_seq OWNER TO postgres;
-
---
--- Name: sources_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
---
-
-ALTER SEQUENCE public.sources_id_seq OWNED BY public.sources.id;
-
-
---
 -- Name: tasks; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -507,10 +486,11 @@ CREATE TABLE public.tasks (
     batch_id uuid NOT NULL,
     kind public.task_kind NOT NULL,
     source_type public.source_type NOT NULL,
-    source_id integer NOT NULL,
+    source_abbr character varying(16) NOT NULL,
     url text NOT NULL,
     payload jsonb DEFAULT '{}'::jsonb NOT NULL,
     payload_hash character(64),
+    meta jsonb,
     trace_id character varying(100) NOT NULL,
     frequency interval second(0),
     next_run_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -559,13 +539,6 @@ ALTER TABLE ONLY public.entities ALTER COLUMN id SET DEFAULT nextval('public.ent
 --
 
 ALTER TABLE ONLY public.models ALTER COLUMN id SET DEFAULT nextval('public.models_id_seq'::regclass);
-
-
---
--- Name: sources id; Type: DEFAULT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.sources ALTER COLUMN id SET DEFAULT nextval('public.sources_id_seq'::regclass);
 
 
 --
@@ -705,19 +678,11 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
--- Name: sources sources_abbr_key; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.sources
-    ADD CONSTRAINT sources_abbr_key UNIQUE (abbr);
-
-
---
 -- Name: sources sources_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.sources
-    ADD CONSTRAINT sources_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT sources_pkey PRIMARY KEY (abbr);
 
 
 --
@@ -743,17 +708,17 @@ CREATE INDEX idx_candidates_discovered_at ON public.candidates USING btree (disc
 
 
 --
--- Name: idx_candidates_source_id; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_candidates_source_abbr; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_candidates_source_id ON public.candidates USING btree (source_id);
+CREATE INDEX idx_candidates_source_abbr ON public.candidates USING btree (source_abbr);
 
 
 --
 -- Name: idx_candidates_source_published_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_candidates_source_published_at ON public.candidates USING btree (source_id, published_at);
+CREATE INDEX idx_candidates_source_published_at ON public.candidates USING btree (source_abbr, published_at);
 
 
 --
@@ -890,10 +855,10 @@ CREATE INDEX idx_contents_published_at ON public.contents USING btree (published
 
 
 --
--- Name: idx_contents_source_id; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_contents_source_abbr; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_contents_source_id ON public.contents USING btree (source_id);
+CREATE INDEX idx_contents_source_abbr ON public.contents USING btree (source_abbr);
 
 
 --
@@ -967,17 +932,17 @@ CREATE INDEX idx_prompts_path ON public.prompts USING btree (path);
 
 
 --
+-- Name: idx_sources_base_url; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_sources_base_url ON public.sources USING btree (base_url);
+
+
+--
 -- Name: idx_sources_deleted_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
 CREATE INDEX idx_sources_deleted_at ON public.sources USING btree (deleted_at);
-
-
---
--- Name: idx_sources_lookup; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_sources_lookup ON public.sources USING btree (abbr, base_url);
 
 
 --
@@ -1009,10 +974,10 @@ CREATE INDEX idx_tasks_schedule ON public.tasks USING btree (next_run_at, freque
 
 
 --
--- Name: idx_tasks_source_id; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_tasks_source_abbr; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_tasks_source_id ON public.tasks USING btree (source_id);
+CREATE INDEX idx_tasks_source_abbr ON public.tasks USING btree (source_abbr);
 
 
 --
@@ -1058,10 +1023,17 @@ CREATE UNIQUE INDEX uq_entities_canonical_type ON public.entities USING btree (c
 
 
 --
+-- Name: uq_tasks_active_page_fetch; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX uq_tasks_active_page_fetch ON public.tasks USING btree (kind, url) WHERE ((kind = 'PAGE_FETCH'::public.task_kind) AND (status = ANY (ARRAY['PENDING'::public.task_status, 'RUNNING'::public.task_status])));
+
+
+--
 -- Name: uq_tasks_active_payload; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE UNIQUE INDEX uq_tasks_active_payload ON public.tasks USING btree (source_id, kind, payload_hash) WHERE ((status = ANY (ARRAY['PENDING'::public.task_status, 'RUNNING'::public.task_status])) AND (payload_hash IS NOT NULL));
+CREATE UNIQUE INDEX uq_tasks_active_payload ON public.tasks USING btree (source_abbr, kind, payload_hash) WHERE ((status = ANY (ARRAY['PENDING'::public.task_status, 'RUNNING'::public.task_status])) AND (payload_hash IS NOT NULL));
 
 
 --
@@ -1081,11 +1053,11 @@ ALTER TABLE ONLY public.candidate_embeddings_gemma_2025
 
 
 --
--- Name: candidates candidates_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: candidates candidates_source_abbr_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.candidates
-    ADD CONSTRAINT candidates_source_id_fkey FOREIGN KEY (source_id) REFERENCES public.sources(id);
+    ADD CONSTRAINT candidates_source_abbr_fkey FOREIGN KEY (source_abbr) REFERENCES public.sources(abbr);
 
 
 --
@@ -1169,19 +1141,19 @@ ALTER TABLE ONLY public.contents
 
 
 --
--- Name: contents contents_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: contents contents_source_abbr_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.contents
-    ADD CONSTRAINT contents_source_id_fkey FOREIGN KEY (source_id) REFERENCES public.sources(id);
+    ADD CONSTRAINT contents_source_abbr_fkey FOREIGN KEY (source_abbr) REFERENCES public.sources(abbr);
 
 
 --
--- Name: tasks tasks_source_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: tasks tasks_source_abbr_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.tasks
-    ADD CONSTRAINT tasks_source_id_fkey FOREIGN KEY (source_id) REFERENCES public.sources(id);
+    ADD CONSTRAINT tasks_source_abbr_fkey FOREIGN KEY (source_abbr) REFERENCES public.sources(abbr);
 
 
 --
@@ -1315,13 +1287,6 @@ GRANT ALL ON TABLE public.schema_migrations TO prism;
 --
 
 GRANT ALL ON TABLE public.sources TO prism;
-
-
---
--- Name: SEQUENCE sources_id_seq; Type: ACL; Schema: public; Owner: postgres
---
-
-GRANT ALL ON SEQUENCE public.sources_id_seq TO prism;
 
 
 --

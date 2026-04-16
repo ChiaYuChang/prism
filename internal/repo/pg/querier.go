@@ -12,7 +12,7 @@ import (
 )
 
 type Querier interface {
-	ClaimTasks(ctx context.Context, limit int32) ([]Task, error)
+	ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task, error)
 	CompleteTask(ctx context.Context, id uuid.UUID) error
 	CountCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) (int64, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
@@ -39,7 +39,6 @@ type Querier interface {
 	GetPromptByHash(ctx context.Context, hash string) (Prompt, error)
 	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
-	GetSourceByID(ctx context.Context, id int32) (Source, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
 	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
 	ListCandidatesForAnalysis(ctx context.Context, arg ListCandidatesForAnalysisParams) ([]Candidate, error)
@@ -49,6 +48,10 @@ type Querier interface {
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
 	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	// Resets RUNNING tasks back to PENDING in bulk, undoing the ClaimTasks
+	// retry_count increment. Used when dispatch is skipped (e.g. rate-limited)
+	// so tasks are retried on the next scheduler tick without consuming retry slots.
+	ReleaseTasks(ctx context.Context, ids []uuid.UUID) error
 	ReplaceContentExtractionPhrases(ctx context.Context, arg ReplaceContentExtractionPhrasesParams) error
 	ReplaceContentExtractionTopics(ctx context.Context, arg ReplaceContentExtractionTopicsParams) error
 	SearchCandidatesByText(ctx context.Context, arg SearchCandidatesByTextParams) ([]Candidate, error)

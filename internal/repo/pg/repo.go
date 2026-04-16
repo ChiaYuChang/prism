@@ -82,8 +82,20 @@ func (r *PGRepository) BatchTrigger() repo.BatchTrigger {
 }
 
 // Scheduler repository.
-func (r *PGScheduler) ClaimTasks(ctx context.Context, limit int32) ([]repo.Task, error) {
-	rows, err := r.q.ClaimTasks(ctx, limit)
+func (r *PGScheduler) ClaimTasks(ctx context.Context, limit int32, kinds []string, sourceTypes []string) ([]repo.Task, error) {
+	pgKinds := make([]TaskKind, len(kinds))
+	for i, k := range kinds {
+		pgKinds[i] = TaskKind(k)
+	}
+	pgSourceTypes := make([]SourceType, len(sourceTypes))
+	for i, s := range sourceTypes {
+		pgSourceTypes[i] = SourceType(s)
+	}
+	rows, err := r.q.ClaimTasks(ctx, ClaimTasksParams{
+		Kinds:       pgKinds,
+		SourceTypes: pgSourceTypes,
+		MaxTasks:    limit,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -92,6 +104,13 @@ func (r *PGScheduler) ClaimTasks(ctx context.Context, limit int32) ([]repo.Task,
 		out[i] = dbTaskToRepoTask(row)
 	}
 	return out, nil
+}
+
+func (r *PGScheduler) ReleaseTasks(ctx context.Context, ids []uuid.UUID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.q.ReleaseTasks(ctx, ids)
 }
 
 func (r *PGScheduler) CompleteTask(ctx context.Context, id uuid.UUID) error {
@@ -115,8 +134,8 @@ func (r *PGScheduler) ListRunnableTasks(ctx context.Context, limit int32) ([]rep
 }
 
 // Scout repository.
-func (r *PGScout) GetSourceByID(ctx context.Context, id int32) (repo.Source, error) {
-	row, err := r.q.GetSourceByID(ctx, id)
+func (r *PGScout) GetSourceByAbbr(ctx context.Context, abbr string) (repo.Source, error) {
+	row, err := r.q.GetSourceByAbbr(ctx, abbr)
 	if err != nil {
 		return repo.Source{}, err
 	}
@@ -151,7 +170,7 @@ func (r *PGScout) CreateCandidate(ctx context.Context, arg repo.CreateCandidateP
 	row, err := r.q.CreateCandidate(ctx, CreateCandidateParams{
 		BatchID:         pgconv.UUIDToPgUUID(arg.BatchID),
 		Fingerprint:     arg.Fingerprint,
-		SourceID:        arg.SourceID,
+		SourceAbbr:      arg.SourceAbbr,
 		Title:           arg.Title,
 		Url:             arg.URL,
 		Description:     pgconv.StringPtrToPgText(arg.Description),
@@ -170,7 +189,7 @@ func (r *PGScout) UpsertCandidate(ctx context.Context, arg repo.UpsertCandidateP
 	row, err := r.q.UpsertCandidate(ctx, UpsertCandidateParams{
 		BatchID:         pgconv.UUIDToPgUUID(arg.BatchID),
 		Fingerprint:     arg.Fingerprint,
-		SourceID:        arg.SourceID,
+		SourceAbbr:      arg.SourceAbbr,
 		Title:           arg.Title,
 		Url:             arg.URL,
 		Description:     pgconv.StringPtrToPgText(arg.Description),
@@ -211,10 +230,11 @@ func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (re
 		BatchID:     arg.BatchID,
 		Kind:        TaskKind(arg.Kind),
 		SourceType:  SourceType(arg.SourceType),
-		SourceID:    arg.SourceID,
+		SourceAbbr:  arg.SourceAbbr,
 		Url:         arg.URL,
 		Payload:     arg.Payload,
 		PayloadHash: pgconv.StringPtrToPgText(arg.PayloadHash),
+		Meta:        arg.Meta,
 		TraceID:     arg.TraceID,
 		Frequency:   pgconv.DurationPtrToPgInterval(arg.Frequency),
 		NextRunAt:   pgconv.TimePtrToPgTimestamptz(arg.NextRunAt),
@@ -234,7 +254,7 @@ func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (re
 
 func (r *PGTasks) ExtendActiveTaskExpiry(ctx context.Context, arg repo.ExtendActiveTaskExpiryParams) error {
 	return r.q.ExtendActiveTaskExpiry(ctx, ExtendActiveTaskExpiryParams{
-		SourceID:    arg.SourceID,
+		SourceAbbr:  arg.SourceAbbr,
 		Kind:        TaskKind(arg.Kind),
 		PayloadHash: pgconv.StringPtrToPgText(&arg.PayloadHash),
 		ExpiresAt:   pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
@@ -270,7 +290,7 @@ func (r *PGPipeline) CreateContent(ctx context.Context, arg repo.CreateContentPa
 	row, err := r.q.CreateContent(ctx, CreateContentParams{
 		BatchID:     pgconv.UUIDToPgUUID(arg.BatchID),
 		Type:        ContentType(arg.Type),
-		SourceID:    arg.SourceID,
+		SourceAbbr:  arg.SourceAbbr,
 		CandidateID: pgconv.UUIDToPgUUID(arg.CandidateID),
 		Url:         arg.URL,
 		Title:       arg.Title,

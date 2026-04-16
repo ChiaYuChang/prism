@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/discovery"
 	"github.com/ChiaYuChang/prism/internal/llm"
 	"github.com/ChiaYuChang/prism/internal/model"
 	"github.com/ChiaYuChang/prism/internal/obs"
@@ -35,6 +36,8 @@ type Extractor struct {
 	logger    *slog.Logger
 	tracer    trace.Tracer
 }
+
+var _ discovery.Extractor = (*Extractor)(nil)
 
 // NewExtractor creates a new Extractor instance, binding it to a specific LLM generator,
 // model, and prompt contract.

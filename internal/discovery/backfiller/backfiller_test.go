@@ -11,6 +11,7 @@ import (
 	discoverymocks "github.com/ChiaYuChang/prism/internal/discovery/mocks"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/model"
+	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/pkg/testutils"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
@@ -49,7 +50,7 @@ func TestBackfillerTimeout(t *testing.T) {
 	runner, err := backfiller.New(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
-		scout, pager, sink, 3, 10*time.Millisecond)
+		scout, pager, sink, "kmt", 10*time.Millisecond)
 	require.NoError(t, err)
 
 	_, err = runner.Run(
@@ -79,7 +80,7 @@ func TestBackfillerGlobalTimeout(t *testing.T) {
 	runner, err := backfiller.New(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
-		scout, pager, sink, 3, 0)
+		scout, pager, sink, "kmt", 0)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
@@ -138,7 +139,7 @@ func TestBackfillerRunBuildsCandidateSinkRequest(t *testing.T) {
 	runner, err := backfiller.New(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
-		scout, pager, sink, 3, 0)
+		scout, pager, sink, "kmt", 0)
 	require.NoError(t, err)
 
 	result, err := runner.Run(
@@ -153,15 +154,15 @@ func TestBackfillerRunBuildsCandidateSinkRequest(t *testing.T) {
 
 	require.Len(t, got, 2)
 	require.Equal(t, page1, got[0].SourceURL)
-	require.Equal(t, int32(3), got[0].SourceID)
-	require.Equal(t, "PARTY", got[0].SourceType)
+	require.Equal(t, "kmt", got[0].SourceAbbr)
+	require.Equal(t, repo.SourceTypeParty, got[0].SourceType)
 	require.Equal(t, "DIRECTORY", got[0].IngestionMethod)
 	require.NotNil(t, got[0].BatchID)
 	require.Equal(t, batchID, got[0].BatchID)
 	require.Len(t, got[0].Candidates, 2)
 	require.Equal(t, page2, got[1].SourceURL)
-	require.Equal(t, int32(3), got[1].SourceID)
-	require.Equal(t, "PARTY", got[1].SourceType)
+	require.Equal(t, "kmt", got[1].SourceAbbr)
+	require.Equal(t, repo.SourceTypeParty, got[1].SourceType)
 	require.Equal(t, "DIRECTORY", got[1].IngestionMethod)
 	require.NotNil(t, got[1].BatchID)
 	require.Equal(t, batchID, got[1].BatchID)

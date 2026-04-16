@@ -12,10 +12,11 @@ type Task struct {
 	TraceID    string
 	Kind       string
 	SourceType string
-	SourceID   int32
+	SourceAbbr string
 	URL         string
 	Payload     []byte
 	PayloadHash *string
+	Meta        []byte
 	Frequency   *time.Duration
 	NextRunAt  time.Time
 	ExpiresAt  *time.Time
@@ -27,7 +28,6 @@ type Task struct {
 }
 
 type Source struct {
-	ID        int32
 	Abbr      string
 	Name      string
 	Type      string
@@ -59,7 +59,7 @@ type Candidate struct {
 	ID              uuid.UUID
 	BatchID         uuid.UUID
 	Fingerprint     string
-	SourceID        int32
+	SourceAbbr      string
 	Title           string
 	URL             string
 	Description     *string
@@ -75,7 +75,7 @@ type Content struct {
 	ID          uuid.UUID
 	BatchID     uuid.UUID
 	Type        string
-	SourceID    int32
+	SourceAbbr  string
 	CandidateID uuid.UUID
 	URL         string
 	Title       string

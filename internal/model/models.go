@@ -34,7 +34,7 @@ type Task struct {
 // Candidates is a temporary buffer for storing discovered articles before parsing.
 type Candidates struct {
 	BatchID         uuid.UUID      `json:"batch_id"`
-	SourceID        int            `json:"source_id"`        // Source id
+	SourceAbbr      string         `json:"source_abbr"`      // Source abbreviation (PK)
 	TraceID         string         `json:"trace_id"`         // Trace ID of the article
 	URL             string         `json:"url"`              // URL of the article
 	Title           string         `json:"title"`            // Title of the article
@@ -83,7 +83,6 @@ type ArchiveRecord struct {
 
 // Source represents a media entity (e.g., PTS, Liberty Times).
 type Source struct {
-	ID      int32  `json:"id"`
 	Abbr    string `json:"abbr"`
 	Name    string `json:"name"`
 	Type    string `json:"type"` // e.g., "MEDIA", "PARTY"

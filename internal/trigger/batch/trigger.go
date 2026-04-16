@@ -11,10 +11,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const (
-	PartySourceType = "PARTY"
-)
-
 var (
 	ErrParamMissing = errors.New("param missing")
 )
@@ -114,7 +110,7 @@ func (t *Trigger) ScanCompletedBatches(ctx context.Context, limit int32) ([]Comp
 func (t *Trigger) GetBatchProgress(ctx context.Context, batchID uuid.UUID) (BatchProgress, error) {
 	var progress = BatchProgress{
 		BatchID:    batchID,
-		SourceType: PartySourceType,
+		SourceType: repo.SourceTypeParty,
 	}
 
 	tasks, err := t.batchTrigger.ListTasksByBatchID(ctx, batchID)
@@ -123,7 +119,7 @@ func (t *Trigger) GetBatchProgress(ctx context.Context, batchID uuid.UUID) (Batc
 	}
 	
 	for _, task := range tasks {
-		if task.SourceType != PartySourceType {
+		if task.SourceType != repo.SourceTypeParty {
 			continue
 		}
 		progress.TotalTasks++

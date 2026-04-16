@@ -15,10 +15,11 @@ INSERT INTO tasks (
     batch_id,
     kind,
     source_type,
-    source_id,
+    source_abbr,
     url,
     payload,
     payload_hash,
+    meta,
     trace_id,
     frequency,
     next_run_at,
@@ -27,10 +28,11 @@ INSERT INTO tasks (
     sqlc.arg(batch_id),
     sqlc.arg(kind),
     sqlc.arg(source_type),
-    sqlc.arg(source_id),
+    sqlc.arg(source_abbr),
     sqlc.arg(url),
     sqlc.narg(payload),
     sqlc.narg(payload_hash),
+    sqlc.narg(meta),
     sqlc.arg(trace_id),
     sqlc.narg(frequency),
     COALESCE(sqlc.narg(next_run_at), NOW()),
@@ -51,13 +53,23 @@ WHERE id IN (
             status = 'PENDING'
         AND next_run_at <= NOW()
         AND (expires_at IS NULL OR expires_at > NOW())
+        AND kind = ANY(sqlc.arg(kinds)::task_kind[])
+        AND (
+            COALESCE(array_length(sqlc.arg(source_types)::source_type[], 1), 0) = 0
+            OR source_type = ANY(sqlc.arg(source_types)::source_type[])
+        )
     ) OR (
             status = 'RUNNING'
         AND last_run_at < NOW() - INTERVAL '30 minutes'
         AND (expires_at IS NULL OR expires_at > NOW())
+        AND kind = ANY(sqlc.arg(kinds)::task_kind[])
+        AND (
+            COALESCE(array_length(sqlc.arg(source_types)::source_type[], 1), 0) = 0
+            OR source_type = ANY(sqlc.arg(source_types)::source_type[])
+        )
     )
     ORDER BY next_run_at ASC
-    LIMIT $1
+    LIMIT sqlc.arg(max_tasks)
     FOR UPDATE SKIP LOCKED
 )
 RETURNING *;
@@ -92,10 +104,22 @@ WHERE id = sqlc.arg(id);
 UPDATE tasks
 SET expires_at = sqlc.narg(expires_at),
     updated_at = NOW()
-WHERE source_id    = sqlc.arg(source_id)
+WHERE source_abbr    = sqlc.arg(source_abbr)
   AND kind         = sqlc.arg(kind)
   AND payload_hash = sqlc.arg(payload_hash)
   AND status IN ('PENDING', 'RUNNING');
+
+-- name: ReleaseTasks :exec
+-- Resets RUNNING tasks back to PENDING in bulk, undoing the ClaimTasks
+-- retry_count increment. Used when dispatch is skipped (e.g. rate-limited)
+-- so tasks are retried on the next scheduler tick without consuming retry slots.
+UPDATE tasks
+SET status      = 'PENDING',
+    retry_count = GREATEST(retry_count - 1, 0),
+    next_run_at = NOW() + INTERVAL '3 seconds',
+    updated_at  = NOW()
+WHERE id = ANY(sqlc.arg(ids)::uuid[])
+  AND status = 'RUNNING';
 
 -- name: ListRunnableTasks :many
 SELECT *

@@ -177,7 +177,7 @@ func (q *Queries) ListContentEmbeddingsByContentID(ctx context.Context, contentI
 
 const searchCandidatesByVector = `-- name: SearchCandidatesByVector :many
 SELECT
-    c.id, c.batch_id, c.source_id, c.trace_id, c.fingerprint, c.url, c.title, c.description, c.ingestion_method, c.metadata, c.published_at, c.discovered_at, c.created_at,
+    c.id, c.batch_id, c.source_abbr, c.trace_id, c.fingerprint, c.url, c.title, c.description, c.ingestion_method, c.metadata, c.published_at, c.discovered_at, c.created_at,
     e.vector <=> $2 AS distance
 FROM candidate_embeddings_gemma_2025 AS e
 JOIN candidates AS c ON c.id = e.candidate_id
@@ -195,7 +195,7 @@ type SearchCandidatesByVectorParams struct {
 type SearchCandidatesByVectorRow struct {
 	ID              uuid.UUID                `db:"id" json:"id"`
 	BatchID         pgtype.UUID              `db:"batch_id" json:"batch_id"`
-	SourceID        int32                    `db:"source_id" json:"source_id"`
+	SourceAbbr      string                   `db:"source_abbr" json:"source_abbr"`
 	TraceID         string                   `db:"trace_id" json:"trace_id"`
 	Fingerprint     string                   `db:"fingerprint" json:"fingerprint"`
 	Url             string                   `db:"url" json:"url"`
@@ -221,7 +221,7 @@ func (q *Queries) SearchCandidatesByVector(ctx context.Context, arg SearchCandid
 		if err := rows.Scan(
 			&i.ID,
 			&i.BatchID,
-			&i.SourceID,
+			&i.SourceAbbr,
 			&i.TraceID,
 			&i.Fingerprint,
 			&i.Url,
@@ -246,7 +246,7 @@ func (q *Queries) SearchCandidatesByVector(ctx context.Context, arg SearchCandid
 
 const searchContentsByVector = `-- name: SearchContentsByVector :many
 SELECT
-    c.id, c.batch_id, c.type, c.source_id, c.candidate_id, c.url, c.title, c.content, c.author, c.trace_id, c.published_at, c.fetched_at, c.created_at, c.deleted_at, c.metadata,
+    c.id, c.batch_id, c.type, c.source_abbr, c.candidate_id, c.url, c.title, c.content, c.author, c.trace_id, c.published_at, c.fetched_at, c.created_at, c.deleted_at, c.metadata,
     e.vector <=> $2 AS distance
 FROM content_embeddings_gemma_2025 AS e
 JOIN contents AS c ON c.id = e.content_id
@@ -265,7 +265,7 @@ type SearchContentsByVectorRow struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	BatchID     pgtype.UUID        `db:"batch_id" json:"batch_id"`
 	Type        ContentType        `db:"type" json:"type"`
-	SourceID    int32              `db:"source_id" json:"source_id"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
 	CandidateID pgtype.UUID        `db:"candidate_id" json:"candidate_id"`
 	Url         string             `db:"url" json:"url"`
 	Title       string             `db:"title" json:"title"`
@@ -293,7 +293,7 @@ func (q *Queries) SearchContentsByVector(ctx context.Context, arg SearchContents
 			&i.ID,
 			&i.BatchID,
 			&i.Type,
-			&i.SourceID,
+			&i.SourceAbbr,
 			&i.CandidateID,
 			&i.Url,
 			&i.Title,

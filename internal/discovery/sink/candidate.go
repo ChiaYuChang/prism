@@ -7,11 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
-	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/model"
 	"github.com/ChiaYuChang/prism/internal/repo"
+	"github.com/ChiaYuChang/prism/pkg/utils"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -34,7 +33,7 @@ type CandidateSink interface {
 // It carries batch_id and source_url mapping back to the executing task for auditability.
 type CandidateSinkRequest struct {
 	SourceURL       string             `json:"source_url,omitempty"`
-	SourceID        int32              `json:"source_id,omitempty"`
+	SourceAbbr      string             `json:"source_abbr,omitempty"`
 	SourceType      string             `json:"source_type,omitempty"`
 	BatchID         uuid.UUID          `json:"batch_id,omitempty"`
 	TraceID         string             `json:"trace_id,omitempty"`
@@ -46,20 +45,22 @@ type CandidateSinkRequest struct {
 // PersistingCandidateSink is the concrete implementation of CandidateSink.
 // In accordance with the system's normalization-first workflow, this sink ensures
 // that candidate briefs fetched by Scouts are inserted into the 'candidates'
-// PG repository. By storing briefs here, the system optimizes for recall while
-// deliberately waiting for explicit triggers to promote candidates into full contents.
+// PG repository. For PARTY sources, a PAGE_FETCH task is created in the tasks
+// table so the scheduler-fast can dispatch it to the Collector Worker.
 type PersistingCandidateSink struct {
-	logger    *slog.Logger
-	tracer    trace.Tracer
-	repo      repo.Scout
-	publisher message.PageFetchPublisher
+	logger *slog.Logger
+	tracer trace.Tracer
+	scout  repo.Scout
+	tasks  repo.Tasks
 }
+
+var _ CandidateSink = (*PersistingCandidateSink)(nil)
 
 func NewPersistingCandidateSink(
 	logger *slog.Logger,
 	tracer trace.Tracer,
 	scoutRepo repo.Scout,
-	publisher message.PageFetchPublisher,
+	tasks repo.Tasks,
 ) (*PersistingCandidateSink, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
@@ -70,12 +71,15 @@ func NewPersistingCandidateSink(
 	if scoutRepo == nil {
 		return nil, fmt.Errorf("%w: scout_repository", ErrParamMissing)
 	}
+	if tasks == nil {
+		return nil, fmt.Errorf("%w: tasks_repository", ErrParamMissing)
+	}
 
 	return &PersistingCandidateSink{
-		logger:    logger,
-		tracer:    tracer,
-		repo:      scoutRepo,
-		publisher: publisher,
+		logger: logger,
+		tracer: tracer,
+		scout:  scoutRepo,
+		tasks:  tasks,
 	}, nil
 }
 
@@ -86,25 +90,24 @@ func (s *PersistingCandidateSink) Handle(ctx context.Context, req CandidateSinkR
 	defer span.End()
 
 	for _, candidate := range req.Candidates {
-		params, err := toUpsertCandidateParams(candidate, req)
+		enrichedCand, err := applyRequestDefaults(candidate, req)
 		if err != nil {
 			return err
 		}
-		stored, err := s.repo.UpsertCandidate(ctx, params)
+
+		params, err := toUpsertCandidateParams(enrichedCand)
+		if err != nil {
+			return err
+		}
+
+		stored, err := s.scout.UpsertCandidate(ctx, params)
 		if err != nil {
 			return fmt.Errorf("upsert candidate %s: %w", params.URL, err)
 		}
-		if shouldEmitPageFetch(req.SourceType) && s.publisher != nil {
-			if err := s.publisher.PublishPageFetch(ctx, &message.PageFetchSignal{
-				CandidateID: stored.ID,
-				BatchID:     stored.BatchID,
-				SourceID:    stored.SourceID,
-				SourceType:  req.SourceType,
-				URL:         stored.URL,
-				TraceID:     stored.TraceID,
-				SentAt:      timeNow(),
-			}); err != nil {
-				return fmt.Errorf("publish page fetch for %s: %w", stored.URL, err)
+
+		if shouldCreatePageFetch(req.SourceType) {
+			if err := s.createPageFetchTask(ctx, stored, req); err != nil {
+				return fmt.Errorf("create page fetch task for %s: %w", stored.URL, err)
 			}
 		}
 	}
@@ -117,43 +120,50 @@ func (s *PersistingCandidateSink) Handle(ctx context.Context, req CandidateSinkR
 	return nil
 }
 
-var timeNow = func() time.Time {
-	return time.Now()
+// applyRequestDefaults applies default values from the request to the candidate.
+func applyRequestDefaults(candidate model.Candidates, req CandidateSinkRequest) (model.Candidates, error) {
+	if candidate.SourceAbbr == "" {
+		candidate.SourceAbbr = req.SourceAbbr
+	}
+	if candidate.SourceAbbr == "" {
+		return candidate, ErrMissingSourceID
+	}
+
+	candidate.TraceID = strings.TrimSpace(candidate.TraceID)
+	if candidate.TraceID == "" {
+		candidate.TraceID = strings.TrimSpace(req.TraceID)
+	}
+	if candidate.TraceID == "" {
+		return candidate, ErrMissingTraceID
+	}
+
+	candidate.IngestionMethod = strings.TrimSpace(candidate.IngestionMethod)
+	if candidate.IngestionMethod == "" {
+		candidate.IngestionMethod = strings.TrimSpace(req.IngestionMethod)
+	}
+	if candidate.IngestionMethod == "" {
+		candidate.IngestionMethod = repo.IngestionMethodDirectory
+	}
+
+	if candidate.BatchID == uuid.Nil {
+		candidate.BatchID = req.BatchID
+	}
+
+	candidate.Metadata = mergeMetadata(req.DefaultMetadata, candidate.Metadata)
+
+	return candidate, nil
 }
 
-func toUpsertCandidateParams(candidate model.Candidates, req CandidateSinkRequest) (repo.UpsertCandidateParams, error) {
-	sourceID := req.SourceID
-	if candidate.SourceID != 0 {
-		sourceID = int32(candidate.SourceID)
-	}
-	if sourceID == 0 {
-		return repo.UpsertCandidateParams{}, ErrMissingSourceID
-	}
-
-	traceID := strings.TrimSpace(candidate.TraceID)
-	if traceID == "" {
-		traceID = strings.TrimSpace(req.TraceID)
-	}
-	if traceID == "" {
-		return repo.UpsertCandidateParams{}, ErrMissingTraceID
-	}
-
-	ingestionMethod := strings.TrimSpace(candidate.IngestionMethod)
-	if ingestionMethod == "" {
-		ingestionMethod = strings.TrimSpace(req.IngestionMethod)
-	}
-	if ingestionMethod == "" {
-		ingestionMethod = "DIRECTORY"
-	}
-
+// toUpsertCandidateParams converts a Candidates model to UpsertCandidateParams.
+func toUpsertCandidateParams(candidate model.Candidates) (repo.UpsertCandidateParams, error) {
 	params := repo.UpsertCandidateParams{
-		BatchID:         mergeBatchID(req.BatchID, candidate.BatchID),
+		BatchID:         candidate.BatchID,
 		Fingerprint:     candidate.Fingerprint(),
-		SourceID:        sourceID,
+		SourceAbbr:      candidate.SourceAbbr,
 		Title:           candidate.Title,
 		URL:             candidate.URL,
-		TraceID:         traceID,
-		IngestionMethod: ingestionMethod,
+		TraceID:         candidate.TraceID,
+		IngestionMethod: candidate.IngestionMethod,
 	}
 
 	if description := strings.TrimSpace(candidate.Description); description != "" {
@@ -164,38 +174,48 @@ func toUpsertCandidateParams(candidate model.Candidates, req CandidateSinkReques
 		params.PublishedAt = &publishedAt
 	}
 
-	metadata, err := mergeMetadata(req.DefaultMetadata, candidate.Metadata)
-	if err != nil {
-		return repo.UpsertCandidateParams{}, fmt.Errorf("marshal metadata for %s: %w", candidate.URL, err)
+	if len(candidate.Metadata) > 0 {
+		b, err := json.Marshal(candidate.Metadata)
+		if err != nil {
+			return params, fmt.Errorf("marshal metadata: %w", err)
+		}
+		params.Metadata = b
 	}
-	params.Metadata = metadata
 
 	return params, nil
 }
 
-func mergeBatchID(requestBatchID uuid.UUID, candidateBatchID uuid.UUID) uuid.UUID {
-	if candidateBatchID != uuid.Nil {
-		return candidateBatchID
-	}
-	return requestBatchID
-}
-
-func mergeMetadata(defaultMetadata, candidateMetadata map[string]any) ([]byte, error) {
+// mergeMetadata merges default metadata with candidate metadata.
+func mergeMetadata(defaultMetadata, candidateMetadata map[string]any) map[string]any {
 	if len(defaultMetadata) == 0 && len(candidateMetadata) == 0 {
-		return nil, nil
+		return nil
 	}
-
-	metadata := make(map[string]any, len(defaultMetadata)+len(candidateMetadata))
-	for key, value := range defaultMetadata {
-		metadata[key] = value
-	}
-	for key, value := range candidateMetadata {
-		metadata[key] = value
-	}
-
-	return json.Marshal(metadata)
+	return utils.MergeMap(defaultMetadata, candidateMetadata)
 }
 
-func shouldEmitPageFetch(sourceType string) bool {
-	return strings.EqualFold(strings.TrimSpace(sourceType), "PARTY")
+func shouldCreatePageFetch(sourceType string) bool {
+	return strings.EqualFold(strings.TrimSpace(sourceType), repo.SourceTypeParty)
+}
+
+// createPageFetchTask inserts a PAGE_FETCH task for the given candidate.
+// Duplicate active tasks (same URL already PENDING/RUNNING) are silently ignored.
+// candidate_id is stored in meta for logging and observability in the collector.
+func (s *PersistingCandidateSink) createPageFetchTask(ctx context.Context, stored repo.Candidate, req CandidateSinkRequest) error {
+	meta, err := json.Marshal(map[string]any{"candidate_id": stored.ID.String()})
+	if err != nil {
+		return fmt.Errorf("marshal page fetch meta: %w", err)
+	}
+	_, err = s.tasks.CreateTask(ctx, repo.CreateTaskParams{
+		BatchID:    stored.BatchID,
+		Kind:       repo.TaskKindPageFetch,
+		SourceType: req.SourceType,
+		SourceAbbr: stored.SourceAbbr,
+		URL:        stored.URL,
+		Meta:       meta,
+		TraceID:    stored.TraceID,
+	})
+	if err != nil && !errors.Is(err, repo.ErrTaskAlreadyActive) {
+		return err
+	}
+	return nil
 }

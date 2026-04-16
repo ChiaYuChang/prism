@@ -18,11 +18,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const (
-	TaskKindKeywordSearch = "KEYWORD_SEARCH"
-	SourceTypeMedia       = "MEDIA"
-)
-
 var (
 	ErrParamMissing   = errors.New("param missing")
 	ErrZeroBatchID    = errors.New("batch id is zero")
@@ -43,6 +38,8 @@ type Planner struct {
 	tasks     repo.Tasks
 	pipeline  repo.Pipeline
 }
+
+var _ discovery.Planner = (*Planner)(nil)
 
 func New(
 	logger *slog.Logger,
@@ -130,15 +127,15 @@ func (p *Planner) Plan(ctx context.Context, req discovery.PlannerRequest) (disco
 				Site:  strings.TrimSpace(target.Site),
 			})
 			if err != nil {
-				return result, fmt.Errorf("marshal task payload for source %d: %w", target.SourceID, err)
+				return result, fmt.Errorf("marshal task payload for source %s: %w", target.SourceAbbr, err)
 			}
 			sum := sha256.Sum256(payload)
 			hash := hex.EncodeToString(sum[:])
 			if _, createErr := p.tasks.CreateTask(ctx, repo.CreateTaskParams{
 				BatchID:     req.BatchID,
-				Kind:        TaskKindKeywordSearch,
-				SourceType:  SourceTypeMedia,
-				SourceID:    target.SourceID,
+				Kind:        repo.TaskKindKeywordSearch,
+				SourceType:  repo.SourceTypeMedia,
+				SourceAbbr:  target.SourceAbbr,
 				URL:         target.URL,
 				Payload:     payload,
 				PayloadHash: &hash,
@@ -148,16 +145,16 @@ func (p *Planner) Plan(ctx context.Context, req discovery.PlannerRequest) (disco
 				ExpiresAt:   req.ExpiresAt,
 			}); createErr != nil {
 				if !errors.Is(createErr, repo.ErrTaskAlreadyActive) {
-					return result, fmt.Errorf("create task for source %d phrase %q: %w", target.SourceID, phrase, createErr)
+					return result, fmt.Errorf("create task for source %s phrase %q: %w", target.SourceAbbr, phrase, createErr)
 				}
 				if req.ExpiresAt != nil {
 					if extErr := p.tasks.ExtendActiveTaskExpiry(ctx, repo.ExtendActiveTaskExpiryParams{
-						SourceID:    target.SourceID,
-						Kind:        TaskKindKeywordSearch,
+						SourceAbbr:  target.SourceAbbr,
+						Kind:        repo.TaskKindKeywordSearch,
 						PayloadHash: hash,
 						ExpiresAt:   req.ExpiresAt,
 					}); extErr != nil {
-						return result, fmt.Errorf("extend task expiry for source %d phrase %q: %w", target.SourceID, phrase, extErr)
+						return result, fmt.Errorf("extend task expiry for source %s phrase %q: %w", target.SourceAbbr, phrase, extErr)
 					}
 				}
 				continue
@@ -180,8 +177,8 @@ func normalizePhrase(in string) string {
 }
 
 func validateTarget(target discovery.PlannerTarget) error {
-	if target.SourceID == 0 {
-		return fmt.Errorf("%w: target.source_id", ErrParamMissing)
+	if strings.TrimSpace(target.SourceAbbr) == "" {
+		return fmt.Errorf("%w: target.source_abbr", ErrParamMissing)
 	}
 	if strings.TrimSpace(target.URL) == "" {
 		return fmt.Errorf("%w: target.url", ErrParamMissing)

@@ -59,6 +59,8 @@ type IndexPager struct {
 	first       bool
 }
 
+var _ Pager = (*IndexPager)(nil)
+
 func NewIndexPager(logger *slog.Logger, tracer trace.Tracer, cfg IndexPagerConfig) (*IndexPager, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)

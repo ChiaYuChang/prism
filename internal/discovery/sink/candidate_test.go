@@ -1,4 +1,4 @@
-package sink
+package sink_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ChiaYuChang/prism/internal/message"
+	"github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/model"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	repomocks "github.com/ChiaYuChang/prism/internal/repo/mocks"
@@ -19,11 +19,12 @@ import (
 
 func TestPersistingCandidateSinkHandleUsesRequestDefaults(t *testing.T) {
 	scoutRepo := repomocks.NewMockScout(t)
-	sink, err := NewPersistingCandidateSink(
+	tasksRepo := repomocks.NewMockTasks(t)
+	s, err := sink.NewPersistingCandidateSink(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scoutRepo,
-		nil,
+		tasksRepo,
 	)
 	require.NoError(t, err)
 
@@ -38,13 +39,13 @@ func TestPersistingCandidateSinkHandleUsesRequestDefaults(t *testing.T) {
 		Return(repo.Candidate{}, nil).
 		Once()
 
-	err = sink.Handle(context.Background(), CandidateSinkRequest{
+	err = s.Handle(context.Background(), sink.CandidateSinkRequest{
 		SourceURL:       "https://example.com/listing",
-		SourceID:        3,
+		SourceAbbr:      "kmt",
 		SourceType:      "MEDIA",
 		BatchID:         batchID,
 		TraceID:         "trace-default",
-		IngestionMethod: "DIRECTORY",
+		IngestionMethod: repo.IngestionMethodDirectory,
 		DefaultMetadata: map[string]any{
 			"source_url": "https://example.com/listing",
 		},
@@ -64,7 +65,7 @@ func TestPersistingCandidateSinkHandleUsesRequestDefaults(t *testing.T) {
 
 	require.NotEmpty(t, got.BatchID)
 	require.Equal(t, batchID, got.BatchID)
-	require.Equal(t, int32(3), got.SourceID)
+	require.Equal(t, "kmt", got.SourceAbbr)
 	require.Equal(t, "https://example.com/a", got.URL)
 	require.Equal(t, "Example", got.Title)
 	require.NotNil(t, got.Description)
@@ -72,7 +73,7 @@ func TestPersistingCandidateSinkHandleUsesRequestDefaults(t *testing.T) {
 	require.NotNil(t, got.PublishedAt)
 	require.Equal(t, publishedAt, *got.PublishedAt)
 	require.Equal(t, "trace-default", got.TraceID)
-	require.Equal(t, "DIRECTORY", got.IngestionMethod)
+	require.Equal(t, repo.IngestionMethodDirectory, got.IngestionMethod)
 	require.Equal(t, model.Candidates{
 		URL:         "https://example.com/a",
 		Title:       "Example",
@@ -88,11 +89,12 @@ func TestPersistingCandidateSinkHandleUsesRequestDefaults(t *testing.T) {
 
 func TestPersistingCandidateSinkHandleUsesCandidateOverrides(t *testing.T) {
 	scoutRepo := repomocks.NewMockScout(t)
-	sink, err := NewPersistingCandidateSink(
+	tasksRepo := repomocks.NewMockTasks(t)
+	s, err := sink.NewPersistingCandidateSink(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scoutRepo,
-		nil,
+		tasksRepo,
 	)
 	require.NoError(t, err)
 
@@ -106,17 +108,17 @@ func TestPersistingCandidateSinkHandleUsesCandidateOverrides(t *testing.T) {
 		Return(repo.Candidate{}, nil).
 		Once()
 
-	err = sink.Handle(context.Background(), CandidateSinkRequest{
-		SourceID: 1,
-		TraceID:  "trace-default",
+	err = s.Handle(context.Background(), sink.CandidateSinkRequest{
+		SourceAbbr: "dpp",
+		TraceID:    "trace-default",
 		Candidates: []model.Candidates{
 			{
 				BatchID:         candidateBatchID,
-				SourceID:        7,
+				SourceAbbr:      "pts",
 				TraceID:         "trace-candidate",
 				URL:             "https://example.com/b",
 				Title:           "Override",
-				IngestionMethod: "SEARCH",
+				IngestionMethod: repo.IngestionMethodSearch,
 			},
 		},
 	})
@@ -124,57 +126,59 @@ func TestPersistingCandidateSinkHandleUsesCandidateOverrides(t *testing.T) {
 
 	require.NotEmpty(t, got.BatchID)
 	require.Equal(t, candidateBatchID, got.BatchID)
-	require.Equal(t, int32(7), got.SourceID)
+	require.Equal(t, "pts", got.SourceAbbr)
 	require.Equal(t, "trace-candidate", got.TraceID)
-	require.Equal(t, "SEARCH", got.IngestionMethod)
+	require.Equal(t, repo.IngestionMethodSearch, got.IngestionMethod)
 }
 
 func TestPersistingCandidateSinkHandleReturnsErrorWhenSourceIDMissing(t *testing.T) {
 	scoutRepo := repomocks.NewMockScout(t)
-	sink, err := NewPersistingCandidateSink(
+	tasksRepo := repomocks.NewMockTasks(t)
+	s, err := sink.NewPersistingCandidateSink(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scoutRepo,
-		nil,
+		tasksRepo,
 	)
 	require.NoError(t, err)
 
-	err = sink.Handle(context.Background(), CandidateSinkRequest{
+	err = s.Handle(context.Background(), sink.CandidateSinkRequest{
 		TraceID: "trace-default",
 		Candidates: []model.Candidates{
 			{URL: "https://example.com/a", Title: "Example"},
 		},
 	})
-	require.ErrorIs(t, err, ErrMissingSourceID)
+	require.ErrorIs(t, err, sink.ErrMissingSourceID)
 }
 
 func TestPersistingCandidateSinkHandleReturnsErrorWhenTraceIDMissing(t *testing.T) {
 	scoutRepo := repomocks.NewMockScout(t)
-	sink, err := NewPersistingCandidateSink(
+	tasksRepo := repomocks.NewMockTasks(t)
+	s, err := sink.NewPersistingCandidateSink(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scoutRepo,
-		nil,
+		tasksRepo,
 	)
 	require.NoError(t, err)
 
-	err = sink.Handle(context.Background(), CandidateSinkRequest{
-		SourceID: 1,
+	err = s.Handle(context.Background(), sink.CandidateSinkRequest{
+		SourceAbbr: "dpp",
 		Candidates: []model.Candidates{
 			{URL: "https://example.com/a", Title: "Example"},
 		},
 	})
-	require.ErrorIs(t, err, ErrMissingTraceID)
+	require.ErrorIs(t, err, sink.ErrMissingTraceID)
 }
 
-func TestPersistingCandidateSinkPublishesPageFetchForPartySource(t *testing.T) {
+func TestPersistingCandidateSinkCreatesPageFetchTaskForPartySource(t *testing.T) {
 	scoutRepo := repomocks.NewMockScout(t)
-	publisher := &stubPageFetchPublisher{}
-	sink, err := NewPersistingCandidateSink(
+	tasksRepo := repomocks.NewMockTasks(t)
+	s, err := sink.NewPersistingCandidateSink(
 		testutils.Logger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scoutRepo,
-		publisher,
+		tasksRepo,
 	)
 	require.NoError(t, err)
 
@@ -185,20 +189,28 @@ func TestPersistingCandidateSinkPublishesPageFetchForPartySource(t *testing.T) {
 		Return(repo.Candidate{
 			ID:              candidateID,
 			BatchID:         batchID,
-			SourceID:        3,
+			SourceAbbr:      "dpp",
 			URL:             "https://example.com/a",
 			TraceID:         "trace-default",
-			IngestionMethod: "DIRECTORY",
+			IngestionMethod: repo.IngestionMethodDirectory,
 		}, nil).
 		Once()
 
-	err = sink.Handle(context.Background(), CandidateSinkRequest{
+	var gotParams repo.CreateTaskParams
+	tasksRepo.On("CreateTask", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			gotParams = args.Get(1).(repo.CreateTaskParams)
+		}).
+		Return(repo.Task{}, nil).
+		Once()
+
+	err = s.Handle(context.Background(), sink.CandidateSinkRequest{
 		SourceURL:       "https://example.com/listing",
-		SourceID:        3,
+		SourceAbbr:      "dpp",
 		SourceType:      "PARTY",
 		BatchID:         batchID,
 		TraceID:         "trace-default",
-		IngestionMethod: "DIRECTORY",
+		IngestionMethod: repo.IngestionMethodDirectory,
 		Candidates: []model.Candidates{
 			{
 				URL:   "https://example.com/a",
@@ -207,18 +219,9 @@ func TestPersistingCandidateSinkPublishesPageFetchForPartySource(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Len(t, publisher.signals, 1)
-	require.Equal(t, candidateID, publisher.signals[0].CandidateID)
-	require.Equal(t, "PARTY", publisher.signals[0].SourceType)
-	require.Equal(t, "https://example.com/a", publisher.signals[0].URL)
-}
-
-type stubPageFetchPublisher struct {
-	signals []*message.PageFetchSignal
-	err     error
-}
-
-func (s *stubPageFetchPublisher) PublishPageFetch(_ context.Context, sig *message.PageFetchSignal) error {
-	s.signals = append(s.signals, sig)
-	return s.err
+	require.Equal(t, repo.TaskKindPageFetch, gotParams.Kind)
+	require.Equal(t, "PARTY", gotParams.SourceType)
+	require.Equal(t, "https://example.com/a", gotParams.URL)
+	require.Equal(t, "trace-default", gotParams.TraceID)
+	require.Equal(t, batchID, gotParams.BatchID)
 }

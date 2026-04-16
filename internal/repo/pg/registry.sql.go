@@ -105,7 +105,7 @@ func (q *Queries) GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, erro
 }
 
 const getSourceByAbbr = `-- name: GetSourceByAbbr :one
-SELECT id, abbr, name, type, base_url, created_at, deleted_at
+SELECT abbr, name, type, base_url, created_at, deleted_at
 FROM sources
 WHERE abbr = $1
 LIMIT 1
@@ -115,29 +115,6 @@ func (q *Queries) GetSourceByAbbr(ctx context.Context, abbr string) (Source, err
 	row := q.db.QueryRow(ctx, getSourceByAbbr, abbr)
 	var i Source
 	err := row.Scan(
-		&i.ID,
-		&i.Abbr,
-		&i.Name,
-		&i.Type,
-		&i.BaseUrl,
-		&i.CreatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const getSourceByID = `-- name: GetSourceByID :one
-SELECT id, abbr, name, type, base_url, created_at, deleted_at
-FROM sources
-WHERE id = $1
-LIMIT 1
-`
-
-func (q *Queries) GetSourceByID(ctx context.Context, id int32) (Source, error) {
-	row := q.db.QueryRow(ctx, getSourceByID, id)
-	var i Source
-	err := row.Scan(
-		&i.ID,
 		&i.Abbr,
 		&i.Name,
 		&i.Type,
@@ -149,7 +126,7 @@ func (q *Queries) GetSourceByID(ctx context.Context, id int32) (Source, error) {
 }
 
 const listSourcesByType = `-- name: ListSourcesByType :many
-SELECT id, abbr, name, type, base_url, created_at, deleted_at
+SELECT abbr, name, type, base_url, created_at, deleted_at
 FROM sources
 WHERE type = $1
   AND deleted_at IS NULL
@@ -166,7 +143,6 @@ func (q *Queries) ListSourcesByType(ctx context.Context, type_ SourceType) ([]So
 	for rows.Next() {
 		var i Source
 		if err := rows.Scan(
-			&i.ID,
 			&i.Abbr,
 			&i.Name,
 			&i.Type,

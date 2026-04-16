@@ -28,7 +28,7 @@ func TestScanCompletedBatchesReturnsOnlyCompletedPartyBatches(t *testing.T) {
 	}, nil)
 
 	batchTrigger.EXPECT().ListTasksByBatchID(mock.Anything, batchDone).Return([]repo.Task{
-		{ID: taskID, BatchID: batchDone, SourceType: PartySourceType, Status: "COMPLETED", TraceID: "trace-id-1"},
+		{ID: taskID, BatchID: batchDone, SourceType: repo.SourceTypeParty, Status: "COMPLETED", TraceID: "trace-id-1"},
 	}, nil)
 	batchTrigger.EXPECT().CountCandidatesByBatchID(mock.Anything, batchDone).Return(int64(2), nil)
 	batchTrigger.EXPECT().ListContentsByBatchID(mock.Anything, batchDone).Return([]repo.Content{
@@ -36,7 +36,7 @@ func TestScanCompletedBatchesReturnsOnlyCompletedPartyBatches(t *testing.T) {
 	}, nil)
 
 	batchTrigger.EXPECT().ListTasksByBatchID(mock.Anything, batchPending).Return([]repo.Task{
-		{ID: uuid.Must(uuid.NewV7()), BatchID: batchPending, SourceType: PartySourceType, Status: "RUNNING", TraceID: "trace-b"},
+		{ID: uuid.Must(uuid.NewV7()), BatchID: batchPending, SourceType: repo.SourceTypeParty, Status: "RUNNING", TraceID: "trace-b"},
 	}, nil)
 	batchTrigger.EXPECT().CountCandidatesByBatchID(mock.Anything, batchPending).Return(int64(2), nil)
 	batchTrigger.EXPECT().ListContentsByBatchID(mock.Anything, batchPending).Return([]repo.Content{
@@ -63,8 +63,8 @@ func TestScanCompletedBatchesSkipsIncompleteCandidatePromotion(t *testing.T) {
 		{BatchID: batchID},
 	}, nil)
 	batchTrigger.EXPECT().ListTasksByBatchID(mock.Anything, batchID).Return([]repo.Task{
-		{ID: uuid.Must(uuid.NewV7()), BatchID: batchID, SourceType: PartySourceType, Status: "COMPLETED", TraceID: "trace-a"},
-		{ID: uuid.Must(uuid.NewV7()), BatchID: batchID, SourceType: PartySourceType, Status: "COMPLETED", TraceID: "trace-b"}, // different trace, trace-a should win
+		{ID: uuid.Must(uuid.NewV7()), BatchID: batchID, SourceType: repo.SourceTypeParty, Status: "COMPLETED", TraceID: "trace-a"},
+		{ID: uuid.Must(uuid.NewV7()), BatchID: batchID, SourceType: repo.SourceTypeParty, Status: "COMPLETED", TraceID: "trace-b"}, // different trace, trace-a should win
 	}, nil)
 	batchTrigger.EXPECT().CountCandidatesByBatchID(mock.Anything, batchID).Return(int64(3), nil)
 	batchTrigger.EXPECT().ListContentsByBatchID(mock.Anything, batchID).Return([]repo.Content{

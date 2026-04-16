@@ -18,9 +18,28 @@ type Config struct {
 	Valkey        app.ValkeyConfig    `mapstructure:"valkey"`
 	Logger        app.LoggerConfig    `mapstructure:"logger"`
 	BatchSize     int                 `mapstructure:"batch-size"     validate:"required,min=1,max=200"`
+	Kinds         []string            `mapstructure:"kinds"          validate:"required,min=1,dive,oneof=DIRECTORY_FETCH KEYWORD_SEARCH PAGE_FETCH"`
 	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
 	MessengerType string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
 	Messenger     app.MessengerConfig `mapstructure:"-"`
+
+	// LockKey is the Valkey key used for the distributed scheduler lock.
+	// Different scheduler instances (fast/slow) must use different keys.
+	// If empty, it is derived from the sorted kinds list at startup.
+	LockKey string `mapstructure:"lock-key"`
+
+	// MediaQuota is the number of PAGE_FETCH+MEDIA slots reserved per tick.
+	// When > 0, the tick uses a two-step claim: MEDIA first, PARTY fills the rest.
+	// Only meaningful when kinds includes PAGE_FETCH.
+	MediaQuota int `mapstructure:"media-quota" validate:"min=0"`
+
+	// Buffer is the extra tasks claimed beyond quota to absorb rate-limited slots.
+	// E.g. if MediaQuota=30 and Buffer=10, step 1 claims up to 40 MEDIA tasks.
+	Buffer int `mapstructure:"buffer" validate:"min=0"`
+
+	// RateLimitConfigPath is the path to the per-source rate limit YAML config.
+	// If empty, a conservative default (1 req/s, burst 2) is used for all sources.
+	RateLimitConfigPath string `mapstructure:"rate-limit-config"`
 }
 
 // LoadConfig merges pflag, environment variables, and config files into the Config struct.
@@ -61,6 +80,11 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("log-level", "info", "The log level (debug, info, warn, error)")
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel, default: nats)")
 	fs.Int("batch-size", 100, "Number of tasks to claim per tick (max: 200, default: 100)")
+	fs.StringSlice("kinds", []string{"DIRECTORY_FETCH", "KEYWORD_SEARCH"}, "Task kinds this scheduler instance will claim (comma-separated)")
+	fs.String("lock-key", "", "Valkey lock key for this scheduler instance (derived from kinds if empty)")
+	fs.Int("media-quota", 0, "Reserved PAGE_FETCH+MEDIA slots per tick; 0 disables priority split")
+	fs.Int("buffer", 10, "Extra tasks to over-claim per step to absorb rate-limited slots")
+	fs.String("rate-limit-config", "", "Path to per-source rate limit YAML config (uses safe defaults if empty)")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("failed to parse flags: %w", err)

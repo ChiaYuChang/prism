@@ -2,7 +2,6 @@ version: 1
 backfiller:
   sources:
     dpp:
-      source_id: 1
       format: html
       base_url: https://www.dpp.org.tw
       pager:
@@ -13,7 +12,6 @@ backfiller:
         step: 10
 
     tpp:
-      source_id: 2
       format: html
       base_url: https://www.tpp.org.tw
       pager:
@@ -26,7 +24,6 @@ backfiller:
           page: "{{.Value}}"
 
     kmt:
-      source_id: 3
       format: atom
       base_url: https://www.kmt.org.tw
       pager:

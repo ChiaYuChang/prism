@@ -40,8 +40,8 @@ func (_m *MockScheduler) EXPECT() *MockScheduler_Expecter {
 }
 
 // ClaimTasks provides a mock function for the type MockScheduler
-func (_mock *MockScheduler) ClaimTasks(ctx context.Context, limit int32) ([]repo.Task, error) {
-	ret := _mock.Called(ctx, limit)
+func (_mock *MockScheduler) ClaimTasks(ctx context.Context, limit int32, kinds []string, sourceTypes []string) ([]repo.Task, error) {
+	ret := _mock.Called(ctx, limit, kinds, sourceTypes)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ClaimTasks")
@@ -49,18 +49,18 @@ func (_mock *MockScheduler) ClaimTasks(ctx context.Context, limit int32) ([]repo
 
 	var r0 []repo.Task
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) ([]repo.Task, error)); ok {
-		return returnFunc(ctx, limit)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, []string, []string) ([]repo.Task, error)); ok {
+		return returnFunc(ctx, limit, kinds, sourceTypes)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) []repo.Task); ok {
-		r0 = returnFunc(ctx, limit)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, []string, []string) []repo.Task); ok {
+		r0 = returnFunc(ctx, limit, kinds, sourceTypes)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repo.Task)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int32) error); ok {
-		r1 = returnFunc(ctx, limit)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32, []string, []string) error); ok {
+		r1 = returnFunc(ctx, limit, kinds, sourceTypes)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -75,11 +75,13 @@ type MockScheduler_ClaimTasks_Call struct {
 // ClaimTasks is a helper method to define mock.On call
 //   - ctx context.Context
 //   - limit int32
-func (_e *MockScheduler_Expecter) ClaimTasks(ctx interface{}, limit interface{}) *MockScheduler_ClaimTasks_Call {
-	return &MockScheduler_ClaimTasks_Call{Call: _e.mock.On("ClaimTasks", ctx, limit)}
+//   - kinds []string
+//   - sourceTypes []string
+func (_e *MockScheduler_Expecter) ClaimTasks(ctx interface{}, limit interface{}, kinds interface{}, sourceTypes interface{}) *MockScheduler_ClaimTasks_Call {
+	return &MockScheduler_ClaimTasks_Call{Call: _e.mock.On("ClaimTasks", ctx, limit, kinds, sourceTypes)}
 }
 
-func (_c *MockScheduler_ClaimTasks_Call) Run(run func(ctx context.Context, limit int32)) *MockScheduler_ClaimTasks_Call {
+func (_c *MockScheduler_ClaimTasks_Call) Run(run func(ctx context.Context, limit int32, kinds []string, sourceTypes []string)) *MockScheduler_ClaimTasks_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -89,9 +91,19 @@ func (_c *MockScheduler_ClaimTasks_Call) Run(run func(ctx context.Context, limit
 		if args[1] != nil {
 			arg1 = args[1].(int32)
 		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		var arg3 []string
+		if args[3] != nil {
+			arg3 = args[3].([]string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -102,7 +114,7 @@ func (_c *MockScheduler_ClaimTasks_Call) Return(tasks []repo.Task, err error) *M
 	return _c
 }
 
-func (_c *MockScheduler_ClaimTasks_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Task, error)) *MockScheduler_ClaimTasks_Call {
+func (_c *MockScheduler_ClaimTasks_Call) RunAndReturn(run func(ctx context.Context, limit int32, kinds []string, sourceTypes []string) ([]repo.Task, error)) *MockScheduler_ClaimTasks_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -285,6 +297,63 @@ func (_c *MockScheduler_ListRunnableTasks_Call) Return(tasks []repo.Task, err er
 }
 
 func (_c *MockScheduler_ListRunnableTasks_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Task, error)) *MockScheduler_ListRunnableTasks_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ReleaseTasks provides a mock function for the type MockScheduler
+func (_mock *MockScheduler) ReleaseTasks(ctx context.Context, ids []uuid.UUID) error {
+	ret := _mock.Called(ctx, ids)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ReleaseTasks")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, ids)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockScheduler_ReleaseTasks_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReleaseTasks'
+type MockScheduler_ReleaseTasks_Call struct {
+	*mock.Call
+}
+
+// ReleaseTasks is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ids []uuid.UUID
+func (_e *MockScheduler_Expecter) ReleaseTasks(ctx interface{}, ids interface{}) *MockScheduler_ReleaseTasks_Call {
+	return &MockScheduler_ReleaseTasks_Call{Call: _e.mock.On("ReleaseTasks", ctx, ids)}
+}
+
+func (_c *MockScheduler_ReleaseTasks_Call) Run(run func(ctx context.Context, ids []uuid.UUID)) *MockScheduler_ReleaseTasks_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].([]uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockScheduler_ReleaseTasks_Call) Return(err error) *MockScheduler_ReleaseTasks_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockScheduler_ReleaseTasks_Call) RunAndReturn(run func(ctx context.Context, ids []uuid.UUID) error) *MockScheduler_ReleaseTasks_Call {
 	_c.Call.Return(run)
 	return _c
 }

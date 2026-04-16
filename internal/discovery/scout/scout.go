@@ -30,6 +30,8 @@ type Registry struct {
 	scouts map[string]discovery.Scout
 }
 
+var _ discovery.Scout = (*Registry)(nil)
+
 func NewRegistry(logger *slog.Logger, tracer trace.Tracer, scouts map[string]discovery.Scout) (*Registry, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)

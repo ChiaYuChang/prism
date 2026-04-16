@@ -12,10 +12,11 @@ func dbTaskToRepoTask(task Task) repo.Task {
 		TraceID:    task.TraceID,
 		Kind:       string(task.Kind),
 		SourceType: string(task.SourceType),
-		SourceID:   task.SourceID,
+		SourceAbbr: task.SourceAbbr,
 		URL:         task.Url,
 		Payload:     task.Payload,
 		PayloadHash: pgconv.PgTextToStringPtr(task.PayloadHash),
+		Meta:        task.Meta,
 		NextRunAt:   *pgconv.PgTimestamptzToTimePtr(task.NextRunAt),
 		ExpiresAt:  pgconv.PgTimestamptzToTimePtr(task.ExpiresAt),
 		Status:     string(task.Status),
@@ -28,7 +29,6 @@ func dbTaskToRepoTask(task Task) repo.Task {
 
 func dbSourceToRepoSource(s Source) repo.Source {
 	return repo.Source{
-		ID:        s.ID,
 		Abbr:      s.Abbr,
 		Name:      s.Name,
 		Type:      string(s.Type),
@@ -43,7 +43,7 @@ func dbCandidateToRepoCandidate(c Candidate) repo.Candidate {
 		ID:              c.ID,
 		BatchID:         pgconv.PgUUIDToUUID(c.BatchID),
 		Fingerprint:     c.Fingerprint,
-		SourceID:        c.SourceID,
+		SourceAbbr:      c.SourceAbbr,
 		Title:           c.Title,
 		URL:             c.Url,
 		Description:     pgconv.PgTextToStringPtr(c.Description),
@@ -61,7 +61,7 @@ func dbContentToRepoContent(c Content) repo.Content {
 		ID:          c.ID,
 		BatchID:     pgconv.PgUUIDToUUID(c.BatchID),
 		Type:        string(c.Type),
-		SourceID:    c.SourceID,
+		SourceAbbr:  c.SourceAbbr,
 		CandidateID: pgconv.PgUUIDToUUID(c.CandidateID),
 		URL:         c.Url,
 		Title:       c.Title,
