@@ -2,7 +2,6 @@ package archiver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -46,8 +45,6 @@ func NewLocalArchiver(baseDir string, logger *slog.Logger) (*LocalArchiver, erro
 	return &LocalArchiver{baseDir: baseDir, logger: logger}, nil
 }
 
-// Save persists record.Payload to disk as {traceID}.data alongside a
-// {traceID}.meta.json file containing URL, fingerprint, and custom metadata.
 func (a *LocalArchiver) Save(ctx context.Context, record collector.Archive) error {
 	dir, err := a.dateDir(record.Timestamp, true)
 	if err != nil {
@@ -59,18 +56,7 @@ func (a *LocalArchiver) Save(ctx context.Context, record collector.Archive) erro
 		return fmt.Errorf("write payload %s: %w", dataPath, err)
 	}
 
-	meta := map[string]any{
-		"url":      record.URL,
-		"trace_id": record.TraceID,
-	}
-	if record.Fingerprint != "" {
-		meta["fingerprint"] = record.Fingerprint
-	}
-	if len(record.Metadata) > 0 {
-		meta["prism_metadata"] = record.Metadata
-	}
-
-	metaBytes, err := json.MarshalIndent(meta, "", "  ")
+	metaBytes, err := buildMetaJSON(record)
 	if err != nil {
 		return fmt.Errorf("marshal metadata for %s: %w", record.TraceID, err)
 	}
@@ -87,10 +73,6 @@ func (a *LocalArchiver) Save(ctx context.Context, record collector.Archive) erro
 	return nil
 }
 
-// Load retrieves the payload stored under traceID.
-// It globs {baseDir}/archives/*/*/{traceID}.data so the caller does not need
-// to know the date subdirectory.
-// Returns ErrNotFound when no matching file exists.
 func (a *LocalArchiver) Load(ctx context.Context, traceID string) (string, error) {
 	pattern := filepath.Join(a.baseDir, "archives", "*", "*", "*", traceID+".data")
 	matches, err := filepath.Glob(pattern)
@@ -108,9 +90,35 @@ func (a *LocalArchiver) Load(ctx context.Context, traceID string) (string, error
 		)
 	}
 
+	metaPath := strings.TrimSuffix(matches[0], ".data") + ".meta.json"
+	m, metaErr := a.readMeta(metaPath)
+	if metaErr == nil && m.DeletedAt != nil {
+		return "", fmt.Errorf("%w: trace_id=%s (soft-deleted at %s)",
+			ErrNotFound, traceID, m.DeletedAt.Format(time.RFC3339))
+	}
+
 	data, err := os.ReadFile(matches[0])
 	if err != nil {
 		return "", fmt.Errorf("read archive %s: %w", matches[0], err)
+	}
+
+	// Integrity check: meta must carry payload_sha256; mismatch or absence → ErrCorrupted.
+	if metaErr == nil {
+		if m.PayloadSHA256 == "" {
+			a.logger.ErrorContext(ctx, "archive meta is missing payload_sha256",
+				slog.String("trace_id", traceID),
+				slog.String("meta_path", metaPath),
+			)
+			return "", fmt.Errorf("%w: trace_id=%s (no payload_sha256 in meta)", ErrCorrupted, traceID)
+		}
+		if actual := sha256Hex(data); actual != m.PayloadSHA256 {
+			a.logger.ErrorContext(ctx, "archive integrity check failed",
+				slog.String("trace_id", traceID),
+				slog.String("expected", m.PayloadSHA256),
+				slog.String("actual", actual),
+			)
+			return "", fmt.Errorf("%w: trace_id=%s", ErrCorrupted, traceID)
+		}
 	}
 
 	a.logger.DebugContext(ctx, "loaded archive from local filesystem",
@@ -121,8 +129,6 @@ func (a *LocalArchiver) Load(ctx context.Context, traceID string) (string, error
 	return string(data), nil
 }
 
-// Scan lists archive metadata entries that match opts.
-// Results are ordered by Timestamp ascending.
 func (a *LocalArchiver) Scan(ctx context.Context, opts ScanOptions) ([]Meta, error) {
 	if opts.TraceID != "" {
 		return a.scanByTraceID(ctx, opts)
@@ -141,7 +147,7 @@ func (a *LocalArchiver) Scan(ctx context.Context, opts ScanOptions) ([]Meta, err
 			a.logger.WarnContext(ctx, "skipping unreadable meta file", slog.String("path", f), slog.Any("error", err))
 			continue
 		}
-		if !a.matchesScanOpts(m, opts) {
+		if !matchesScanOpts(m, opts) {
 			continue
 		}
 		results = append(results, m)
@@ -151,13 +157,13 @@ func (a *LocalArchiver) Scan(ctx context.Context, opts ScanOptions) ([]Meta, err
 	}
 
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].Timestamp.Before(results[j].Timestamp)
+		return results[i].CreatedAt.Before(results[j].CreatedAt)
 	})
 	return results, nil
 }
 
-// Remove deletes both the .data and .meta.json files for traceID.
-// Returns ErrNotFound when no matching data file exists.
+// Remove soft-deletes the archive by stamping deleted_at in its .meta.json.
+// Idempotent: preserves the original deleted_at timestamp.
 func (a *LocalArchiver) Remove(ctx context.Context, traceID string) error {
 	pattern := filepath.Join(a.baseDir, "archives", "*", "*", "*", traceID+".data")
 	matches, err := filepath.Glob(pattern)
@@ -168,20 +174,86 @@ func (a *LocalArchiver) Remove(ctx context.Context, traceID string) error {
 		return fmt.Errorf("%w: trace_id=%s", ErrNotFound, traceID)
 	}
 
+	now := time.Now().UTC()
 	for _, dataPath := range matches {
-		if err := os.Remove(dataPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove data file %s: %w", dataPath, err)
-		}
 		metaPath := strings.TrimSuffix(dataPath, ".data") + ".meta.json"
-		if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove meta file %s: %w", metaPath, err)
+		if err := a.stampDeletedAt(metaPath, now); err != nil {
+			return err
 		}
-		a.logger.DebugContext(ctx, "removed archive",
+		a.logger.DebugContext(ctx, "soft-removed archive",
 			slog.String("trace_id", traceID),
-			slog.String("data_file", dataPath),
+			slog.String("meta_file", metaPath),
+			slog.Time("deleted_at", now),
 		)
 	}
 	return nil
+}
+
+// Purge hard-deletes both .data and .meta.json for a specific traceID.
+// The archive must already be soft-deleted — refuses active archives.
+func (a *LocalArchiver) Purge(ctx context.Context, traceID string) error {
+	pattern := filepath.Join(a.baseDir, "archives", "*", "*", "*", traceID+".data")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return fmt.Errorf("glob for trace %s: %w", traceID, err)
+	}
+	if len(matches) == 0 {
+		return fmt.Errorf("%w: trace_id=%s", ErrNotFound, traceID)
+	}
+
+	for _, dataPath := range matches {
+		metaPath := strings.TrimSuffix(dataPath, ".data") + ".meta.json"
+		m, err := a.readMeta(metaPath)
+		if err != nil {
+			return fmt.Errorf("read meta before purge %s: %w", metaPath, err)
+		}
+		if m.DeletedAt == nil {
+			return fmt.Errorf("refusing to purge non-soft-deleted archive: trace_id=%s (call Remove first)", traceID)
+		}
+		if err := os.Remove(dataPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("purge data file %s: %w", dataPath, err)
+		}
+		if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("purge meta file %s: %w", metaPath, err)
+		}
+		a.logger.DebugContext(ctx, "purged archive",
+			slog.String("trace_id", traceID),
+			slog.Time("deleted_at", *m.DeletedAt),
+		)
+	}
+	return nil
+}
+
+// PurgeAll hard-deletes every soft-deleted archive in the tree.
+func (a *LocalArchiver) PurgeAll(ctx context.Context) (int, error) {
+	pattern := filepath.Join(a.baseDir, "archives", "*", "*", "*", "*.meta.json")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return 0, fmt.Errorf("glob meta files: %w", err)
+	}
+
+	var purged int
+	for _, metaPath := range files {
+		m, err := a.readMeta(metaPath)
+		if err != nil {
+			a.logger.WarnContext(ctx, "skipping unreadable meta during PurgeAll",
+				slog.String("path", metaPath), slog.Any("error", err))
+			continue
+		}
+		if m.DeletedAt == nil {
+			continue
+		}
+		dataPath := strings.TrimSuffix(metaPath, ".meta.json") + ".data"
+		if err := os.Remove(dataPath); err != nil && !os.IsNotExist(err) {
+			return purged, fmt.Errorf("purge data file %s: %w", dataPath, err)
+		}
+		if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
+			return purged, fmt.Errorf("purge meta file %s: %w", metaPath, err)
+		}
+		purged++
+	}
+	a.logger.InfoContext(ctx, "purged all soft-deleted archives", slog.Int("count", purged))
+	return purged, nil
 }
 
 // ----- helpers -----
@@ -209,7 +281,7 @@ func (a *LocalArchiver) scanByTraceID(ctx context.Context, opts ScanOptions) ([]
 			a.logger.WarnContext(ctx, "skipping unreadable meta file", slog.String("path", f), slog.Any("error", err))
 			continue
 		}
-		if !a.matchesScanOpts(m, opts) {
+		if !matchesScanOpts(m, opts) {
 			continue
 		}
 		results = append(results, m)
@@ -217,43 +289,20 @@ func (a *LocalArchiver) scanByTraceID(ctx context.Context, opts ScanOptions) ([]
 	return results, nil
 }
 
-type localMetaFile struct {
-	URL          string         `json:"url"`
-	TraceID      string         `json:"trace_id"`
-	PrismMetadata map[string]any `json:"prism_metadata,omitempty"`
-}
-
 func (a *LocalArchiver) readMeta(path string) (Meta, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Meta{}, fmt.Errorf("read %s: %w", path, err)
 	}
-	var raw localMetaFile
-	if err := json.Unmarshal(data, &raw); err != nil {
+	fallback := a.parseTimestampFromPath(path)
+	m, err := parseMeta(data, fallback)
+	if err != nil {
 		return Meta{}, fmt.Errorf("unmarshal %s: %w", path, err)
-	}
-
-	// Derive Timestamp from the date path segment: .../archives/YYYY/MM/DD/...
-	ts := a.parseTimestampFromPath(path)
-
-	m := Meta{
-		TraceID:   raw.TraceID,
-		URL:       raw.URL,
-		Timestamp: ts,
-	}
-	if pm := raw.PrismMetadata; pm != nil {
-		if stage, ok := pm["stage"].(string); ok {
-			m.Stage = stage
-		}
-		if errStr, ok := pm["error"].(string); ok {
-			m.Error = errStr
-		}
 	}
 	return m, nil
 }
 
 func (a *LocalArchiver) parseTimestampFromPath(path string) time.Time {
-	// path = {baseDir}/archives/{YYYY}/{MM}/{DD}/{traceID}.meta.json
 	rel, err := filepath.Rel(filepath.Join(a.baseDir, "archives"), path)
 	if err != nil {
 		return time.Time{}
@@ -269,15 +318,20 @@ func (a *LocalArchiver) parseTimestampFromPath(path string) time.Time {
 	return t
 }
 
-func (a *LocalArchiver) matchesScanOpts(m Meta, opts ScanOptions) bool {
-	if !opts.Since.IsZero() && m.Timestamp.Before(opts.Since) {
-		return false
+func (a *LocalArchiver) stampDeletedAt(metaPath string, t time.Time) error {
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return fmt.Errorf("read meta %s: %w", metaPath, err)
 	}
-	if !opts.Until.IsZero() && m.Timestamp.After(opts.Until) {
-		return false
+	updated, alreadyDeleted, err := stampDeletedAtInJSON(data, t)
+	if err != nil {
+		return fmt.Errorf("stamp deleted_at in %s: %w", metaPath, err)
 	}
-	if opts.Stage != "" && m.Stage != opts.Stage {
-		return false
+	if alreadyDeleted {
+		return nil
 	}
-	return true
+	if err := os.WriteFile(metaPath, updated, 0644); err != nil {
+		return fmt.Errorf("write meta %s: %w", metaPath, err)
+	}
+	return nil
 }

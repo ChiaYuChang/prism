@@ -258,7 +258,7 @@ User queries candidates table by keyword/date/source
   * [x] Expand `process()` routing: `KEYWORD_SEARCH + MEDIA` → `handleKeywordSearch()`; keep `DIRECTORY_FETCH + PARTY` path unchanged.
   * [x] Add `--brave-api-key` flag to discovery worker config; wire `BraveClient` into handler in `main.go`.
   * [x] Add KEYWORD_SEARCH handler tests: happy path with mock `SearchClient`, missing client error path.
-* [ ] 2.5 Collector Worker (`cmd/worker/collector`):
+* [x] 2.5 Collector Worker (`cmd/worker/collector`):
   * [x] Subscribe to `prism.task`, filter `kind=PAGE_FETCH`.
   * [x] Implement F→M→T→(S||P) pipeline with `Dispatcher` struct (`internal/collector/dispatcher.go`).
   * [x] Implement `Minifier` interface and `HTMLMinifier` (`internal/collector/minifier/html.go`).
@@ -273,8 +273,11 @@ User queries candidates table by keyword/date/source
   * [x] Handle PARTY PAGE_FETCH (automatic) and MEDIA PAGE_FETCH (user-triggered) via same worker; `sourceTypeToContentType()` maps to `PARTY_RELEASE` / `ARTICLE`.
   * [x] Wire error Saver for Minify failures: `errorSaver collector.Saver` added to Handler; `saveOnMinifyError()` archives raw content with `stage:"raw"` metadata; `--archive-dir` flag enables it.
   * [x] Refactor `internal/collector/saver/` + `internal/collector/fetcher/recover.go` → `internal/collector/archiver/`: `Archiver` interface (embeds `collector.Saver`, plus Load / Scan / Remove), `LocalArchiver` (file://), `S3Archiver` stub (s3://), `ParseURI` factory. `saver/` and `fetcher/recover.go` deleted.
-  * [ ] Implement `cmd/recover` operator CLI: `status` / `list` / `run` / `clean` subcommands using `archiver.Archiver`; `--archive` flag accepts URI (`file://` or `s3://`); `--dry-run`, `--since`, `--until`, `--limit`, `--trace-id`.
-  * [ ] Promote `LocalArchiver` → `S3Archiver` for production; wire archive publisher.
+  * [x] Harden `LocalArchiver`: soft-delete via `deleted_at` stamp in `.meta.json` (`Remove`); `Purge(traceID)` / `PurgeAll()` for operator hard-delete (not on `Archiver` interface); `payload_sha256` (hex SHA-256) written by `Save` and verified by `Load` (returns `ErrCorrupted` on mismatch or absence); `created_at` (second-precision UTC) replaces path-derived `Timestamp` in `Meta`; `version` field (`MetaVersion = 1`) for future format migration; `ScanOptions.IncludeRemoved` to expose soft-deleted entries.
+  * [x] Implement `cmd/recover` operator CLI: `status` / `list` / `run` / `clean` subcommands using `archiver.Archiver`; `--archive` flag accepts URI (`file://` or `s3://`); `--dry-run`, `--since`, `--until`, `--limit`, `--trace-id`.
+  * [x] Soft-delete in `LocalArchiver.Remove` (stamp `deleted_at` in meta JSON); `Purge` / `PurgeAll` for hard-delete; `clean --purge` wires both.
+  * [x] Enrich `saveOnMinifyError` metadata with `source_abbr`, `source_type`, `batch_id` so `cmd/recover run` can build `CreateContentParams`.
+  * [x] Complete `S3Archiver` for production SeaweedFS/S3; `LocalArchiver` (`file://`) and `S3Archiver` (`s3://`) remain parallel options selected by URI scheme via `ParseURI` — `LocalArchiver` stays the default for local development and testing. `S3Archiver` implements Save / Load (with SHA-256 integrity check) / Scan / Remove (soft-delete); hard-delete is intentionally delegated to S3 lifecycle policies rather than application code.
 * [ ] 2.6 User-Facing Candidate Query API:
   * [ ] `GET /candidates` — query candidates by keyword, source, date range; returns JSON.
   * [ ] `POST /page_fetch` — accepts `candidate_id` list, creates `PAGE_FETCH` tasks; returns task IDs.
@@ -394,6 +397,7 @@ User queries candidates table by keyword/date/source
 6. ~~Implement KEYWORD_SEARCH execution path (2.4): Brave client, handler routing, config wiring, handler tests.~~ (Done)
 7. ~~Wire error Saver in Collector Worker (`saveOnMinifyError` + `--archive-dir`).~~ (Done)
 8. ~~Refactor to `internal/collector/archiver/`: `Archiver` interface + `LocalArchiver` + `S3Archiver` stub + `ParseURI`; delete `saver/` and `fetcher/recover.go`.~~ (Done)
-9. **Implement `cmd/recover`:** `status` / `list` / `run` / `clean` subcommands.
+9. ~~Implement `cmd/recover`: `status` / `list` / `run` / `clean` subcommands; soft-delete + purge; enriched archive metadata.~~ (Done)
 10. **Implement User-Facing Candidate Query API (2.6):** `GET /candidates`, `POST /page_fetch`, `GET /contents/{candidate_id}`.
-11. After collector intake is stable, start candidate/content embedding workers.
+11. **Promote `LocalArchiver` → `S3Archiver` for production; wire archive publisher.**
+12. After collector intake is stable, start candidate/content embedding workers.
