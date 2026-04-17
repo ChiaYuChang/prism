@@ -11,8 +11,8 @@ import (
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/model"
-	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/obs"
+	"github.com/ChiaYuChang/prism/internal/repo"
 	f "github.com/ChiaYuChang/prism/pkg/functional"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -115,50 +115,71 @@ func (r *Backfiller) Run(ctx context.Context, req discovery.BackfillRequest) (di
 			break
 		}
 
-		pageCtx := ctx
-		if r.timeout > 0 {
-			var cancel context.CancelFunc
-			pageCtx, cancel = context.WithTimeout(ctx, r.timeout)
-			defer cancel()
-		}
+		var currentURL string
+		var candidates []model.Candidates
+		var filtered []model.Candidates
+		var stop bool
 
-		currentURL, err := r.pager.Next(pageCtx)
+		err := func() error {
+			pageCtx := ctx
+			if r.timeout > 0 {
+				var cancel context.CancelFunc
+				pageCtx, cancel = context.WithTimeout(ctx, r.timeout)
+				defer cancel()
+			}
+
+			var err error
+			currentURL, err = r.pager.Next(pageCtx)
+			if err != nil {
+				return fmt.Errorf("resolve page %d url: %w", page, err)
+			}
+			if currentURL == "" {
+				stop = true
+				return nil
+			}
+
+			candidates, err = r.scout.Discover(pageCtx, currentURL)
+			if err != nil {
+				return fmt.Errorf("discover page %d (%s): %w", page, currentURL, err)
+			}
+
+			result.PagesVisited++
+			result.CandidatesSeen += len(candidates)
+
+			candidates = f.Map(candidates, func(c model.Candidates) model.Candidates {
+				if oldest.IsZero() || oldest.After(c.PublishedAt) {
+					oldest = c.PublishedAt
+				}
+				return c
+			})
+
+			filtered = f.Filter(candidates, func(c model.Candidates) bool {
+				return !c.PublishedAt.Before(req.Until)
+			})
+
+			if len(filtered) > 0 {
+				result.OldestPublishedAt = oldest
+				if err := r.sink.Handle(pageCtx, discoverysink.CandidateSinkRequest{
+					SourceURL:       currentURL,
+					SourceAbbr:      r.sourceAbbr,
+					SourceType:      repo.SourceTypeParty,
+					BatchID:         req.BatchID,
+					TraceID:         traceID,
+					IngestionMethod: "DIRECTORY",
+					Candidates:      filtered,
+				}); err != nil {
+					return fmt.Errorf("handle candidates from %s: %w", currentURL, err)
+				}
+				result.CandidatesProcessed += len(filtered)
+			}
+			return nil
+		}()
+
 		if err != nil {
-			return result, fmt.Errorf("resolve page %d url: %w", page, err)
+			return result, err
 		}
-		if currentURL == "" {
+		if stop {
 			break
-		}
-
-		candidates, err := r.scout.Discover(pageCtx, currentURL)
-		if err != nil {
-			return result, fmt.Errorf("discover page %d (%s): %w", page, currentURL, err)
-		}
-
-		result.PagesVisited++
-		result.CandidatesSeen += len(candidates)
-
-		filtered := f.Filter(candidates, func(c model.Candidates) bool {
-			if oldest.IsZero() || oldest.After(c.PublishedAt) {
-				oldest = c.PublishedAt
-			}
-			return !c.PublishedAt.Before(req.Until)
-		})
-
-		if len(filtered) > 0 {
-			result.OldestPublishedAt = oldest
-			if err := r.sink.Handle(pageCtx, discoverysink.CandidateSinkRequest{
-				SourceURL:       currentURL,
-				SourceAbbr:      r.sourceAbbr,
-				SourceType:      repo.SourceTypeParty,
-				BatchID:         req.BatchID,
-				TraceID:         traceID,
-				IngestionMethod: "DIRECTORY",
-				Candidates:      filtered,
-			}); err != nil {
-				return result, fmt.Errorf("handle candidates from %s: %w", currentURL, err)
-			}
-			result.CandidatesProcessed += len(filtered)
 		}
 
 		r.logger.DebugContext(ctx, "processed backfill page",
