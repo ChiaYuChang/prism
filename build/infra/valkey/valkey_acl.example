@@ -1,0 +1,10 @@
+# Generate hashed password: echo -n "your-password" | sha256sum | awk '{print "#"$1}'
+
+# Default user is disabled for security
+user default off
+
+# Example: Admin user with full access
+# user admin on #<hashed-password> ~* &* +@all
+
+# Example: Application user with restricted access to 'prism:' namespace
+# user prism-app on #<hashed-password> ~prism:* &* +@read +@write +ping -@dangerous -@admin

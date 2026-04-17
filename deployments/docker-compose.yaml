@@ -71,6 +71,9 @@ services:
     image: chrislusf/seaweedfs:4.05
     container_name: prism-seaweedfs
     entrypoint: /bin/sh
+    ports:
+      - "127.0.0.1:${SEAWEEDFS_MASTER_PORT:-9333}:9333"
+      - "127.0.0.1:${SEAWEEDFS_S3_PORT:-8333}:8333"
     command: >
       -c "export AWS_ACCESS_KEY_ID=$$(cat /run/secrets/sw_access_key) && 
              export AWS_SECRET_ACCESS_KEY=$$(cat /run/secrets/sw_secret_key) && 

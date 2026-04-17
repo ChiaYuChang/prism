@@ -1,0 +1,13 @@
+bind 0.0.0.0
+port 6379
+
+# snapshots
+save 3600 1 300 100 60 10000
+dbfilename dump.rdb
+
+# memory
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+
+# ACL
+aclfile /run/secrets/valkey_acl
