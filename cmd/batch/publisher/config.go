@@ -13,9 +13,9 @@ import (
 
 type Config struct {
 	Interval      time.Duration       `mapstructure:"interval"       validate:"required,min=10s"`
+	Once          bool                `mapstructure:"once"`
 	RecentLimit   int32               `mapstructure:"recent-limit"   validate:"required,min=1,max=500"`
 	HealthPort    int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	Valkey        app.ValkeyConfig    `mapstructure:"valkey"`
 	Logger        app.LoggerConfig    `mapstructure:"logger"`
 	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
 	MessengerType string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
@@ -24,21 +24,16 @@ type Config struct {
 
 func LoadConfig(args []string) (*Config, error) {
 	v := viper.New()
-	v.SetEnvPrefix("PRISM_TRIGGER_BATCH")
+	v.SetEnvPrefix("PRISM_BATCH_PUBLISHER")
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	v.AutomaticEnv()
 
-	fs := pflag.NewFlagSet("trigger-batch", pflag.ContinueOnError)
+	fs := pflag.NewFlagSet("batch-publisher", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Duration("interval", time.Minute, "Polling interval for batch completion checks")
-	fs.Int32("recent-limit", 100, "Maximum recent PARTY contents to inspect for batch completion")
-	fs.Int("health-port", 8082, "The port for the health check server")
-
-	fs.String("valkey-host", "localhost", "The host of the Valkey/Redis instance")
-	fs.Int("valkey-port", 6379, "The port of the Valkey/Redis instance")
-	fs.String("valkey-username", "", "The username for the Valkey/Redis instance")
-	fs.String("valkey-password", "", "The password for the Valkey/Redis instance")
-	fs.Int("valkey-db", 0, "The database index for the Valkey/Redis instance")
+	fs.Bool("once", false, "Execute once and exit (for Lambda/Cron)")
+	fs.Int32("recent-limit", 100, "Maximum recent batches to inspect for completion")
+	fs.Int("health-port", 8084, "The port for the health check server")
 
 	fs.String("log-path", "", "The file path for logs (empty for stdout)")
 	fs.String("log-level", "info", "The log level (debug, info, warn, error)")
@@ -74,9 +69,6 @@ func LoadConfig(args []string) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := cfg.Valkey.BindFlags(v, fs); err != nil {
-		return nil, err
-	}
 	if err := cfg.Postgres.BindFlags(v, fs); err != nil {
 		return nil, err
 	}

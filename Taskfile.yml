@@ -106,6 +106,11 @@ tasks:
     cmds:
       - go tool mockery
 
+  swag:
+    desc: generate OpenAPI docs for cmd/api-server
+    cmds:
+      - swag init -g cmd/api-server/main.go -o cmd/api-server/docs
+
   tidy:
     desc: tidy go dependencies
     cmds:
@@ -163,32 +168,32 @@ tasks:
     desc: run scheduler-fast in test mode (PAGE_FETCH, 3s interval, MEDIA priority)
     cmds:
       - go run ./cmd/scheduler
-          --messenger-type gochannel
-          --kinds PAGE_FETCH
-          --lock-key prism:scheduler:PAGE_FETCH:lock
-          --interval 3s
-          --media-quota 30
-          --buffer 10
-          --rate-limit-config assets/ratelimits/scheduler.yaml
-          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}}
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
-          --pg-db {{.POSTGRES_APP_DB}}
-          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}"
+        --messenger-type gochannel
+        --kinds PAGE_FETCH
+        --lock-key prism:scheduler:PAGE_FETCH:lock
+        --interval 3s
+        --media-quota 30
+        --buffer 10
+        --rate-limit-config assets/ratelimits/scheduler.yaml
+        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}}
+        --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
+        --pg-db {{.POSTGRES_APP_DB}}
+        --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}"
 
   test:scheduler-slow:
     desc: run scheduler-slow in test mode (DIRECTORY_FETCH+KEYWORD_SEARCH, 60s interval)
     cmds:
       - go run ./cmd/scheduler
-          --messenger-type gochannel
-          --kinds DIRECTORY_FETCH,KEYWORD_SEARCH
-          --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock
-          --interval 60s
-          --buffer 10
-          --rate-limit-config assets/ratelimits/scheduler.yaml
-          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}}
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
-          --pg-db {{.POSTGRES_APP_DB}}
-          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}"
+        --messenger-type gochannel
+        --kinds DIRECTORY_FETCH,KEYWORD_SEARCH
+        --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock
+        --interval 60s
+        --buffer 10
+        --rate-limit-config assets/ratelimits/scheduler.yaml
+        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}}
+        --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
+        --pg-db {{.POSTGRES_APP_DB}}
+        --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}"
 
   test:discovery:
     desc: run discovery worker in test mode (gochannel)
@@ -201,18 +206,27 @@ tasks:
       - task: build:scheduler
       - task: build:discovery
       - task: build:pipeline
+      - task: build:batch-detector
+      - task: build:batch-publisher
 
   build:scheduler:
     cmds: ["go build -o {{.BUILD_DIR}}/scheduler ./{{.CMD_DIR}}/scheduler/*.go"]
 
   build:discovery:
     cmds:
-      [
-        "go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/main.go",
-      ]
+      - go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/main.go
 
   build:pipeline:
-    cmds: ["go build -o {{.BUILD_DIR}}/pipeline ./cmd/pipeline-worker/main.go"]
+    cmds:
+      - go build -o {{.BUILD_DIR}}/pipeline ./{{.CMD_DIR}}/pipeline-worker/main.go
+
+  build:batch-detector:
+    cmds:
+      - go build -o {{.BUILD_DIR}}/batch/detector ./{{.CMD_DIR}}/batch/detector/*.go
+
+  build:batch-publisher:
+    cmds:
+      - go build -o {{.BUILD_DIR}}/batch/publisher ./{{.CMD_DIR}}/batch/publisher/*.go
 
   # ----------------------------------------------------------------------------
   # Run Services (Local Development)
