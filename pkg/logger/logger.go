@@ -6,9 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
-
-	"github.com/ChiaYuChang/prism/pkg/utils"
 )
 
 // SLogHook defines a function that can modify or add fields to a log record.
@@ -68,9 +67,16 @@ func AttrHook(key string, id string) SLogHook {
 // SecretHook masks sensitive values using utils.SecretMask before logging.
 func SecretHook(key string, value string) SLogHook {
 	return func(ctx context.Context, r slog.Record) slog.Record {
-		r.AddAttrs(slog.String(key, utils.SecretMask(value)))
+		r.AddAttrs(slog.String(key, SecretMask(value)))
 		return r
 	}
+}
+
+func SecretMask(s string) string {
+	if len(s) <= 10 {
+		return strings.Repeat("●", len(s))
+	}
+	return s[:3] + strings.Repeat("●", len(s)-6) + s[len(s)-3:]
 }
 
 func SinceHook(key string, t time.Time) SLogHook {

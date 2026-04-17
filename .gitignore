@@ -54,4 +54,11 @@ CLAUDE.md
 .task/*
 build/ok*
 
-build/infra/valkey/*
+build/infra/nats/nats.conf
+build/infra/otel/otel.yaml
+build/infra/valkey/valkey.conf
+build/infra/valkey/valkey_acl
+
+# build binaries
+bin/
+review.md

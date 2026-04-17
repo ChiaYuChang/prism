@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/pgvector/pgvector-go"
 )
 
 func PgTimestamptzToTimePtr(pgt pgtype.Timestamptz) *time.Time {
@@ -91,4 +92,25 @@ func UUIDToPgUUID(v uuid.UUID) pgtype.UUID {
 		return pgtype.UUID{}
 	}
 	return pgtype.UUID{Bytes: v, Valid: true}
+}
+
+func ToFloat32(vs []float64) []float32 {
+	out := make([]float32, len(vs))
+	for i, v := range vs {
+		out[i] = float32(v)
+	}
+	return out
+}
+
+func ToPgVector(vs []float32) pgvector.Vector {
+	return pgvector.NewVector(vs)
+}
+
+func TimeToPgTimestamptz(t time.Time) (pgtype.Timestamptz, error) {
+	var tsz pgtype.Timestamptz
+	if err := tsz.Scan(t); err != nil {
+		return pgtype.Timestamptz{}, err
+	}
+	tsz.Valid = !t.IsZero()
+	return tsz, nil
 }

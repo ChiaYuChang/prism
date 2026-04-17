@@ -1,5 +1,14 @@
 package repo
 
+type TaskStatus string
+
+const (
+	TaskStatusPending   TaskStatus = "PENDING"
+	TaskStatusRunning   TaskStatus = "RUNNING"
+	TaskStatusFailed    TaskStatus = "FAILED"
+	TaskStatusCompleted TaskStatus = "COMPLETED"
+)
+
 const (
 	// Task Kinds
 	TaskKindDirectoryFetch = "DIRECTORY_FETCH"

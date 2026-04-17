@@ -2,7 +2,6 @@ package utils
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -63,34 +62,4 @@ func GbkToUtf8(s string) (string, error) {
 		return "", err
 	}
 	return string(d), nil
-}
-
-// SecretMask hides sensitive parts of a string (e.g., passwords or tokens).
-func SecretMask(s string) string {
-	if len(s) <= 10 {
-		return strings.Repeat("●", len(s))
-	}
-	return s[:3] + strings.Repeat("●", len(s)-6) + s[len(s)-3:]
-}
-
-type StringTruncator struct {
-	MaxLength int
-}
-
-// TruncateString truncate a string to the given length, and return the number of runes truncated
-func (t StringTruncator) TruncateString(s string) string {
-	r := []rune(s)
-	if len(r) <= t.MaxLength {
-		return s
-	}
-	return fmt.Sprintf("%s...(%d)", string(r[:t.MaxLength]), len(r)-t.MaxLength)
-}
-
-var (
-	DefaultStringTruncator = StringTruncator{MaxLength: 10}
-)
-
-// TruncateString truncate a string to the given length
-func TruncateString(s string) string {
-	return DefaultStringTruncator.TruncateString(s)
 }

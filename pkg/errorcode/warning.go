@@ -17,7 +17,11 @@ const (
 )
 
 func (w *WarningLevel) Parse(data []byte) error {
-	s := string(data)
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("%w: %s", err, data)
+	}
+
 	switch s {
 	case "INFO":
 		*w = WarnInfo
@@ -26,7 +30,7 @@ func (w *WarningLevel) Parse(data []byte) error {
 	case "HIGH":
 		*w = WarnHigh
 	default:
-		return ErrInvalidWarningLevel
+		return fmt.Errorf("%w: %s", ErrInvalidWarningLevel, data)
 	}
 	return nil
 }
