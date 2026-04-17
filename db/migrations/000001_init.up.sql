@@ -77,6 +77,29 @@ CREATE TABLE IF NOT EXISTS sources (
 CREATE INDEX IF NOT EXISTS idx_sources_base_url ON sources(base_url);
 CREATE INDEX IF NOT EXISTS idx_sources_deleted_at ON sources(deleted_at);
 
+CREATE TABLE IF NOT EXISTS batches (
+    id                       UUID PRIMARY KEY,
+    source_type              source_type NOT NULL,
+    trace_id                 VARCHAR(100),
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at             TIMESTAMPTZ,
+    published_at             TIMESTAMPTZ,
+    last_publish_attempt_at  TIMESTAMPTZ,
+    publish_retry_count      INT NOT NULL DEFAULT 0,
+    publish_error            TEXT,
+    stalled_at               TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_batches_source_type_created_at ON batches(source_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_batches_ready_to_publish
+    ON batches(completed_at)
+    WHERE completed_at IS NOT NULL AND published_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_batches_open_created_at
+    ON batches(created_at)
+    WHERE completed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_batches_stalled_at ON batches(stalled_at);
+
 CREATE TABLE IF NOT EXISTS candidates (
     id               UUID PRIMARY KEY DEFAULT uuidv7(),
     batch_id         UUID,

@@ -105,6 +105,80 @@ func (_c *MockBatchTrigger_CountCandidatesByBatchID_Call) RunAndReturn(run func(
 	return _c
 }
 
+// FindNewlyCompletedBatches provides a mock function for the type MockBatchTrigger
+func (_mock *MockBatchTrigger) FindNewlyCompletedBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
+	ret := _mock.Called(ctx, limit, sourceType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindNewlyCompletedBatches")
+	}
+
+	var r0 []repo.Batch
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) ([]repo.Batch, error)); ok {
+		return returnFunc(ctx, limit, sourceType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) []repo.Batch); ok {
+		r0 = returnFunc(ctx, limit, sourceType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Batch)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32, string) error); ok {
+		r1 = returnFunc(ctx, limit, sourceType)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockBatchTrigger_FindNewlyCompletedBatches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindNewlyCompletedBatches'
+type MockBatchTrigger_FindNewlyCompletedBatches_Call struct {
+	*mock.Call
+}
+
+// FindNewlyCompletedBatches is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int32
+//   - sourceType string
+func (_e *MockBatchTrigger_Expecter) FindNewlyCompletedBatches(ctx interface{}, limit interface{}, sourceType interface{}) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
+	return &MockBatchTrigger_FindNewlyCompletedBatches_Call{Call: _e.mock.On("FindNewlyCompletedBatches", ctx, limit, sourceType)}
+}
+
+func (_c *MockBatchTrigger_FindNewlyCompletedBatches_Call) Run(run func(ctx context.Context, limit int32, sourceType string)) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int32
+		if args[1] != nil {
+			arg1 = args[1].(int32)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockBatchTrigger_FindNewlyCompletedBatches_Call) Return(batchs []repo.Batch, err error) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
+	_c.Call.Return(batchs, err)
+	return _c
+}
+
+func (_c *MockBatchTrigger_FindNewlyCompletedBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error)) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListContentsByBatchID provides a mock function for the type MockBatchTrigger
 func (_mock *MockBatchTrigger) ListContentsByBatchID(ctx context.Context, batchID uuid.UUID) ([]repo.Content, error) {
 	ret := _mock.Called(ctx, batchID)
@@ -173,47 +247,48 @@ func (_c *MockBatchTrigger_ListContentsByBatchID_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
-// ListRecentSeedContents provides a mock function for the type MockBatchTrigger
-func (_mock *MockBatchTrigger) ListRecentSeedContents(ctx context.Context, limit int32) ([]repo.Content, error) {
-	ret := _mock.Called(ctx, limit)
+// ListPendingCompletionBatches provides a mock function for the type MockBatchTrigger
+func (_mock *MockBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
+	ret := _mock.Called(ctx, limit, sourceType)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListRecentSeedContents")
+		panic("no return value specified for ListPendingCompletionBatches")
 	}
 
-	var r0 []repo.Content
+	var r0 []repo.Batch
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) ([]repo.Content, error)); ok {
-		return returnFunc(ctx, limit)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) ([]repo.Batch, error)); ok {
+		return returnFunc(ctx, limit, sourceType)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) []repo.Content); ok {
-		r0 = returnFunc(ctx, limit)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) []repo.Batch); ok {
+		r0 = returnFunc(ctx, limit, sourceType)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]repo.Content)
+			r0 = ret.Get(0).([]repo.Batch)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int32) error); ok {
-		r1 = returnFunc(ctx, limit)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32, string) error); ok {
+		r1 = returnFunc(ctx, limit, sourceType)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockBatchTrigger_ListRecentSeedContents_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListRecentSeedContents'
-type MockBatchTrigger_ListRecentSeedContents_Call struct {
+// MockBatchTrigger_ListPendingCompletionBatches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListPendingCompletionBatches'
+type MockBatchTrigger_ListPendingCompletionBatches_Call struct {
 	*mock.Call
 }
 
-// ListRecentSeedContents is a helper method to define mock.On call
+// ListPendingCompletionBatches is a helper method to define mock.On call
 //   - ctx context.Context
 //   - limit int32
-func (_e *MockBatchTrigger_Expecter) ListRecentSeedContents(ctx interface{}, limit interface{}) *MockBatchTrigger_ListRecentSeedContents_Call {
-	return &MockBatchTrigger_ListRecentSeedContents_Call{Call: _e.mock.On("ListRecentSeedContents", ctx, limit)}
+//   - sourceType string
+func (_e *MockBatchTrigger_Expecter) ListPendingCompletionBatches(ctx interface{}, limit interface{}, sourceType interface{}) *MockBatchTrigger_ListPendingCompletionBatches_Call {
+	return &MockBatchTrigger_ListPendingCompletionBatches_Call{Call: _e.mock.On("ListPendingCompletionBatches", ctx, limit, sourceType)}
 }
 
-func (_c *MockBatchTrigger_ListRecentSeedContents_Call) Run(run func(ctx context.Context, limit int32)) *MockBatchTrigger_ListRecentSeedContents_Call {
+func (_c *MockBatchTrigger_ListPendingCompletionBatches_Call) Run(run func(ctx context.Context, limit int32, sourceType string)) *MockBatchTrigger_ListPendingCompletionBatches_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -223,20 +298,99 @@ func (_c *MockBatchTrigger_ListRecentSeedContents_Call) Run(run func(ctx context
 		if args[1] != nil {
 			arg1 = args[1].(int32)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
 }
 
-func (_c *MockBatchTrigger_ListRecentSeedContents_Call) Return(contents []repo.Content, err error) *MockBatchTrigger_ListRecentSeedContents_Call {
-	_c.Call.Return(contents, err)
+func (_c *MockBatchTrigger_ListPendingCompletionBatches_Call) Return(batchs []repo.Batch, err error) *MockBatchTrigger_ListPendingCompletionBatches_Call {
+	_c.Call.Return(batchs, err)
 	return _c
 }
 
-func (_c *MockBatchTrigger_ListRecentSeedContents_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Content, error)) *MockBatchTrigger_ListRecentSeedContents_Call {
+func (_c *MockBatchTrigger_ListPendingCompletionBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error)) *MockBatchTrigger_ListPendingCompletionBatches_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListReadyToPublishBatches provides a mock function for the type MockBatchTrigger
+func (_mock *MockBatchTrigger) ListReadyToPublishBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
+	ret := _mock.Called(ctx, limit, sourceType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListReadyToPublishBatches")
+	}
+
+	var r0 []repo.Batch
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) ([]repo.Batch, error)); ok {
+		return returnFunc(ctx, limit, sourceType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) []repo.Batch); ok {
+		r0 = returnFunc(ctx, limit, sourceType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Batch)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32, string) error); ok {
+		r1 = returnFunc(ctx, limit, sourceType)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockBatchTrigger_ListReadyToPublishBatches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListReadyToPublishBatches'
+type MockBatchTrigger_ListReadyToPublishBatches_Call struct {
+	*mock.Call
+}
+
+// ListReadyToPublishBatches is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int32
+//   - sourceType string
+func (_e *MockBatchTrigger_Expecter) ListReadyToPublishBatches(ctx interface{}, limit interface{}, sourceType interface{}) *MockBatchTrigger_ListReadyToPublishBatches_Call {
+	return &MockBatchTrigger_ListReadyToPublishBatches_Call{Call: _e.mock.On("ListReadyToPublishBatches", ctx, limit, sourceType)}
+}
+
+func (_c *MockBatchTrigger_ListReadyToPublishBatches_Call) Run(run func(ctx context.Context, limit int32, sourceType string)) *MockBatchTrigger_ListReadyToPublishBatches_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int32
+		if args[1] != nil {
+			arg1 = args[1].(int32)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockBatchTrigger_ListReadyToPublishBatches_Call) Return(batchs []repo.Batch, err error) *MockBatchTrigger_ListReadyToPublishBatches_Call {
+	_c.Call.Return(batchs, err)
+	return _c
+}
+
+func (_c *MockBatchTrigger_ListReadyToPublishBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error)) *MockBatchTrigger_ListReadyToPublishBatches_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -305,6 +459,189 @@ func (_c *MockBatchTrigger_ListTasksByBatchID_Call) Return(tasks []repo.Task, er
 }
 
 func (_c *MockBatchTrigger_ListTasksByBatchID_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID) ([]repo.Task, error)) *MockBatchTrigger_ListTasksByBatchID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// MarkBatchCompleted provides a mock function for the type MockBatchTrigger
+func (_mock *MockBatchTrigger) MarkBatchCompleted(ctx context.Context, batchID uuid.UUID, traceID string) error {
+	ret := _mock.Called(ctx, batchID, traceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkBatchCompleted")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
+		r0 = returnFunc(ctx, batchID, traceID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockBatchTrigger_MarkBatchCompleted_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkBatchCompleted'
+type MockBatchTrigger_MarkBatchCompleted_Call struct {
+	*mock.Call
+}
+
+// MarkBatchCompleted is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+//   - traceID string
+func (_e *MockBatchTrigger_Expecter) MarkBatchCompleted(ctx interface{}, batchID interface{}, traceID interface{}) *MockBatchTrigger_MarkBatchCompleted_Call {
+	return &MockBatchTrigger_MarkBatchCompleted_Call{Call: _e.mock.On("MarkBatchCompleted", ctx, batchID, traceID)}
+}
+
+func (_c *MockBatchTrigger_MarkBatchCompleted_Call) Run(run func(ctx context.Context, batchID uuid.UUID, traceID string)) *MockBatchTrigger_MarkBatchCompleted_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockBatchTrigger_MarkBatchCompleted_Call) Return(err error) *MockBatchTrigger_MarkBatchCompleted_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockBatchTrigger_MarkBatchCompleted_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID, traceID string) error) *MockBatchTrigger_MarkBatchCompleted_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// MarkBatchPublished provides a mock function for the type MockBatchTrigger
+func (_mock *MockBatchTrigger) MarkBatchPublished(ctx context.Context, batchID uuid.UUID) error {
+	ret := _mock.Called(ctx, batchID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkBatchPublished")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, batchID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockBatchTrigger_MarkBatchPublished_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkBatchPublished'
+type MockBatchTrigger_MarkBatchPublished_Call struct {
+	*mock.Call
+}
+
+// MarkBatchPublished is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+func (_e *MockBatchTrigger_Expecter) MarkBatchPublished(ctx interface{}, batchID interface{}) *MockBatchTrigger_MarkBatchPublished_Call {
+	return &MockBatchTrigger_MarkBatchPublished_Call{Call: _e.mock.On("MarkBatchPublished", ctx, batchID)}
+}
+
+func (_c *MockBatchTrigger_MarkBatchPublished_Call) Run(run func(ctx context.Context, batchID uuid.UUID)) *MockBatchTrigger_MarkBatchPublished_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockBatchTrigger_MarkBatchPublished_Call) Return(err error) *MockBatchTrigger_MarkBatchPublished_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockBatchTrigger_MarkBatchPublished_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID) error) *MockBatchTrigger_MarkBatchPublished_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RecordBatchPublishFailure provides a mock function for the type MockBatchTrigger
+func (_mock *MockBatchTrigger) RecordBatchPublishFailure(ctx context.Context, batchID uuid.UUID, publishErr string) error {
+	ret := _mock.Called(ctx, batchID, publishErr)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RecordBatchPublishFailure")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
+		r0 = returnFunc(ctx, batchID, publishErr)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockBatchTrigger_RecordBatchPublishFailure_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RecordBatchPublishFailure'
+type MockBatchTrigger_RecordBatchPublishFailure_Call struct {
+	*mock.Call
+}
+
+// RecordBatchPublishFailure is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+//   - publishErr string
+func (_e *MockBatchTrigger_Expecter) RecordBatchPublishFailure(ctx interface{}, batchID interface{}, publishErr interface{}) *MockBatchTrigger_RecordBatchPublishFailure_Call {
+	return &MockBatchTrigger_RecordBatchPublishFailure_Call{Call: _e.mock.On("RecordBatchPublishFailure", ctx, batchID, publishErr)}
+}
+
+func (_c *MockBatchTrigger_RecordBatchPublishFailure_Call) Run(run func(ctx context.Context, batchID uuid.UUID, publishErr string)) *MockBatchTrigger_RecordBatchPublishFailure_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockBatchTrigger_RecordBatchPublishFailure_Call) Return(err error) *MockBatchTrigger_RecordBatchPublishFailure_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockBatchTrigger_RecordBatchPublishFailure_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID, publishErr string) error) *MockBatchTrigger_RecordBatchPublishFailure_Call {
 	_c.Call.Return(run)
 	return _c
 }

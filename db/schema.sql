@@ -151,6 +151,27 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: batches; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.batches (
+    id uuid NOT NULL,
+    source_type public.source_type NOT NULL,
+    trace_id character varying(100),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone,
+    published_at timestamp with time zone,
+    last_publish_attempt_at timestamp with time zone,
+    publish_retry_count integer DEFAULT 0 NOT NULL,
+    publish_error text,
+    stalled_at timestamp with time zone
+);
+
+
+ALTER TABLE public.batches OWNER TO postgres;
+
+--
 -- Name: candidate_embeddings_gemma_2025; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -542,6 +563,14 @@ ALTER TABLE ONLY public.models ALTER COLUMN id SET DEFAULT nextval('public.model
 
 
 --
+-- Name: batches batches_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.batches
+    ADD CONSTRAINT batches_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: candidate_embeddings_gemma_2025 candidate_embeddings_gemma_2025_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -691,6 +720,34 @@ ALTER TABLE ONLY public.sources
 
 ALTER TABLE ONLY public.tasks
     ADD CONSTRAINT tasks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_batches_open_created_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_batches_open_created_at ON public.batches USING btree (created_at) WHERE (completed_at IS NULL);
+
+
+--
+-- Name: idx_batches_ready_to_publish; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_batches_ready_to_publish ON public.batches USING btree (completed_at) WHERE ((completed_at IS NOT NULL) AND (published_at IS NULL));
+
+
+--
+-- Name: idx_batches_source_type_created_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_batches_source_type_created_at ON public.batches USING btree (source_type, created_at);
+
+
+--
+-- Name: idx_batches_stalled_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_batches_stalled_at ON public.batches USING btree (stalled_at);
 
 
 --
@@ -1161,6 +1218,13 @@ ALTER TABLE ONLY public.tasks
 --
 
 GRANT USAGE ON SCHEMA public TO prism;
+
+
+--
+-- Name: TABLE batches; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.batches TO prism;
 
 
 --

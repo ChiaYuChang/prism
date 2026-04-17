@@ -1,6 +1,7 @@
 BEGIN;
 
 DROP TABLE IF EXISTS tasks CASCADE;
+DROP TABLE IF EXISTS batches CASCADE;
 DROP TABLE IF EXISTS content_extraction_phrases CASCADE;
 DROP TABLE IF EXISTS content_extraction_topics CASCADE;
 DROP TABLE IF EXISTS content_extraction_entities CASCADE;

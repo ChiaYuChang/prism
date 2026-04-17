@@ -7,24 +7,38 @@ import (
 )
 
 type Task struct {
-	ID         uuid.UUID
-	BatchID    uuid.UUID
-	TraceID    string
-	Kind       string
-	SourceType string
-	SourceAbbr string
+	ID          uuid.UUID
+	BatchID     uuid.UUID
+	TraceID     string
+	Kind        string
+	SourceType  string
+	SourceAbbr  string
 	URL         string
 	Payload     []byte
 	PayloadHash *string
 	Meta        []byte
 	Frequency   *time.Duration
-	NextRunAt  time.Time
-	ExpiresAt  *time.Time
-	Status     string
-	RetryCount int
-	LastRunAt  *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	NextRunAt   time.Time
+	ExpiresAt   *time.Time
+	Status      TaskStatus
+	RetryCount  int
+	LastRunAt   *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type Batch struct {
+	ID                   uuid.UUID
+	SourceType           string
+	TraceID              *string
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	CompletedAt          *time.Time
+	PublishedAt          *time.Time
+	LastPublishAttemptAt *time.Time
+	PublishRetryCount    int
+	PublishError         *string
+	StalledAt            *time.Time
 }
 
 type Source struct {

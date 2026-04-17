@@ -201,6 +201,23 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 	return i, err
 }
 
+const ensureBatchExists = `-- name: EnsureBatchExists :exec
+INSERT INTO batches (id, source_type, trace_id)
+VALUES ($1, $2, $3)
+ON CONFLICT (id) DO NOTHING
+`
+
+type EnsureBatchExistsParams struct {
+	ID         uuid.UUID   `db:"id" json:"id"`
+	SourceType SourceType  `db:"source_type" json:"source_type"`
+	TraceID    pgtype.Text `db:"trace_id" json:"trace_id"`
+}
+
+func (q *Queries) EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error {
+	_, err := q.db.Exec(ctx, ensureBatchExists, arg.ID, arg.SourceType, arg.TraceID)
+	return err
+}
+
 const extendActiveTaskExpiry = `-- name: ExtendActiveTaskExpiry :exec
 UPDATE tasks
 SET expires_at = $1,

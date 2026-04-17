@@ -22,10 +22,13 @@ type Querier interface {
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
 	FailTask(ctx context.Context, id uuid.UUID) error
+	// Finds batches where all tasks are completed and all candidates are promoted to contents.
+	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
 	GetContentByCandidateID(ctx context.Context, candidateID pgtype.UUID) (Content, error)
@@ -44,10 +47,15 @@ type Querier interface {
 	ListCandidatesForAnalysis(ctx context.Context, arg ListCandidatesForAnalysisParams) ([]Candidate, error)
 	ListContentEmbeddingsByContentID(ctx context.Context, contentID uuid.UUID) ([]ContentEmbeddingsGemma2025, error)
 	ListContentsByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Content, error)
+	ListPendingCompletionBatches(ctx context.Context, arg ListPendingCompletionBatchesParams) ([]Batch, error)
+	ListReadyToPublishBatches(ctx context.Context, arg ListReadyToPublishBatchesParams) ([]Batch, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
 	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) error
+	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
+	RecordBatchPublishFailure(ctx context.Context, arg RecordBatchPublishFailureParams) error
 	// Resets RUNNING tasks back to PENDING in bulk, undoing the ClaimTasks
 	// retry_count increment. Used when dispatch is skipped (e.g. rate-limited)
 	// so tasks are retried on the next scheduler tick without consuming retry slots.

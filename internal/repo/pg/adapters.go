@@ -1,29 +1,60 @@
 package pg
 
 import (
+	"time"
+
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/pkg/pgconv"
+	"github.com/google/uuid"
 )
 
 func dbTaskToRepoTask(task Task) repo.Task {
 	return repo.Task{
-		ID:         task.ID,
-		BatchID:    task.BatchID,
-		TraceID:    task.TraceID,
-		Kind:       string(task.Kind),
-		SourceType: string(task.SourceType),
-		SourceAbbr: task.SourceAbbr,
+		ID:          task.ID,
+		BatchID:     task.BatchID,
+		TraceID:     task.TraceID,
+		Kind:        string(task.Kind),
+		SourceType:  string(task.SourceType),
+		SourceAbbr:  task.SourceAbbr,
 		URL:         task.Url,
 		Payload:     task.Payload,
 		PayloadHash: pgconv.PgTextToStringPtr(task.PayloadHash),
 		Meta:        task.Meta,
 		NextRunAt:   *pgconv.PgTimestamptzToTimePtr(task.NextRunAt),
-		ExpiresAt:  pgconv.PgTimestamptzToTimePtr(task.ExpiresAt),
-		Status:     string(task.Status),
-		RetryCount: int(task.RetryCount),
-		LastRunAt:  pgconv.PgTimestamptzToTimePtr(task.LastRunAt),
-		CreatedAt:  *pgconv.PgTimestamptzToTimePtr(task.CreatedAt),
-		UpdatedAt:  *pgconv.PgTimestamptzToTimePtr(task.UpdatedAt),
+		ExpiresAt:   pgconv.PgTimestamptzToTimePtr(task.ExpiresAt),
+		Status:      repo.TaskStatus(task.Status),
+		RetryCount:  int(task.RetryCount),
+		LastRunAt:   pgconv.PgTimestamptzToTimePtr(task.LastRunAt),
+		CreatedAt:   *pgconv.PgTimestamptzToTimePtr(task.CreatedAt),
+		UpdatedAt:   *pgconv.PgTimestamptzToTimePtr(task.UpdatedAt),
+	}
+}
+
+func dbBatchToRepoBatch(
+	id uuid.UUID,
+	sourceType string,
+	traceID *string,
+	createdAt time.Time,
+	updatedAt time.Time,
+	completedAt *time.Time,
+	publishedAt *time.Time,
+	lastPublishAttemptAt *time.Time,
+	publishRetryCount int32,
+	publishError *string,
+	stalledAt *time.Time,
+) repo.Batch {
+	return repo.Batch{
+		ID:                   id,
+		SourceType:           sourceType,
+		TraceID:              traceID,
+		CreatedAt:            createdAt,
+		UpdatedAt:            updatedAt,
+		CompletedAt:          completedAt,
+		PublishedAt:          publishedAt,
+		LastPublishAttemptAt: lastPublishAttemptAt,
+		PublishRetryCount:    int(publishRetryCount),
+		PublishError:         publishError,
+		StalledAt:            stalledAt,
 	}
 }
 

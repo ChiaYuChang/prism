@@ -531,6 +531,20 @@ func AllTaskStatusValues() []TaskStatus {
 	}
 }
 
+type Batch struct {
+	ID                   uuid.UUID          `db:"id" json:"id"`
+	SourceType           SourceType         `db:"source_type" json:"source_type"`
+	TraceID              pgtype.Text        `db:"trace_id" json:"trace_id"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CompletedAt          pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	PublishedAt          pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	LastPublishAttemptAt pgtype.Timestamptz `db:"last_publish_attempt_at" json:"last_publish_attempt_at"`
+	PublishRetryCount    int32              `db:"publish_retry_count" json:"publish_retry_count"`
+	PublishError         pgtype.Text        `db:"publish_error" json:"publish_error"`
+	StalledAt            pgtype.Timestamptz `db:"stalled_at" json:"stalled_at"`
+}
+
 type Candidate struct {
 	ID              uuid.UUID                `db:"id" json:"id"`
 	BatchID         pgtype.UUID              `db:"batch_id" json:"batch_id"`

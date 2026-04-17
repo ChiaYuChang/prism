@@ -3,6 +3,7 @@ package pg
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/pkg/pgconv"
@@ -226,6 +227,14 @@ func (r *PGTasks) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 }
 
 func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
+	if err := r.q.EnsureBatchExists(ctx, EnsureBatchExistsParams{
+		ID:         arg.BatchID,
+		SourceType: SourceType(arg.SourceType),
+		TraceID:    pgconv.StringPtrToPgText(&arg.TraceID),
+	}); err != nil {
+		return repo.Task{}, fmt.Errorf("ensure batch %s exists: %w", arg.BatchID, err)
+	}
+
 	row, err := r.q.CreateTask(ctx, CreateTaskParams{
 		BatchID:     arg.BatchID,
 		Kind:        TaskKind(arg.Kind),
@@ -345,16 +354,98 @@ func (r *PGPipeline) ListRecentSeedContents(ctx context.Context, limit int32) ([
 }
 
 // Batch Trigger repository.
-func (r *PGBatchTrigger) ListRecentSeedContents(ctx context.Context, limit int32) ([]repo.Content, error) {
-	rows, err := r.q.ListRecentSeedContents(ctx, limit)
+func (r *PGBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
+	rows, err := r.q.ListPendingCompletionBatches(ctx, ListPendingCompletionBatchesParams{
+		SourceType: SourceType(sourceType),
+		Limit:      limit,
+	})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]repo.Content, len(rows))
+
+	out := make([]repo.Batch, len(rows))
 	for i, row := range rows {
-		out[i] = dbContentToRepoContent(row)
+		out[i] = dbBatchToRepoBatch(
+			row.ID,
+			string(row.SourceType),
+			pgconv.PgTextToStringPtr(row.TraceID),
+			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+			*pgconv.PgTimestamptzToTimePtr(row.UpdatedAt),
+			pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
+			pgconv.PgTimestamptzToTimePtr(row.PublishedAt),
+			pgconv.PgTimestamptzToTimePtr(row.LastPublishAttemptAt),
+			row.PublishRetryCount,
+			pgconv.PgTextToStringPtr(row.PublishError),
+			pgconv.PgTimestamptzToTimePtr(row.StalledAt),
+		)
 	}
 	return out, nil
+}
+
+func (r *PGBatchTrigger) FindNewlyCompletedBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
+	rows, err := r.q.FindNewlyCompletedBatches(ctx, FindNewlyCompletedBatchesParams{
+		SourceType: SourceType(sourceType),
+		Limit:      limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]repo.Batch, len(rows))
+	for i, row := range rows {
+		out[i] = repo.Batch{
+			ID:         row.ID,
+			SourceType: string(row.SourceType),
+			TraceID:    pgconv.PgTextToStringPtr(row.TraceID),
+		}
+	}
+	return out, nil
+}
+
+func (r *PGBatchTrigger) MarkBatchCompleted(ctx context.Context, batchID uuid.UUID, traceID string) error {
+	return r.q.MarkBatchCompleted(ctx, MarkBatchCompletedParams{
+		ID:      batchID,
+		TraceID: traceID,
+	})
+}
+
+func (r *PGBatchTrigger) ListReadyToPublishBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
+	rows, err := r.q.ListReadyToPublishBatches(ctx, ListReadyToPublishBatchesParams{
+		SourceType: SourceType(sourceType),
+		Limit:      limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]repo.Batch, len(rows))
+	for i, row := range rows {
+		out[i] = dbBatchToRepoBatch(
+			row.ID,
+			string(row.SourceType),
+			pgconv.PgTextToStringPtr(row.TraceID),
+			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+			*pgconv.PgTimestamptzToTimePtr(row.UpdatedAt),
+			pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
+			pgconv.PgTimestamptzToTimePtr(row.PublishedAt),
+			pgconv.PgTimestamptzToTimePtr(row.LastPublishAttemptAt),
+			row.PublishRetryCount,
+			pgconv.PgTextToStringPtr(row.PublishError),
+			pgconv.PgTimestamptzToTimePtr(row.StalledAt),
+		)
+	}
+	return out, nil
+}
+
+func (r *PGBatchTrigger) MarkBatchPublished(ctx context.Context, batchID uuid.UUID) error {
+	return r.q.MarkBatchPublished(ctx, batchID)
+}
+
+func (r *PGBatchTrigger) RecordBatchPublishFailure(ctx context.Context, batchID uuid.UUID, publishErr string) error {
+	return r.q.RecordBatchPublishFailure(ctx, RecordBatchPublishFailureParams{
+		ID:           batchID,
+		PublishError: pgconv.StringPtrToPgText(&publishErr),
+	})
 }
 
 func (r *PGBatchTrigger) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]repo.Task, error) {

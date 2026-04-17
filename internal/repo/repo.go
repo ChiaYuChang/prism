@@ -55,7 +55,12 @@ type Pipeline interface {
 }
 
 type BatchTrigger interface {
-	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
+	ListPendingCompletionBatches(ctx context.Context, limit int32, sourceType string) ([]Batch, error)
+	FindNewlyCompletedBatches(ctx context.Context, limit int32, sourceType string) ([]Batch, error)
+	MarkBatchCompleted(ctx context.Context, batchID uuid.UUID, traceID string) error
+	ListReadyToPublishBatches(ctx context.Context, limit int32, sourceType string) ([]Batch, error)
+	MarkBatchPublished(ctx context.Context, batchID uuid.UUID) error
+	RecordBatchPublishFailure(ctx context.Context, batchID uuid.UUID, publishErr string) error
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
 	ListContentsByBatchID(ctx context.Context, batchID uuid.UUID) ([]Content, error)
