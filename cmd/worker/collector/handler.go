@@ -12,7 +12,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
-	"github.com/ChiaYuChang/prism/pkg/utils"
+	"github.com/ChiaYuChang/prism/pkg/archivecodec"
 	wm "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
@@ -40,7 +40,7 @@ type Handler struct {
 	logger           *slog.Logger
 	tracer           trace.Tracer
 	fetcher          collector.Fetcher
-	errorSaver       collector.Saver   // optional: nil = raw content lost on Minify failure
+	errorSaver       collector.Saver // optional: nil = raw content lost on Minify failure
 	minifier         collector.Minifier
 	transformer      collector.Transformer
 	parser           collector.Parser
@@ -233,7 +233,7 @@ func (h *Handler) process(ctx context.Context, logger *slog.Logger, sig message.
 }
 
 func (h *Handler) publishArchive(ctx context.Context, logger *slog.Logger, contentID uuid.UUID, sig message.TaskSignal, canonical string, fetchedAt time.Time) error {
-	page, err := utils.CompressBlob(canonical)
+	page, err := archivecodec.GzipBase64.PackString(canonical)
 	if err != nil {
 		return fmt.Errorf("compress canonical html: %w", err)
 	}
@@ -293,6 +293,9 @@ func (h *Handler) saveOnMinifyError(ctx context.Context, sig message.TaskSignal,
 			"error":        minifyErr.Error(),
 			"recover_from": "minify",
 			"recover_key":  sig.TraceID,
+			"source_abbr":  sig.SourceAbbr,
+			"source_type":  sig.SourceType,
+			"batch_id":     sig.BatchID.String(),
 		},
 	}
 	if err := h.errorSaver.Save(ctx, archive); err != nil {
