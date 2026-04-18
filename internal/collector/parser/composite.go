@@ -10,7 +10,7 @@ import (
 
 // CompositeParser runs a list of parsers in sequence and merges their results.
 // It follows a coalesce pattern where fields are populated by the first
-// parser that provides them, or merged depending on the field type.
+// parser that provides them.
 type CompositeParser struct {
 	logger  *slog.Logger
 	parsers []collector.Parser
@@ -50,7 +50,31 @@ func (p *CompositeParser) Parse(ctx context.Context, url string, data string) (*
 			continue
 		}
 
-		final = MergeArticleContent(final, result)
+		var filled []string
+		if final.Title == "" && result.Title != "" {
+			filled = append(filled, "title")
+		}
+		if final.Content == "" && result.Content != "" {
+			filled = append(filled, "content")
+		}
+		if final.Author == "" && result.Author != "" {
+			filled = append(filled, "author")
+		}
+		if final.PublishedAt.IsZero() && !result.PublishedAt.IsZero() {
+			filled = append(filled, "published_at")
+		}
+
+		// Treat the accumulated 'final' as the priority over the new 'result'
+		// so that fields provided by earlier parsers are not overwritten.
+		final = MergeArticleContent(result, final)
+
+		if len(filled) > 0 {
+			p.logger.DebugContext(ctx, "sub-parser filled missing fields",
+				slog.Int("index", i),
+				slog.String("url", url),
+				slog.Any("fields", filled),
+			)
+		}
 	}
 
 	if final == nil {

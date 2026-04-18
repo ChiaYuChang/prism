@@ -278,7 +278,7 @@ User queries candidates table by keyword/date/source
   * [x] Soft-delete in `LocalArchiver.Remove` (stamp `deleted_at` in meta JSON); `Purge` / `PurgeAll` for hard-delete; `clean --purge` wires both.
   * [x] Enrich `saveOnMinifyError` metadata with `source_abbr`, `source_type`, `batch_id` so `cmd/recover run` can build `CreateContentParams`.
   * [x] Complete `S3Archiver` for production SeaweedFS/S3; `LocalArchiver` (`file://`) and `S3Archiver` (`s3://`) remain parallel options selected by URI scheme via `ParseURI` — `LocalArchiver` stays the default for local development and testing. `S3Archiver` implements Save / Load (with SHA-256 integrity check) / Scan / Remove (soft-delete); hard-delete is intentionally delegated to S3 lifecycle policies rather than application code.
-* [ ] 2.6 User-Facing Candidate Query API:
+* [ ] 2.6 User-Facing Candidate Query API: (In progress: `cmd/api-server` foundation laid out with middleware and swagger)
   * [ ] `GET /candidates` — query candidates by keyword, source, date range; returns JSON.
   * [ ] `POST /page_fetch` — accepts `candidate_id` list, creates `PAGE_FETCH` tasks; returns task IDs.
   * [ ] `GET /contents/{candidate_id}` — returns content if fetched, 404 if pending.

@@ -1,0 +1,60 @@
+basePath: /api/v1
+definitions:
+  obs.HealthLevel:
+    enum:
+    - STARTING
+    - OK
+    - WARN
+    - ERROR
+    type: string
+    x-enum-varnames:
+    - LevelStarting
+    - LevelOK
+    - LevelWarn
+    - LevelError
+  obs.HealthStatus:
+    properties:
+      level:
+        $ref: '#/definitions/obs.HealthLevel'
+      message:
+        type: string
+      timestamp:
+        type: string
+      uptime:
+        type: string
+    type: object
+info:
+  contact: {}
+  description: User-facing read API for Prism candidate/content data.
+  title: Prism API
+  version: "0.1"
+paths:
+  /healthz:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/obs.HealthStatus'
+      summary: Liveness probe
+      tags:
+      - health
+  /readyz:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/obs.HealthStatus'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/obs.HealthStatus'
+      summary: Readiness probe
+      tags:
+      - health
+swagger: "2.0"

@@ -1,0 +1,90 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "User-facing read API for Prism candidate/content data.",
+        "title": "Prism API",
+        "contact": {},
+        "version": "0.1"
+    },
+    "basePath": "/api/v1",
+    "paths": {
+        "/healthz": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Liveness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/obs.HealthStatus"
+                        }
+                    }
+                }
+            }
+        },
+        "/readyz": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Readiness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/obs.HealthStatus"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/obs.HealthStatus"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "obs.HealthLevel": {
+            "type": "string",
+            "enum": [
+                "STARTING",
+                "OK",
+                "WARN",
+                "ERROR"
+            ],
+            "x-enum-varnames": [
+                "LevelStarting",
+                "LevelOK",
+                "LevelWarn",
+                "LevelError"
+            ]
+        },
+        "obs.HealthStatus": {
+            "type": "object",
+            "properties": {
+                "level": {
+                    "$ref": "#/definitions/obs.HealthLevel"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "uptime": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

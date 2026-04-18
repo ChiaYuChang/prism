@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	ErrRetryable  = errors.New("retryable error")
+	ErrRetryable   = errors.New("retryable error")
 	ErrClientError = errors.New("client error")
 	ErrMaxRetries  = errors.New("max retries exceeded")
 )

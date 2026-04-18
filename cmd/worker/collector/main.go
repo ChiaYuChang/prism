@@ -109,7 +109,7 @@ func main() {
 		minifier.New(),
 		transformer.NewNoOpTransformer(),
 		parser.NewArticleParser(),
-		nil, // archivePublisher: wired up once archiver worker is implemented
+		msgr, // archivePublisher wired up to send messages to the archive topic
 		dbRepo.Pipeline(),
 		dbRepo.Scheduler(),
 	)
