@@ -26,7 +26,7 @@ func BuildRegistry(cfg Config, logger *slog.Logger, tracer trace.Tracer) (*parse
 
 		if pCfg.JSONLD {
 			jParser = jsonld.New()
-			cp, err := parser.NewCompositeParser(hParser, jParser)
+			cp, err := parser.NewCompositeParser(logger, hParser, jParser)
 			if err != nil {
 				return nil, fmt.Errorf("build composite parser for %s: %w", host, err)
 			}

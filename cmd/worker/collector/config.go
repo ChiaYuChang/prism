@@ -12,13 +12,14 @@ import (
 )
 
 type Config struct {
-	HealthPort    int                       `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	Logger        appconfig.LoggerConfig    `mapstructure:"logger"`
-	HTTPTimeout   time.Duration             `mapstructure:"http-timeout"   validate:"required,min=1s"`
-	Postgres      appconfig.PostgresConfig  `mapstructure:"postgres"`
-	S3            appconfig.S3Config        `mapstructure:"s3"`
-	MessengerType string                    `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
-	Messenger     appconfig.MessengerConfig `mapstructure:"-"`
+	HealthPort        int                       `mapstructure:"health-port"         validate:"required,min=1024,max=65535"`
+	Logger            appconfig.LoggerConfig    `mapstructure:"logger"`
+	HTTPTimeout       time.Duration             `mapstructure:"http-timeout"        validate:"required,min=1s"`
+	MaxProcessingTime time.Duration             `mapstructure:"max-processing-time" validate:"required,min=1s"`
+	Postgres          appconfig.PostgresConfig  `mapstructure:"postgres"`
+	S3                appconfig.S3Config        `mapstructure:"s3"`
+	MessengerType     string                    `mapstructure:"messenger-type"      validate:"oneof=nats gochannel"`
+	Messenger         appconfig.MessengerConfig `mapstructure:"-"`
 
 	// ArchiveDir is the base directory for LocalSaver archives.
 	// When non-empty, a LocalRecoverer is enabled and recovery tasks are supported.
@@ -38,6 +39,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("log-level", "info", "The log level (debug, info, warn, error)")
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
 	fs.Duration("http-timeout", 30*time.Second, "HTTP timeout for page fetch requests")
+	fs.Duration("max-processing-time", 2*time.Minute, "Maximum wall-clock time for handling a single message (ctx timeout passed to handler)")
 	fs.String("archive-dir", "", "Base directory for local archive storage; enables LocalRecoverer when set")
 
 	fs.String("pg-host", "localhost", "Postgres host")

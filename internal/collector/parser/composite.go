@@ -3,42 +3,60 @@ package parser
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/ChiaYuChang/prism/internal/collector"
 )
 
+// CompositeParser runs a list of parsers in sequence and merges their results.
+// It follows a coalesce pattern where fields are populated by the first
+// parser that provides them, or merged depending on the field type.
 type CompositeParser struct {
-	html   collector.Parser
-	jsonld collector.Parser
+	logger  *slog.Logger
+	parsers []collector.Parser
 }
 
 var _ collector.Parser = (*CompositeParser)(nil)
 
-func NewCompositeParser(html, jsonld collector.Parser) (*CompositeParser, error) {
-	if html == nil {
-		return nil, fmt.Errorf("%w: html parser", ErrParamMissing)
+func NewCompositeParser(logger *slog.Logger, parsers ...collector.Parser) (*CompositeParser, error) {
+	if logger == nil {
+		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
-	if jsonld == nil {
-		return nil, fmt.Errorf("%w: jsonld parser", ErrParamMissing)
+	if len(parsers) == 0 {
+		return nil, fmt.Errorf("%w: at least one parser is required", ErrParamMissing)
 	}
 	return &CompositeParser{
-		html:   html,
-		jsonld: jsonld,
+		logger:  logger,
+		parsers: parsers,
 	}, nil
 }
 
 func (p *CompositeParser) Parse(ctx context.Context, url string, data string) (*collector.Article, error) {
-	hResult, err := p.html.Parse(ctx, url, data)
-	if err != nil {
-		return nil, err
+	var final *collector.Article
+
+	for i, parser := range p.parsers {
+		result, err := parser.Parse(ctx, url, data)
+		if err != nil {
+			p.logger.DebugContext(ctx, "sub-parser failed",
+				slog.Int("index", i),
+				slog.String("url", url),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		if final == nil {
+			final = result
+			continue
+		}
+
+		final = MergeArticleContent(final, result)
 	}
 
-	jResult, err := p.jsonld.Parse(ctx, url, data)
-	if err != nil {
-		return hResult, nil
+	if final == nil {
+		return nil, fmt.Errorf("all parsers failed for %s", url)
 	}
 
-	merged := MergeArticleContent(hResult, jResult)
-	merged.URL = url
-	return merged, nil
+	final.URL = url
+	return final, nil
 }

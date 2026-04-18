@@ -125,8 +125,8 @@ cron
 ### Discovery Keyword Generation (Planner — automatic)
 
 ```
-cmd/trigger/batch detects completed PARTY batch
- └─► publishes BatchCompletedSignal → [prism.batch.completed]
+cmd/batch/detector detects completed PARTY batch
+ └─► publishes BatchCompletedSignal → [prism.batch.completed] via cmd/batch/publisher
       └─► cmd/worker/planner: loads batch contents
            └─► LLM extracts keyword phrases
                 └─► CreateTask(MEDIA + KEYWORD_SEARCH) per phrase per MEDIA source
@@ -263,7 +263,7 @@ User queries candidates table by keyword/date/source
   * [x] Implement F→M→T→(S||P) pipeline with `Dispatcher` struct (`internal/collector/dispatcher.go`).
   * [x] Implement `Minifier` interface and `HTMLMinifier` (`internal/collector/minifier/html.go`).
   * [x] Implement `NoOpTransformer` placeholder (`internal/collector/transformer/noop.go`).
-  * [x] Implement host-aware `Parser` registry with HTML + JSON-LD composite parsers.
+  * [x] Implement host-aware `Parser` registry with HTML + JSON-LD composite parsers. (Refactored to variadic `CompositeParser` with coalesce logic).
   * [x] `html.RuleConfig` uses slice fields `Title/Author/Date/Content []string`; `DateLayouts` at `ParserConfig` top level.
   * [x] `parser/config/parsers.yaml` defines per-host parser rules (DPP, TPP, Yahoo).
   * [x] JSON-LD extraction via regex (not goquery); handles multi-block and `@graph` structures.
@@ -322,7 +322,7 @@ User queries candidates table by keyword/date/source
   * [x] switch command CLI overrides from dotted flags to prefixed flat names such as `--pg-host` and `--valkey-host`
   * [ ] review whether command-local `LoadConfig()` logic should remain separate or be partially unified (In progress: added `bindflag.go` for unified flag binding)
   * [ ] remove remaining duplicated bootstrap helpers once worker commands stabilize
-* [ ] Rework infra configuration source-of-truth:
+* [x] Rework infra configuration source-of-truth:
   * [x] temporarily exclude generated `build/` artifacts from version control
   * [ ] move version-controlled infra config sources into `deployments/` or another template directory
   * [ ] introduce `*.tmpl` / `*.example` files for rendered runtime config such as Valkey ACL and server config
@@ -335,6 +335,14 @@ User queries candidates table by keyword/date/source
 * [ ] JS-rendered scraping via Playwright where legally and operationally acceptable.
 * [ ] Persist rolling-window seed clustering as analysis assets.
 * [ ] Model cluster lineage as a directed graph or DAG for issue evolution analysis.
+* [ ] **Move scheduler rate limiter from in-memory to Valkey.**
+  * **Why:** the current `infra.InMemoryRateLimiter` keeps per-`source_abbr` token buckets inside the scheduler process. That state is tied to the binary's lifetime, which blocks two scaling moves: (a) switching the scheduler to a short-lived `--once` / cron / Lambda deployment (each invocation would reset every bucket and blow past per-source quotas), and (b) running multiple scheduler instances concurrently for horizontal throughput (each would throttle in isolation, letting the aggregate exceed the quota).
+  * **What:** implement a Valkey-backed token bucket (Lua script for atomic `TAKE`). Same `infra.RateLimiter` interface so call sites (`applyRateLimit`) stay unchanged. Keep the in-memory implementation for tests and `gochannel` mode.
+  * **When:** before migrating scheduler to cron/Lambda or scaling it past one instance. Not urgent while a single long-running scheduler is the only deployment shape.
+* [ ] **Migrate scheduler to short-lived execution (`--once` + cron / Lambda / Fargate Scheduled Task).**
+  * **Why:** tick interval is 10 minutes but the tick itself takes < 1s; a long-running EC2 instance burns resources for < 0.1% utilization and holds idle Postgres connections (see `pg.Factory` defaults lowered to `MaxConnIdleTime=1m`). A short-lived model releases PG connections between ticks and maps cleanly onto serverless cron.
+  * **What:** add `--once` flag to `cmd/scheduler` that runs `RunTick` once and exits; keep the Valkey distributed lock as a safety net against overlapping invocations; ensure the rate limiter migration above lands first so bucket state survives.
+  * **Cost caveat:** Lambda-in-VPC with private Postgres/Valkey typically requires a NAT Gateway (~$32/mo), which is more expensive than a `t4g.nano` long-running instance (~$3/mo). Prefer Fargate Scheduled Task or keep long-running EC2 unless DB endpoints are already public or behind RDS Proxy.
 
 ## 6. Current Design Clarifications
 

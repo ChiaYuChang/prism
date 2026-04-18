@@ -144,7 +144,9 @@ func main() {
 				return
 			}
 
-			ack, err := handler.HandleMessage(ctx, msg)
+			msgCtx, cancel := context.WithTimeout(ctx, config.MaxProcessingTime)
+			ack, err := handler.HandleMessage(msgCtx, msg)
+			cancel()
 			if err != nil {
 				logger.Error("failed to handle collector task", "error", err)
 			}
