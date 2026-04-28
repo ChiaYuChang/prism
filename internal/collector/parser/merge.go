@@ -1,9 +1,8 @@
 package parser
 
 import (
-	"strings"
-
 	"github.com/ChiaYuChang/prism/internal/collector"
+	"github.com/ChiaYuChang/prism/pkg/utils"
 )
 
 // MergeArticleContent combines two ArticleContent objects.
@@ -45,9 +44,9 @@ func MergeArticleContent(base, priority *collector.Article) *collector.Article {
 	}
 
 	// Ensure fields are normalized
-	merged.Title = strings.TrimSpace(merged.Title)
-	merged.Author = strings.TrimSpace(merged.Author)
-	merged.Content = strings.TrimSpace(merged.Content)
+	merged.Title = utils.NormalizeString(merged.Title)
+	merged.Author = utils.NormalizeString(merged.Author)
+	merged.Content = utils.NormalizeString(merged.Content)
 
 	return &merged
 }

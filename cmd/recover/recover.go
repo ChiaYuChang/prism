@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/collector"
 	"github.com/ChiaYuChang/prism/internal/collector/archiver"
 	"github.com/ChiaYuChang/prism/internal/collector/minifier"
 	"github.com/ChiaYuChang/prism/internal/collector/parser"
@@ -15,13 +17,13 @@ import (
 	"github.com/google/uuid"
 )
 
-func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipeline, logger *slog.Logger, opts cliOptions) error {
+func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipeline, prs collector.Parser, logger *slog.Logger, opts cliOptions) error {
 	scanOpts := archiver.ScanOptions{
-		Since:   opts.since,
-		Until:   opts.until,
-		Limit:   opts.limit,
-		TraceID: opts.traceID,
-		Stage:   archiver.MetaStageRaw,
+		Since:       opts.since,
+		Until:       opts.until,
+		Limit:       opts.limit,
+		TraceID:     opts.traceID,
+		PayloadKind: archiver.PayloadKindRaw,
 	}
 	metas, err := arch.Scan(ctx, scanOpts)
 	if err != nil {
@@ -34,7 +36,6 @@ func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipel
 
 	min := minifier.New()
 	tfm := transformer.NewNoOpTransformer()
-	prs := parser.NewArticleParser()
 
 	var succeeded, skipped, failed int
 
@@ -66,7 +67,7 @@ func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipel
 			continue
 		}
 
-		minified, err := min.Minify(ctx, raw)
+		minified, err := min.Transform(ctx, raw)
 		if err != nil {
 			log.Error("minify still fails", "error", err)
 			failed++
@@ -82,6 +83,11 @@ func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipel
 
 		art, err := prs.Parse(ctx, m.URL, canonical)
 		if err != nil {
+			if errors.Is(err, parser.ErrNoMatchingParser) {
+				log.Warn("no parser configured for host, skipping", "error", err)
+				skipped++
+				continue
+			}
 			log.Error("parse failed", "error", err)
 			failed++
 			continue

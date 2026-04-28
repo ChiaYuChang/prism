@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/collector"
+	"github.com/ChiaYuChang/prism/pkg/utils"
 	"github.com/PuerkitoBio/goquery"
 )
 
@@ -50,7 +51,7 @@ func (p *Parser) Parse(_ context.Context, url string, data string) (*collector.A
 	var bodyParts []string
 	for _, sel := range p.cfg.Content {
 		doc.Find(sel).Each(func(_ int, s *goquery.Selection) {
-			if text := strings.TrimSpace(s.Text()); text != "" {
+			if text := utils.NormalizeString(s.Text()); text != "" {
 				bodyParts = append(bodyParts, text)
 			}
 		})
@@ -63,22 +64,49 @@ func (p *Parser) Parse(_ context.Context, url string, data string) (*collector.A
 	return content, nil
 }
 
-// firstMatch tries each selector in order and returns the trimmed text of the
-// first element that yields a non-empty result.
+// splitSelectorAttr splits an optional "@attr" suffix from a selector.
+// "div.x"         → ("div.x", "")       → read element text
+// "abbr@title"    → ("abbr", "title")   → read title attribute
+// Attribute-reading is needed for sites like Blogger where the visible text
+// is human-readable ("下午2:00") but the machine-readable ISO timestamp lives
+// in an attribute (abbr.published[title]).
+func splitSelectorAttr(s string) (selector, attr string) {
+	if i := strings.LastIndex(s, "@"); i > 0 {
+		return s[:i], s[i+1:]
+	}
+	return s, ""
+}
+
+// extractOne finds the first matching element and returns its text (or named
+// attribute value if the selector has an "@attr" suffix), normalized.
+func extractOne(doc *goquery.Document, rawSel string) string {
+	sel, attr := splitSelectorAttr(rawSel)
+	node := doc.Find(sel).First()
+	if node.Length() == 0 {
+		return ""
+	}
+	if attr != "" {
+		return utils.NormalizeString(node.AttrOr(attr, ""))
+	}
+	return utils.NormalizeString(node.Text())
+}
+
+// firstMatch tries each selector in order and returns the first non-empty
+// extracted value (text or "@attr" value).
 func firstMatch(doc *goquery.Document, selectors []string) string {
 	for _, sel := range selectors {
-		if t := strings.TrimSpace(doc.Find(sel).First().Text()); t != "" {
+		if t := extractOne(doc, sel); t != "" {
 			return t
 		}
 	}
 	return ""
 }
 
-// firstDateMatch tries each selector in order; for each non-empty text it
-// tries each layout in order and returns the first successfully parsed time.
+// firstDateMatch tries each selector in order; for each non-empty extracted
+// value it tries each layout in order and returns the first parsed time.
 func firstDateMatch(doc *goquery.Document, selectors, layouts []string) time.Time {
 	for _, sel := range selectors {
-		text := strings.TrimSpace(doc.Find(sel).First().Text())
+		text := extractOne(doc, sel)
 		if text == "" {
 			continue
 		}

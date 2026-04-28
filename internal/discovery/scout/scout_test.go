@@ -2,7 +2,6 @@ package scout_test
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -21,9 +20,13 @@ func (stubScout) Discover(context.Context, string) ([]model.Candidates, error) {
 }
 
 func TestRegistryDiscover(t *testing.T) {
-	registry, err := root.NewRegistry(testLogger(), noop.NewTracerProvider().Tracer("test"), map[string]discovery.Scout{
-		"www.example.com": stubScout{},
-	})
+	registry, err := root.NewRegistry(
+		testLogger(),
+		noop.NewTracerProvider().Tracer("test"),
+		map[string]discovery.Scout{
+			"www.example.com": stubScout{},
+		},
+	)
 	require.NoError(t, err)
 
 	got, err := registry.Discover(context.Background(), "https://www.example.com/news")
@@ -33,12 +36,16 @@ func TestRegistryDiscover(t *testing.T) {
 }
 
 func TestRegistryDiscover_NoMatch(t *testing.T) {
-	registry, err := root.NewRegistry(testLogger(), noop.NewTracerProvider().Tracer("test"), nil)
+	registry, err := root.NewRegistry(
+		testLogger(),
+		noop.NewTracerProvider().Tracer("test"),
+		nil,
+	)
 	require.NoError(t, err)
 
 	_, err = registry.Discover(context.Background(), "https://www.example.com/news")
 	require.Error(t, err)
-	require.True(t, errors.Is(err, root.ErrNoMatchingScout))
+	require.ErrorIs(t, err, root.ErrNoMatchingScout)
 }
 
 func testLogger() *slog.Logger {

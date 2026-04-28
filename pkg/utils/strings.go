@@ -12,44 +12,23 @@ import (
 
 var (
 	reInvisible = regexp.MustCompile(`[\x00-\x1F\x7F-\x9F　 ]`)
-	reSpaces    = regexp.MustCompile(`\s+`)
 )
 
 // NormalizeString applies a series of cleaning operations:
-// replaces NBSP, removes extra spaces, and strips invisible characters.
+// 1. Replaces NBSP with a regular space.
+// 2. Collapses all consecutive whitespace (including newlines, tabs, and ideographic spaces) into a single space.
+// 3. Trims leading and trailing whitespace.
 func NormalizeString(s string) string {
+	if s == "" {
+		return ""
+	}
+	// Replace NBSP with a regular space
 	s = strings.ReplaceAll(s, "\u00A0", " ")
-	s = reSpaces.ReplaceAllString(s, " ")
-	s = reInvisible.ReplaceAllString(s, "")
+	// Remove invisible characters
+	s = reInvisible.ReplaceAllString(s, " ")
+	// Collapse multiple spaces into a single space
+	s = strings.Join(strings.Fields(s), " ")
 	return strings.TrimSpace(s)
-}
-
-// Join concatenates multiple strings and returns the result along with an array of cut indices.
-// This is useful for mapping cleaned content back to its original segment.
-func Join(text []string) (string, []int) {
-	var builder strings.Builder
-	cuts := make([]int, 0, len(text))
-	for _, t := range text {
-		builder.WriteString(t)
-		cuts = append(cuts, builder.Len())
-	}
-	return builder.String(), cuts
-}
-
-// Split divides a string based on a provided set of cut indices.
-func Split(text string, cuts []int) []string {
-	if len(cuts) == 0 {
-		return []string{text}
-	}
-	result := make([]string, 0, len(cuts))
-	head := 0
-	for _, tail := range cuts {
-		if tail > head {
-			result = append(result, text[head:tail])
-		}
-		head = tail
-	}
-	return result
 }
 
 // GbkToUtf8 converts GBK/GB18030 encoded strings to UTF-8.

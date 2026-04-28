@@ -85,3 +85,21 @@ OFFSET $3;
 SELECT COUNT(*)
 FROM candidates
 WHERE batch_id = $1;
+
+-- name: ListCandidates :many
+SELECT *
+FROM candidates
+WHERE (sqlc.narg(query)::text IS NULL
+       OR title ILIKE '%' || sqlc.narg(query)::text || '%'
+       OR COALESCE(description, '') ILIKE '%' || sqlc.narg(query)::text || '%')
+  AND (sqlc.narg(source_abbr)::varchar IS NULL OR source_abbr = sqlc.narg(source_abbr)::varchar)
+  AND (sqlc.narg(since)::timestamptz IS NULL OR COALESCE(published_at, discovered_at) >= sqlc.narg(since)::timestamptz)
+  AND (sqlc.narg(until)::timestamptz IS NULL OR COALESCE(published_at, discovered_at) <= sqlc.narg(until)::timestamptz)
+ORDER BY published_at DESC NULLS LAST, discovered_at DESC, created_at DESC
+LIMIT sqlc.arg(lim)::int
+OFFSET sqlc.arg(off)::int;
+
+-- name: GetCandidatesByIDs :many
+SELECT *
+FROM candidates
+WHERE id = ANY(sqlc.arg(ids)::uuid[]);

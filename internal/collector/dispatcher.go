@@ -5,45 +5,35 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
-	"github.com/ChiaYuChang/prism/internal/obs"
 	"go.opentelemetry.io/otel/trace"
 )
 
 var ErrParamMissing = errors.New("param missing")
 
-// Dispatcher orchestrates the F-M-T-P pipeline for a single URL.
+// Dispatcher orchestrates the F-M-T[]-P pipeline for a single URL, routing to
+// a per-source pipeline.Pipeline retrieved from the Registry.
 //
 // Pipeline stages:
 //
 //	F (Fetcher)     — retrieve raw content
 //	M (Minifier)    — strip noise, reduce size; archive point for S
-//	T (Transformer) — semantic transforms (Stage 2, currently no-op)
+//	T (Transformers)— post-archive transforms (may be empty)
 //	P (Parser)      — extract structured Article
 //
-// The Save leg (S) is intentionally excluded from Dispatcher:
-//   - On success, the caller archives DispatchResult.Minified via Saver
-//   - On Minify failure, Dispatcher archives raw via the optional errorSaver,
-//     preserving the original content for replay after a bug fix
+// On any stage failure Dispatcher returns a *StageError carrying the
+// intermediate value (= the failing stage's input). The caller decides
+// whether to archive it, retry, or drop.
 type Dispatcher struct {
-	logger      *slog.Logger
-	tracer      trace.Tracer
-	fetcher     Fetcher
-	minifier    Minifier
-	transformer Transformer
-	parser      Parser
-	errorSaver  Saver // optional: saves raw on Minify failure for later replay
+	logger   *slog.Logger
+	tracer   trace.Tracer
+	registry *PipelineRegistry
 }
 
 func NewDispatcher(
 	logger *slog.Logger,
 	tracer trace.Tracer,
-	fetcher Fetcher,
-	minifier Minifier,
-	transformer Transformer,
-	parser Parser,
-	errorSaver Saver,
+	registry *PipelineRegistry,
 ) (*Dispatcher, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
@@ -51,107 +41,66 @@ func NewDispatcher(
 	if tracer == nil {
 		return nil, fmt.Errorf("%w: tracer", ErrParamMissing)
 	}
-	if fetcher == nil {
-		return nil, fmt.Errorf("%w: fetcher", ErrParamMissing)
+	if registry == nil {
+		return nil, fmt.Errorf("%w: registry", ErrParamMissing)
 	}
-	if minifier == nil {
-		return nil, fmt.Errorf("%w: minifier", ErrParamMissing)
-	}
-	if transformer == nil {
-		return nil, fmt.Errorf("%w: transformer", ErrParamMissing)
-	}
-	if parser == nil {
-		return nil, fmt.Errorf("%w: parser", ErrParamMissing)
-	}
-	// errorSaver is optional
 	return &Dispatcher{
-		logger:      logger,
-		tracer:      tracer,
-		fetcher:     fetcher,
-		minifier:    minifier,
-		transformer: transformer,
-		parser:      parser,
-		errorSaver:  errorSaver,
+		logger:   logger,
+		tracer:   tracer,
+		registry: registry,
 	}, nil
 }
 
-// DispatchResult carries the parsed Article and the minified content.
-// Minified is the archive point: pass it to the Saver (S leg) after a
-// successful dispatch so the content can be replayed from this stage
-// if the Parser or DB encounters a fault later.
+// DispatchResult carries the parsed Article and the canonical content
+// (input to P). Canonical is the success-path archive point: publish it
+// to the Saver (S leg) after a successful dispatch so the content can
+// be replayed from this stage if a downstream fault is discovered later.
 type DispatchResult struct {
-	Article  *Article
-	Minified string
+	Article   *Article
+	Canonical string
 }
 
-// Dispatch runs F-M-T-P for a single URL.
-// On Minify failure the raw content is forwarded to errorSaver (if set)
-// so the original page is preserved for replay after the bug is fixed.
-func (d *Dispatcher) Dispatch(ctx context.Context, url string) (*DispatchResult, error) {
+// Dispatch runs F-M-T[]-P for a single URL using the Pipeline registered
+// for sourceID (fallback used when none is registered). Stage failures
+// return *StageError with the intermediate value attached.
+func (d *Dispatcher) Dispatch(ctx context.Context, sourceID, url string) (*DispatchResult, error) {
 	ctx, span := d.tracer.Start(ctx, "collector.dispatcher.dispatch")
 	defer span.End()
 
-	// F: Fetch original raw content.
-	raw, err := d.fetcher.Fetch(ctx, url)
+	p := d.registry.For(sourceID)
+
+	raw, err := p.Fetcher.Fetch(ctx, url)
 	if err != nil {
-		return nil, fmt.Errorf("fetch: %w", err)
+		return nil, &StageError{Stage: PipelineStageFetch, Err: err}
 	}
 
-	// M: Minify — strip noise and reduce size.
-	// On failure, archive raw for later replay before returning the error.
-	minified, err := d.minifier.Minify(ctx, raw)
+	minified, err := p.Minifier.Transform(ctx, raw)
 	if err != nil {
-		d.saveOnError(ctx, url, raw, err)
-		return nil, fmt.Errorf("minify: %w", err)
+		return nil, &StageError{Stage: PipelineStageMinify, Err: err, Intermediate: raw}
 	}
 
-	// T: Transform — semantic Stage 2 (currently no-op for HTML).
-	canonical, err := d.transformer.Transform(ctx, minified)
-	if err != nil {
-		return nil, fmt.Errorf("transform: %w", err)
+	canonical := minified
+	for _, t := range p.Transformers {
+		out, err := t.Transform(ctx, canonical)
+		if err != nil {
+			return nil, &StageError{Stage: PipelineStageTransform, Err: err, Intermediate: canonical}
+		}
+		canonical = out
 	}
 
-	// P: Parse canonical content into structured Article.
-	article, err := d.parser.Parse(ctx, url, canonical)
+	article, err := p.Parser.Parse(ctx, url, canonical)
 	if err != nil {
-		return nil, fmt.Errorf("parse: %w", err)
+		return nil, &StageError{Stage: PipelineStageParse, Err: err, Intermediate: canonical}
 	}
 
 	d.logger.DebugContext(ctx, "dispatch complete",
 		slog.String("url", url),
+		slog.String("source_id", sourceID),
 		slog.String("title", article.Title),
 	)
 
 	return &DispatchResult{
-		Article:  article,
-		Minified: minified,
+		Article:   article,
+		Canonical: canonical,
 	}, nil
-}
-
-// saveOnError archives raw content when Minify fails.
-// Failure is non-fatal: a warning is logged but the original Minify error is
-// returned to the caller unchanged.
-func (d *Dispatcher) saveOnError(ctx context.Context, url, raw string, minifyErr error) {
-	if d.errorSaver == nil {
-		return
-	}
-
-	archive := Archive{
-		URL:       url,
-		Payload:   raw,
-		TraceID:   obs.ExtractTraceID(ctx),
-		Timestamp: time.Now(),
-		Metadata: map[string]any{
-			"stage":        "raw",
-			"error":        minifyErr.Error(),
-			"recover_from": "minify",
-		},
-	}
-
-	if err := d.errorSaver.Save(ctx, archive); err != nil {
-		d.logger.WarnContext(ctx, "failed to archive raw content on minify error (content may be lost)",
-			slog.String("url", url),
-			slog.Any("error", err),
-		)
-	}
 }

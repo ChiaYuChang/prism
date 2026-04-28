@@ -153,6 +153,110 @@ func (q *Queries) GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate
 	return i, err
 }
 
+const getCandidatesByIDs = `-- name: GetCandidatesByIDs :many
+SELECT id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
+FROM candidates
+WHERE id = ANY($1::uuid[])
+`
+
+func (q *Queries) GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]Candidate, error) {
+	rows, err := q.db.Query(ctx, getCandidatesByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Candidate
+	for rows.Next() {
+		var i Candidate
+		if err := rows.Scan(
+			&i.ID,
+			&i.BatchID,
+			&i.SourceAbbr,
+			&i.TraceID,
+			&i.Fingerprint,
+			&i.Url,
+			&i.Title,
+			&i.Description,
+			&i.IngestionMethod,
+			&i.Metadata,
+			&i.PublishedAt,
+			&i.DiscoveredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCandidates = `-- name: ListCandidates :many
+SELECT id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
+FROM candidates
+WHERE ($1::text IS NULL
+       OR title ILIKE '%' || $1::text || '%'
+       OR COALESCE(description, '') ILIKE '%' || $1::text || '%')
+  AND ($2::varchar IS NULL OR source_abbr = $2::varchar)
+  AND ($3::timestamptz IS NULL OR COALESCE(published_at, discovered_at) >= $3::timestamptz)
+  AND ($4::timestamptz IS NULL OR COALESCE(published_at, discovered_at) <= $4::timestamptz)
+ORDER BY published_at DESC NULLS LAST, discovered_at DESC, created_at DESC
+LIMIT $6::int
+OFFSET $5::int
+`
+
+type ListCandidatesParams struct {
+	Query      pgtype.Text        `db:"query" json:"query"`
+	SourceAbbr pgtype.Text        `db:"source_abbr" json:"source_abbr"`
+	Since      pgtype.Timestamptz `db:"since" json:"since"`
+	Until      pgtype.Timestamptz `db:"until" json:"until"`
+	Off        int32              `db:"off" json:"off"`
+	Lim        int32              `db:"lim" json:"lim"`
+}
+
+func (q *Queries) ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error) {
+	rows, err := q.db.Query(ctx, listCandidates,
+		arg.Query,
+		arg.SourceAbbr,
+		arg.Since,
+		arg.Until,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Candidate
+	for rows.Next() {
+		var i Candidate
+		if err := rows.Scan(
+			&i.ID,
+			&i.BatchID,
+			&i.SourceAbbr,
+			&i.TraceID,
+			&i.Fingerprint,
+			&i.Url,
+			&i.Title,
+			&i.Description,
+			&i.IngestionMethod,
+			&i.Metadata,
+			&i.PublishedAt,
+			&i.DiscoveredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCandidatesForAnalysis = `-- name: ListCandidatesForAnalysis :many
 SELECT id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
 FROM candidates

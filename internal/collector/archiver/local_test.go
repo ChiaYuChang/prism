@@ -99,7 +99,7 @@ func TestLocalArchiver_Layout(t *testing.T) {
 	require.NoError(t, err, "LocalArchiver must write to {baseDir}/archives/{YYYY/MM/DD}/{traceID}.data")
 }
 
-func TestLocalArchiver_Scan_FilterByStage(t *testing.T) {
+func TestLocalArchiver_Scan_FilterByPayloadKind(t *testing.T) {
 	dir := t.TempDir()
 	a, err := archiver.NewLocalArchiver(dir, testutils.Logger())
 	require.NoError(t, err)
@@ -107,14 +107,14 @@ func TestLocalArchiver_Scan_FilterByStage(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 
-	// Save one "raw" archive (minify error path) and one with no stage set.
+	// Save one "raw" archive (minify error path) and one with no kind set.
 	require.NoError(t, a.Save(ctx, collector.Archive{
 		URL:       "https://example.com/raw",
 		Payload:   "raw html",
 		TraceID:   "trace-raw",
 		Timestamp: now,
 		Metadata: map[string]any{
-			"stage": "raw",
+			"kind":  archiver.PayloadKindRaw,
 			"error": "minify failed",
 		},
 	}))
@@ -129,7 +129,7 @@ func TestLocalArchiver_Scan_FilterByStage(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, all, 2)
 
-	rawOnly, err := a.Scan(ctx, archiver.ScanOptions{Stage: "raw"})
+	rawOnly, err := a.Scan(ctx, archiver.ScanOptions{PayloadKind: archiver.PayloadKindRaw})
 	require.NoError(t, err)
 	require.Len(t, rawOnly, 1)
 	require.Equal(t, "trace-raw", rawOnly[0].TraceID)

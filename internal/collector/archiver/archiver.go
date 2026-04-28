@@ -3,15 +3,45 @@ package archiver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/collector"
 )
 
+// PayloadKind identifies the form of an archived payload (what the bytes are),
+// distinct from collector.PipelineStage which identifies pipeline execution
+// position. The kind corresponds to the output of a specific pipeline stage.
+type PayloadKind string
+
 const (
-	MetaStageRaw      = "raw"
-	MetaStageMinified = "minified"
+	PayloadKindRaw       PayloadKind = "raw"       // Fetcher output (pre-Minify)
+	PayloadKindMinified  PayloadKind = "minified"  // Minifier output (pre-Transform)
+	PayloadKindCanonical PayloadKind = "canonical" // Transformer output (pre-Parse)
 )
+
+// ParsePayloadKind converts a string to a PayloadKind, returning an error if
+// the string does not match any known kind.
+func ParsePayloadKind(s string) (PayloadKind, error) {
+	k := PayloadKind(s)
+	if k.IsValid() {
+		return k, nil
+	}
+	return "", fmt.Errorf("invalid payload kind: %q", s)
+}
+
+func (k PayloadKind) IsValid() bool {
+	switch k {
+	case PayloadKindRaw, PayloadKindMinified, PayloadKindCanonical:
+		return true
+	default:
+		return false
+	}
+}
+
+func (k PayloadKind) String() string {
+	return string(k)
+}
 
 var (
 	ErrParamMissing  = errors.New("param missing")
@@ -27,8 +57,8 @@ type Meta struct {
 	URL           string
 	CreatedAt     time.Time // time Save() was called; second-precision from meta JSON
 	PayloadSHA256 string    // hex-encoded SHA-256 of the stored .data file
-	Stage         string    // "raw" or "minified"
-	Error         string    // non-empty when stage="raw" (minify failure)
+	PayloadKind   PayloadKind
+	Error         string // non-empty when kind=raw (Minify failure, see handler saveOnMinifyError)
 	SourceAbbr    string
 	SourceType    string
 	BatchID       string
@@ -39,10 +69,10 @@ type Meta struct {
 type ScanOptions struct {
 	Since          time.Time
 	Until          time.Time
-	Stage          string // "" = all; "raw" = only error archives
-	Limit          int    // 0 = no limit
-	TraceID        string // non-empty = exact match
-	IncludeRemoved bool   // if true, also return soft-deleted entries
+	PayloadKind    PayloadKind // "" = all
+	Limit          int         // 0 = no limit
+	TraceID        string      // non-empty = exact match
+	IncludeRemoved bool        // if true, also return soft-deleted entries
 }
 
 // Archiver is the full read-write interface for archive storage.

@@ -11,8 +11,11 @@ import (
 )
 
 // stripSelectors lists selectors for page chrome that are not part of article content.
+// Note: <script type="application/ld+json"> is deliberately preserved — it carries
+// structured article data consumed by the downstream JSON-LD parser. Stripping all
+// <script> tags indiscriminately would blind the parser before it ran.
 var stripSelectors = []string{
-	"script", "style", "noscript",
+	`script:not([type="application/ld+json"])`, "style", "noscript",
 	"nav", "header", "footer",
 	"aside", "iframe", "form",
 	"[role=navigation]", "[role=banner]", "[role=complementary]",
@@ -21,15 +24,17 @@ var stripSelectors = []string{
 
 // HTMLMinifier strips non-content elements and returns cleaned HTML
 // that preserves the article's semantic structure (headings, paragraphs, lists).
+// Implements collector.Transformer; its typical role is the Minifier slot in
+// an HTML pipeline (output is the archive point).
 type HTMLMinifier struct{}
 
-var _ collector.Minifier = (*HTMLMinifier)(nil)
+var _ collector.Transformer = (*HTMLMinifier)(nil)
 
 func New() *HTMLMinifier {
 	return &HTMLMinifier{}
 }
 
-func (m *HTMLMinifier) Minify(_ context.Context, raw string) (string, error) {
+func (m *HTMLMinifier) Transform(_ context.Context, raw string) (string, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(raw))
 	if err != nil {
 		return "", fmt.Errorf("parse html: %w", err)

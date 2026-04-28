@@ -9,8 +9,8 @@ import (
 	"syscall"
 
 	"github.com/ChiaYuChang/prism/internal/discovery"
-	"github.com/ChiaYuChang/prism/internal/discovery/search/brave"
 	scoutconfig "github.com/ChiaYuChang/prism/internal/discovery/scout/config"
+	"github.com/ChiaYuChang/prism/internal/discovery/search/brave"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/message"
@@ -63,7 +63,7 @@ func main() {
 		}
 	}()
 
-	dbRepo, dbRepoCloser, err := pg.NewFactory(config.Postgres).NewRepository(ctx)
+	dbRepo, dbRepoCloser, err := pg.NewRepositoryBuilder(config.Postgres).NewRepository(ctx)
 	if err != nil {
 		logger.Error("failed to initialize repository", "backend", "postgres", "host", config.Postgres.Host, "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to connect to Postgres")

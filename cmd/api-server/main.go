@@ -19,6 +19,7 @@ import (
 	"time"
 
 	_ "github.com/ChiaYuChang/prism/cmd/api-server/docs"
+	"github.com/ChiaYuChang/prism/internal/http/api"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
@@ -55,17 +56,24 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	_, repositoryCloser, err := pg.NewFactory(config.Postgres).NewRepository(ctx)
+	repository, repositoryCloser, err := pg.NewRepositoryBuilder(config.Postgres).NewRepository(ctx)
 	if err != nil {
 		logger.Error("failed to initialize repository", "backend", "postgres", "host", config.Postgres.Host, "error", err)
 		os.Exit(1)
 	}
 	defer func() { _ = repositoryCloser.Close() }()
 
+	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline())
+	if err != nil {
+		logger.Error("failed to construct api server", "error", err)
+		os.Exit(1)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", livenessHandler(monitor))
 	mux.HandleFunc("GET /readyz", readinessHandler(monitor))
 	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
+	apiServer.Register(mux)
 
 	chain := middleware.Chain(
 		middleware.RequestID(),

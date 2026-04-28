@@ -86,11 +86,11 @@ func TestRunStatus(t *testing.T) {
 
 	require.NoError(t, a.Save(ctx, collector.Archive{
 		URL: "https://example.com/1", Payload: "p1", TraceID: "t1", Timestamp: now,
-		Metadata: map[string]any{"stage": "raw", "error": "minify failed"},
+		Metadata: map[string]any{"kind": "raw", "error": "minify failed"},
 	}))
 	require.NoError(t, a.Save(ctx, collector.Archive{
 		URL: "https://example.com/2", Payload: "p2", TraceID: "t2", Timestamp: now,
-		Metadata: map[string]any{"stage": "raw", "error": "parse error"},
+		Metadata: map[string]any{"kind": "raw", "error": "parse error"},
 	}))
 	require.NoError(t, a.Save(ctx, collector.Archive{
 		URL: "https://example.com/3", Payload: "p3", TraceID: "t3", Timestamp: now,
@@ -110,7 +110,7 @@ func TestRunList(t *testing.T) {
 
 	require.NoError(t, a.Save(ctx, collector.Archive{
 		URL: "https://example.com/article", Payload: "html", TraceID: "trace-abc", Timestamp: now,
-		Metadata: map[string]any{"stage": "raw", "error": "minify: unexpected EOF", "source_abbr": "dpp"},
+		Metadata: map[string]any{"kind": "raw", "error": "minify: unexpected EOF", "source_abbr": "dpp"},
 	}))
 
 	err = runList(ctx, a, cliOptions{})

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/collector"
+	"github.com/ChiaYuChang/prism/pkg/utils"
 )
 
 // jsonLDPattern matches <script type="application/ld+json">...</script> blocks.
@@ -33,23 +34,37 @@ func (p *Parser) Parse(_ context.Context, url string, data string) (*collector.A
 			continue
 		}
 
-		var ld map[string]any
+		// Try unmarshaling as a generic object or array
+		var ld any
 		if err := json.Unmarshal([]byte(raw), &ld); err != nil {
 			continue
 		}
 
-		if graph, ok := ld["@graph"].([]any); ok {
-			for _, item := range graph {
-				if obj, ok := item.(map[string]any); ok {
+		processItem := func(item any) {
+			if obj, ok := item.(map[string]any); ok {
+				if graph, ok := obj["@graph"].([]any); ok {
+					for _, g := range graph {
+						if gObj, ok := g.(map[string]any); ok {
+							if content := extractFromMap(gObj); content != nil {
+								best = content
+							}
+						}
+					}
+				} else {
 					if content := extractFromMap(obj); content != nil {
 						best = content
 					}
 				}
 			}
-		} else {
-			if content := extractFromMap(ld); content != nil {
-				best = content
+		}
+
+		switch v := ld.(type) {
+		case []any:
+			for _, item := range v {
+				processItem(item)
 			}
+		case map[string]any:
+			processItem(v)
 		}
 	}
 
@@ -72,13 +87,13 @@ func extractFromMap(ld map[string]any) *collector.Article {
 	}
 
 	if title, ok := ld["headline"].(string); ok {
-		content.Title = title
+		content.Title = utils.NormalizeString(title)
 	} else if title, ok := ld["name"].(string); ok {
-		content.Title = title
+		content.Title = utils.NormalizeString(title)
 	}
 
 	if author := extractAuthor(ld["author"]); author != "" {
-		content.Author = author
+		content.Author = utils.NormalizeString(author)
 	}
 
 	if pubDate := extractDate(ld["datePublished"]); !pubDate.IsZero() {
@@ -86,11 +101,11 @@ func extractFromMap(ld map[string]any) *collector.Article {
 	}
 
 	if body, ok := ld["articleBody"].(string); ok {
-		content.Content = body
+		content.Content = utils.NormalizeString(body)
 	}
 
 	if desc, ok := ld["description"].(string); ok {
-		content.Metadata["description"] = desc
+		content.Metadata["description"] = utils.NormalizeString(desc)
 	}
 
 	return content

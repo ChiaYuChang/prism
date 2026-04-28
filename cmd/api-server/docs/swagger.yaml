@@ -1,5 +1,98 @@
 basePath: /api/v1
 definitions:
+  api.Candidate:
+    properties:
+      batch_id:
+        type: string
+      description:
+        type: string
+      discovered_at:
+        type: string
+      id:
+        type: string
+      ingestion_method:
+        type: string
+      published_at:
+        type: string
+      source_abbr:
+        type: string
+      title:
+        type: string
+      trace_id:
+        type: string
+      url:
+        type: string
+    type: object
+  api.Content:
+    properties:
+      author:
+        type: string
+      batch_id:
+        type: string
+      candidate_id:
+        type: string
+      content:
+        type: string
+      fetched_at:
+        type: string
+      id:
+        type: string
+      published_at:
+        type: string
+      source_abbr:
+        type: string
+      title:
+        type: string
+      trace_id:
+        type: string
+      type:
+        type: string
+      url:
+        type: string
+    type: object
+  api.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  api.ListCandidatesResponse:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/api.Candidate'
+        type: array
+      limit:
+        type: integer
+      offset:
+        type: integer
+    type: object
+  api.PageFetchRequest:
+    properties:
+      candidate_ids:
+        items:
+          type: string
+        type: array
+    type: object
+  api.PageFetchResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/api.PageFetchTaskResult'
+        type: array
+    type: object
+  api.PageFetchTaskResult:
+    properties:
+      candidate_id:
+        type: string
+      reason:
+        type: string
+      status:
+        type: string
+      task_id:
+        type: string
+    type: object
   obs.HealthLevel:
     enum:
     - STARTING
@@ -29,6 +122,81 @@ info:
   title: Prism API
   version: "0.1"
 paths:
+  /candidates:
+    get:
+      parameters:
+      - description: Keyword matched against title/description (ILIKE)
+        in: query
+        name: q
+        type: string
+      - description: Filter by source abbreviation (e.g. dpp, tpp, yahoo)
+        in: query
+        name: source_abbr
+        type: string
+      - description: Lower bound on published_at/discovered_at (RFC3339)
+        in: query
+        name: since
+        type: string
+      - description: Upper bound on published_at/discovered_at (RFC3339)
+        in: query
+        name: until
+        type: string
+      - description: Page size (default 50, max 200)
+        in: query
+        name: limit
+        type: integer
+      - description: Pagination offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListCandidatesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List candidate article briefs
+      tags:
+      - candidates
+  /contents/{candidate_id}:
+    get:
+      parameters:
+      - description: Candidate UUID
+        in: path
+        name: candidate_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Content'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get fetched content for a candidate
+      tags:
+      - contents
   /healthz:
     get:
       produces:
@@ -41,6 +209,35 @@ paths:
       summary: Liveness probe
       tags:
       - health
+  /page_fetch:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Candidate IDs to promote to contents
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.PageFetchRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.PageFetchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Request full-article fetch for candidates
+      tags:
+      - candidates
   /readyz:
     get:
       produces:

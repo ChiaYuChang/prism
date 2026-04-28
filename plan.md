@@ -271,17 +271,49 @@ User queries candidates table by keyword/date/source
   * [x] Prompt updated to `assets/prompts/collector/article_parser.md` (primary: extract content; secondary: record CSS selectors).
   * [x] Avoid refetch when content already exists by URL or candidate ID (`GetContentByCandidateID` + `GetContentByURL` checks).
   * [x] Handle PARTY PAGE_FETCH (automatic) and MEDIA PAGE_FETCH (user-triggered) via same worker; `sourceTypeToContentType()` maps to `PARTY_RELEASE` / `ARTICLE`.
-  * [x] Wire error Saver for Minify failures: `errorSaver collector.Saver` added to Handler; `saveOnMinifyError()` archives raw content with `stage:"raw"` metadata; `--archive-dir` flag enables it.
+  * [x] Wire error Saver for Minify failures: `errorSaver collector.Saver` added to Handler; `saveOnMinifyError()` archives raw content with `stage:"raw"` metadata; `--archive=<uri>` flag enables it (URI dispatches to `LocalArchiver` for `file://` or `S3Archiver` for `s3://`).
   * [x] Refactor `internal/collector/saver/` + `internal/collector/fetcher/recover.go` → `internal/collector/archiver/`: `Archiver` interface (embeds `collector.Saver`, plus Load / Scan / Remove), `LocalArchiver` (file://), `S3Archiver` stub (s3://), `ParseURI` factory. `saver/` and `fetcher/recover.go` deleted.
   * [x] Harden `LocalArchiver`: soft-delete via `deleted_at` stamp in `.meta.json` (`Remove`); `Purge(traceID)` / `PurgeAll()` for operator hard-delete (not on `Archiver` interface); `payload_sha256` (hex SHA-256) written by `Save` and verified by `Load` (returns `ErrCorrupted` on mismatch or absence); `created_at` (second-precision UTC) replaces path-derived `Timestamp` in `Meta`; `version` field (`MetaVersion = 1`) for future format migration; `ScanOptions.IncludeRemoved` to expose soft-deleted entries.
   * [x] Implement `cmd/recover` operator CLI: `status` / `list` / `run` / `clean` subcommands using `archiver.Archiver`; `--archive` flag accepts URI (`file://` or `s3://`); `--dry-run`, `--since`, `--until`, `--limit`, `--trace-id`.
   * [x] Soft-delete in `LocalArchiver.Remove` (stamp `deleted_at` in meta JSON); `Purge` / `PurgeAll` for hard-delete; `clean --purge` wires both.
   * [x] Enrich `saveOnMinifyError` metadata with `source_abbr`, `source_type`, `batch_id` so `cmd/recover run` can build `CreateContentParams`.
   * [x] Complete `S3Archiver` for production SeaweedFS/S3; `LocalArchiver` (`file://`) and `S3Archiver` (`s3://`) remain parallel options selected by URI scheme via `ParseURI` — `LocalArchiver` stays the default for local development and testing. `S3Archiver` implements Save / Load (with SHA-256 integrity check) / Scan / Remove (soft-delete); hard-delete is intentionally delegated to S3 lifecycle policies rather than application code.
-* [ ] 2.6 User-Facing Candidate Query API: (In progress: `cmd/api-server` foundation laid out with middleware and swagger)
-  * [ ] `GET /candidates` — query candidates by keyword, source, date range; returns JSON.
-  * [ ] `POST /page_fetch` — accepts `candidate_id` list, creates `PAGE_FETCH` tasks; returns task IDs.
-  * [ ] `GET /contents/{candidate_id}` — returns content if fetched, 404 if pending.
+* [x] 2.6 User-Facing Candidate Query API:
+  * [x] `GET /candidates` — query by `q`, `source_abbr`, `since`, `until`, `limit`, `offset`; returns JSON list.
+  * [x] `POST /page_fetch` — accepts `candidate_ids`, creates MEDIA `PAGE_FETCH` tasks (idempotent: `ErrTaskAlreadyActive` → `already_active`); returns per-candidate results.
+  * [x] `GET /contents/{candidate_id}` — returns content JSON, 404 (pgx.ErrNoRows) if pending.
+  * [x] Handlers in `internal/http/api/`; wired onto `cmd/api-server` mux via `Server.Register`. Swagger regenerated.
+
+* [ ] 2.7 Async Batch Model for User-Triggered Fetches:
+  * **Why:** `POST /page_fetch` is inherently async (collector may take seconds–minutes per article, rate-limited per source). A synchronous per-candidate response invites users to wait on the HTTP call and treats each candidate as independent. Grouping user-selected candidates into one `batch_id` matches the existing batch primitive, gives one thing to monitor / notify on, and lets the UI (TUI or future web) track progress without iterating individual task IDs.
+  * [ ] **Revise `POST /page_fetch` response:** accept `candidate_ids`, create one fresh `batch_id` for the user request (distinct from each candidate's original discovery batch), insert MEDIA + PAGE_FETCH tasks under that batch, return `{batch_id, task_count, skipped_count}` — no per-candidate results.
+  * [ ] **New endpoint `GET /batches/{batch_id}`:** returns progress — `{batch_id, total, pending, running, completed, failed, contents_ready, terminal}`. Plain request/response, no long-polling — client-pull model:
+    * Client drives the cadence (hardcoded in TUI, e.g. 5s fixed, or `2s → 5s → 10s` backoff). Avoid high-frequency polling on the client side.
+    * Server-side **Valkey cache** on `batch:progress:{batch_id}` with ~1–2s TTL; N concurrent watchers of the same batch collapse to one DB hit per TTL window. Terminal batches cache for 60s+ (they won't change).
+    * Server-side **rate limit** on this endpoint (reuse existing Valkey token bucket infra) — per-IP or per-batch_id — to cap runaway clients. Same `infra.RateLimiter` interface used by the scheduler.
+    * Rationale: long-polling is hostile to short-lived / serverless deployments (it holds connections) and adds fragility; client-pull + short TTL cache is simpler, cheaper, and deploy-agnostic.
+  * [ ] **Batch completion signal:** reuse existing `BatchTrigger` / `batch.completed` infra; user-triggered MEDIA batches participate in the same lifecycle as PARTY batches.
+  * [ ] **Optional completion notification (future):** email / webhook fired when a user-triggered batch reaches completion. Not in v1; design the batch progress endpoint so notification is an add-on, not a rewrite.
+
+* [ ] 2.9 Unit Test Coverage Consolidation (Layer 1):
+  * **Why:** industry-standard four-layer test strategy — (1) unit tests with mocked boundaries, (2) component/contract tests with real dependencies via testcontainers, (3) small number of E2E happy paths on local fixtures, (4) scheduled real-site smoke. Layer 1 is the widest net: each component asserts its own input→output correctness against fixed fixtures; E2E then only has to prove the wiring, not per-component correctness. Current layer 1 has holes in exactly the packages where bugs bite hardest — pipeline orchestration and cross-service contracts.
+  * [ ] **`internal/collector` (Dispatcher)** — 0% coverage. Test F→M→T→(S‖P) orchestration with mocked Fetcher / Minifier / Transformer / Parser / Saver. Assert stage error propagation (`StageError.Stage`, `.Intermediate`), avoid-refetch branches, PARTY vs MEDIA routing.
+  * [ ] **`internal/collector/parser/{html,jsonld}`** — 0% coverage. Fixture-driven tests feeding real HTML from `testdata/fixtures/` (DPP / TPP / Yahoo / CNA) through each parser; assert title/author/date/content extraction. Catches per-source DOM drift.
+  * [ ] **`internal/collector/minifier`** — 0% coverage. Small HTML fixtures; assert idempotency (minify(minify(x)) == minify(x)) and that noise (script/style/nav) is stripped while article body survives.
+  * [ ] **`internal/message`** — 0% coverage. JSON round-trip tests for every signal (`TaskSignal`, `BatchCompletedSignal`). JSON tag typos here silently break cross-service delivery and nothing else catches them.
+  * [ ] **`internal/model`** — 0% coverage. `Candidates.Fingerprint()` determinism + URL-normalization edge cases (trailing slash, query order, fragment).
+  * [ ] **Fix `internal/collector/archiver/s3_test.go` flake** — currently fails intermittently with `StatusCode: 0, connection reset` on `CreateBucket`. Likely SeaweedFS 4.05 container readiness race (`wait.ForHTTP("/cluster/status")` returns before S3 listener accepts). Switch wait strategy or add retry on bucket creation.
+  * **Out of scope for layer 1:** `internal/llm/{gemini,ollama,openai}` provider adapters (real API calls cheaper to verify manually); `internal/repo/pg` (layer 2 / testcontainers); `internal/appconfig`, `infra`, `obs`, `pkg/{logger,utils,functional}` (plumbing / trivial).
+
+* [ ] 2.8 Operator TUI (`cmd/tui`):
+  * [ ] Bubble Tea app with four views — candidates list / submit-confirmation modal / batch monitor / content viewer.
+  * [ ] **List view:** filter bar (`q`, `source_abbr`, `since/until`), paginated table, multi-select (`space`), `f` to submit `POST /page_fetch`, `Enter` to view content, `b` to open batch monitor by ID.
+  * [ ] **Submit modal:** minimal — show returned `batch_id`, `task_count`, `skipped_count`, offer `[m] monitor` (jump to batch view) / `[c] copy id` / `[↵] dismiss`. No per-candidate status enumeration.
+  * [ ] **Batch monitor view:** input batch_id (or arrive from modal), client-pull `GET /batches/{batch_id}` on a fixed interval (default 5s; configurable via `--batch-poll-interval`). Render progress bar + counters (pending / running / completed / failed). Stop polling when `terminal=true`; `r` forces immediate refresh; `esc` back.
+  * [ ] **Content view:** render fetched content; if `GET /contents/{id}` returns 404, poll with backoff and show "waiting for collector" state; `y` copy URL, `o` open in browser.
+  * [ ] HTTP client reuses DTOs from `internal/http/api/` (no schema drift).
+  * [ ] `--api-url` flag (default `http://localhost:8090`), `--page-size` flag.
+  * [ ] Read-only + PAGE_FETCH trigger only; admin ops (pause/resume/replay) stay in Phase 4.2.
 
 ### Phase 3: Analysis Assets
 
@@ -331,7 +363,11 @@ User queries candidates table by keyword/date/source
 * [ ] RSS and official API ingestion for additional media sources that support them.
 * [ ] More robust search-provider abstraction and quota management.
 * [ ] LLM-assisted quality control for parser drift detection.
+* [ ] **Dedup `LLMTargetNodeList.Value()` by trimmed value before joining.** Currently when an LLM returns the same text via multiple selectors (e.g. headline available through `<title>`, `<h1>`, and `<meta property="og:title">`, all yielding "Breaking News"), `Value()` joins them with `\n\n` separator and produces "Breaking News\n\nBreaking News\n\nBreaking News". Should keep first occurrence and drop subsequent matches. DOM order is preserved because LLM-returned nodes are already in reading order (per `article_parser.md` prompt). Not blocking; surfaces as visual duplication in extracted Title/Author/Content fields.
 * [ ] TUI and Web dashboard.
+  * TUI: `cmd/tui` (2.8) — Bubble Tea, single Go binary for operator use.
+  * Web: Alpine.js + server-side Go templates, static assets `//go:embed`-ed into `cmd/api-server`. Keep the API JSON-only; Alpine consumes the same `/api/v1/*` endpoints as TUI — no separate HTML-fragment endpoints (would be the HTMX alternative). One API surface, two renderers.
+* [ ] Email / webhook notification on user-triggered batch completion (builds on 2.7 `GET /batches/{batch_id}`). Batch meta should reserve a `notify` field (`{email, webhook_url}`) so `POST /page_fetch` callers can opt in without a schema change later.
 * [ ] JS-rendered scraping via Playwright where legally and operationally acceptable.
 * [ ] Persist rolling-window seed clustering as analysis assets.
 * [ ] Model cluster lineage as a directed graph or DAG for issue evolution analysis.
@@ -339,10 +375,99 @@ User queries candidates table by keyword/date/source
   * **Why:** the current `infra.InMemoryRateLimiter` keeps per-`source_abbr` token buckets inside the scheduler process. That state is tied to the binary's lifetime, which blocks two scaling moves: (a) switching the scheduler to a short-lived `--once` / cron / Lambda deployment (each invocation would reset every bucket and blow past per-source quotas), and (b) running multiple scheduler instances concurrently for horizontal throughput (each would throttle in isolation, letting the aggregate exceed the quota).
   * **What:** implement a Valkey-backed token bucket (Lua script for atomic `TAKE`). Same `infra.RateLimiter` interface so call sites (`applyRateLimit`) stay unchanged. Keep the in-memory implementation for tests and `gochannel` mode.
   * **When:** before migrating scheduler to cron/Lambda or scaling it past one instance. Not urgent while a single long-running scheduler is the only deployment shape.
+* [ ] **Adopt testcontainers-go for integration tests + GitHub Actions CI.**
+  * **Why:** `internal/collector/archiver/s3_test.go` previously required SeaweedFS at `localhost:8333` (via `task compose:up`). `services:` in GH Actions would fix CI but diverges from local and gives one shared instance per job rather than per-test isolation.
+  * **What:** phase in by scope — (1) [x] `internal/collector/archiver` SeaweedFS via `TestMain` (`chrislusf/seaweedfs:4.05`); (2) [ ] `internal/repo/pg` real migrations + SQLC queries when schema churn accelerates; (3) [ ] `cmd/scheduler` concurrency against real Postgres when multi-instance lands; (4) [ ] Valkey-backed rate limiter when that roadmap item lands. Still TODO: add `//go:build integration` tag, pin all image tags, adopt `testcontainers.CleanupContainer`, extract shared helpers to `internal/testsupport/`.
+  * **CI:** [ ] GH Actions two-job split — fast `go test -short ./...` on PR, gated `go test -tags=integration ./...` on merge (`ubuntu-latest` has Docker preinstalled).
+  * **See:** `docs/integration-test-plan.md` Phase 5 for the full plan.
 * [ ] **Migrate scheduler to short-lived execution (`--once` + cron / Lambda / Fargate Scheduled Task).**
   * **Why:** tick interval is 10 minutes but the tick itself takes < 1s; a long-running EC2 instance burns resources for < 0.1% utilization and holds idle Postgres connections (see `pg.Factory` defaults lowered to `MaxConnIdleTime=1m`). A short-lived model releases PG connections between ticks and maps cleanly onto serverless cron.
   * **What:** add `--once` flag to `cmd/scheduler` that runs `RunTick` once and exits; keep the Valkey distributed lock as a safety net against overlapping invocations; ensure the rate limiter migration above lands first so bucket state survives.
   * **Cost caveat:** Lambda-in-VPC with private Postgres/Valkey typically requires a NAT Gateway (~$32/mo), which is more expensive than a `t4g.nano` long-running instance (~$3/mo). Prefer Fargate Scheduled Task or keep long-running EC2 unless DB endpoints are already public or behind RDS Proxy.
+* [ ] **Dual-mode deployment target: local `worker` ↔ cloud `SQS + Lambda` (queue-driven async processing).**
+  * **Why:** prism's actual workload is per-page (per-message) and bursty — not stream (no <1s SLA, no time ordering) and not batch (not a periodic large chunk). The AWS-canonical pattern for this shape is **SQS + Lambda Event Source Mapping** with `batch_size` + `maximum_batching_window` tuning. The platform handles queue-depth-driven autoscaling and micro-batching; we keep one handler implementation that runs as a long-lived worker locally and as a Lambda in the cloud.
+  * **Component-by-component target:**
+    * `cmd/scheduler` (cron-triggered, runs-and-exits): EventBridge + Lambda
+    * `cmd/worker/discovery`, `cmd/worker/collector`, `cmd/worker/archiver`: SQS + Lambda (`batch_size=5–20`, `window=30s`)
+    * `cmd/worker/planner` (LLM call may exceed Lambda 15-min limit): SQS + ECS Fargate service with queue-depth autoscaling
+    * `cmd/trigger/batch` (cron-triggered): EventBridge + Lambda
+  * **Required handler-side changes (must be done before either mode can switch):**
+    * **`--mode={worker,lambda}` flag dispatch** in each `cmd/worker/*` `main.go` — same handler, different runtime shell. `worker` = current `msgr.Subscribe + for-select`; `lambda` = `lambda.Start(adapter)` where adapter decodes SQS event and calls `HandleMessage` per record.
+    * **Batch handler adapter** — Lambda delivers `events.SQSEvent` with up to `batch_size` records; adapter loops over records and reports partial-batch failures via `SQSBatchResponse.BatchItemFailures`. Handler stays single-record.
+    * **Package-level connection pools** — `pgxpool`, NATS/SQS client, Valkey client must live at package scope inside lambda binaries, initialized once in cold start via `sync.Once`. Reuses across warm invocations (>90% hit rate typical).
+    * **Archive payload via S3 pointer in cloud mode** — `ArchiveSignal.Page` carries gzipped HTML inline (currently fine on gochannel); SQS has a 256KB message limit that large pages will breach. Cloud mode must upload payload to S3 first and put only the S3 key in the message. Handler interface needs to abstract this so worker mode can keep inline payload.
+    * **Idempotency check on every handler entry** — already in place (`GetContentByURL` / `GetContentByCandidateID` skip-checks); SQS at-least-once means duplicates can arrive. Verify all handlers (not just collector) have equivalent guards before enabling `lambda` mode.
+    * **OTel sync flush in lambda mode** — short-lived containers exit before async exporter flushes; Lambda extension or explicit `tracerProvider.ForceFlush(ctx)` at handler return.
+  * **Required infra-side changes:**
+    * Rate limiter must be Valkey-backed (already a Future item above) — in-memory limiter resets on every Lambda cold start and lets aggregate throughput exceed quota.
+    * Connection pool init time < 1s — current `pgxpool` defaults are fine; verify with cold-start benchmarks before committing.
+    * RDS Proxy in front of Postgres only if observed connection-count fanout becomes a problem (1000 concurrent Lambdas = 1000 PG connections without a proxy). Defer until measured; SQLC's prepared-statement use complicates Proxy transaction-mode.
+  * **Anti-goals (do NOT do these):**
+    * Do not invent a `Runtime` interface abstracting worker/lambda — three small `runXxx(ctx, h, cfg)` functions in `main.go` are clearer.
+    * Handler code must NOT branch on `cfg.Mode` — once that creeps in the abstraction is broken.
+    * Do not pursue Kinesis Data Streams; prism has no per-key time ordering requirement and the stream model is more expensive and rigid.
+    * Do not add Provisioned Concurrency unless a user-facing SLA appears; batch analytics tolerates cold starts.
+  * **When:** sequence is (1) Valkey rate limiter → (2) `--mode` dispatch + batch adapter on collector worker as pilot → (3) S3-pointer archive payload → (4) extend to discovery/archiver/planner. Scheduler `--once` Lambda migration (item above) is the prerequisite proof-of-shape for this larger move.
+* [ ] **Move archive metadata into PG (catalog + storage separation); reduce `Archiver` to bytes-only Save/Load.**
+  * **Why:** the current `Archiver` interface (`Save / Load / Scan / Remove`) treats the storage backend as a self-describing catalog — sidecar `meta.json` next to every payload, queries via `Scan(opts)` that must read every meta to filter. This was filesystem-shaped thinking and creates several reverse-anti-patterns on S3: O(N) GETs for any filtered scan (1M objects ≈ $0.40 + minutes), soft-delete via read-modify-write on meta with no atomicity, dual PUTs (payload + meta) without crash safety, hard-coded date prefix `YYYY/MM/DD/<traceID>` that does not help direct `Load(traceID)` lookups (OTel trace IDs are random 16-byte values, not time-encoded). Deeper cause: ~70% of meta fields are duplicates of `contents`/`tasks`/`batches` columns already in PG (URL, trace_id, source_abbr, batch_id, fetched_at, fingerprint), and the truly archive-specific fields (kind, sha256, size, error, storage_uri) belong in a thin PG catalog table — not next to the payload. PG is the natural index store and is already a hard dependency; storing meta alongside bytes was reinventing what PG provides for free.
+  * **What — schema:**
+    * New `archives` table:
+      ```sql
+      CREATE TABLE archives (
+          id           UUID PRIMARY KEY,           -- UUID v7, embeds creation timestamp
+          content_id   UUID REFERENCES contents(id), -- NULL when Minify failed pre-content
+          trace_id     TEXT NOT NULL,
+          kind         TEXT NOT NULL,              -- raw | minified | canonical
+          storage_uri  TEXT NOT NULL,              -- file:///… or s3://…
+          sha256       TEXT NOT NULL,
+          size_bytes   BIGINT NOT NULL,
+          error        TEXT,                       -- non-empty for raw (Minify failure)
+          created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+          deleted_at   TIMESTAMPTZ
+      );
+      CREATE INDEX archives_trace_id_idx ON archives (trace_id);
+      CREATE INDEX archives_content_id_idx ON archives (content_id) WHERE content_id IS NOT NULL;
+      ```
+    * No sidecar files anywhere — local layout becomes pure `<root>/<archive_id>` and S3 becomes `s3://bucket/archives/<archive_id>/data`. The `YYYY/MM/DD/` date prefix is dropped (date is recoverable from UUID v7 if ever needed for debugging).
+  * **What — interface:**
+    * Narrow `Archiver` to bytes-only:
+      ```go
+      type Archiver interface {
+          Save(ctx, archiveID UUID, payload []byte) (storageURI string, err error)
+          Load(ctx, storageURI string) ([]byte, error)
+      }
+      ```
+    * Drop `Scan`, `Remove`, and the `Meta` struct. Caller (handler / recover CLI) generates `archive_id`, calls `Save`, then INSERTs to `archives` table. Queries are SQL joins against `archives` + `contents` + `tasks`.
+  * **What — write ordering (S3-first):**
+    * Save bytes to S3/local first → then INSERT to PG. If PG INSERT fails the storage object becomes orphan and is reaped by lifecycle (S3) or a periodic sweeper (local). The reverse order would leave PG rows pointing to non-existent objects, which is harder to detect.
+  * **What — `cmd/recover` rework:**
+    * `recover list/run` issues PG SQL (`SELECT … FROM archives WHERE kind='raw' AND error IS NOT NULL AND created_at > now() - INTERVAL '7 days'`), then calls `Load(storage_uri)` for each row. No more `Scan`, no Inventory dependency, no backend-specific reader.
+    * `recover clean` becomes either soft-delete (set `deleted_at`) followed by lifecycle-managed payload removal, or hard delete that DELETEs the row and the object together — picked per retention rule, not hardcoded.
+  * **What — retention:**
+    * Time-only rules (raw payloads older than 90 days) → S3 lifecycle on the `archives/` prefix; equivalent local sweeper.
+    * State-dependent rules (recovered, content-linked) → SQL queries with explicit predicates.
+    * Path layout for lifecycle separation: `archives/raw/<id>`, `archives/canonical/<id>`, `archives/recovered/<id>` so each prefix carries one rule.
+  * **Trade-offs (real ones):**
+    * Dual-write (storage + PG) is not transactional. S3-first ordering accepts orphan objects on PG-INSERT failure (reaped by lifecycle / local sweeper) and rejects orphan PG rows pointing to missing objects (harder to detect). Standard data-lake reconciliation pattern.
+    * Loss of self-describing storage. Today every archive object carries enough sidecar context (URL, source, batch_id, error) to be reconstructable in isolation; after the refactor, an object without its PG row is opaque bytes. Mitigation: write a minimal subset (trace_id, kind) to S3 Object Tags as a partial-recovery index for the PG-loss scenario. Cost is negligible (no extra request, just a Tagging header on the same PUT).
+    * Lifecycle / PG `deleted_at` are not synchronized — possible inconsistency window (S3 lifecycle reaps payload while PG row still says alive, or vice versa). Acceptable for prism's threat model; do not add EventBridge → PG sync to "fix" it.
+    * Local dev/test now requires PG to exercise archive paths. testcontainers plan above already covers this; CI startup cost +30s.
+    * Implementation is ~2–3 focused days, not a weekend afternoon.
+    * Existing `LocalArchiver` data has no migration cost — production has not yet promoted to S3, so the refactor lands before any data exists at scale.
+  * **NOT trade-offs (corrected from earlier framing):**
+    * "Save now depends on PG availability" is not a new failure mode. PG is already on the critical path for every other component (scheduler, discovery, collector, planner, api-server) — making archive align to the same availability tier is correctness, not a new coupling. PG availability is an infrastructure concern (RDS Multi-AZ, Aurora, Patroni), not an application concern; do not write code that "handles PG being down" — handler returns error, broker buffers via redelivery, that is the entire strategy.
+    * "Schema migration becomes harder" is not unique to this table. The same constraint already applies to `contents` / `tasks` / `candidates` and the team handles it via SQLC + ordered migrations. The `archives` table is no different.
+  * **Anti-goals:**
+    * Do not retain `Scan` "for symmetry with local" — symmetry that hides a 1000× cost difference is what created the original problem.
+    * Do not duplicate the full meta into S3 Object Tags. A minimal partial-recovery index (trace_id, kind) is fine; full denormalization is reinventing the sidecar problem.
+    * Do not keep `meta.json` sidecar as a "compatibility layer" during transition — production has no S3 data yet, do the cutover cleanly.
+    * Do not put archive payload bytes into PG. PG is the catalog only; bytes stay in storage layer.
+    * Do not write application-level retry/circuit-breaker for PG outages. Use pgx's built-in retry, set per-query `context.WithTimeout`, and let the broker handle redelivery on failure. PG HA is solved at infra layer.
+  * **When:** **defer implementation; lock the interface direction now.** Pipeline end-to-end correctness (archive publisher wiring, recover.go dual-path, layer 1 unit test gaps in Immediate Next Steps #11) is higher priority than this refactor. Concrete principle: keep the current `Archiver` shape as-is for daily work, but
+    * Do not add new `Scan`-heavy callers — recover is the only legitimate caller and is already known.
+    * Do not add new fields to `meta.json` — push new metadata into PG `contents` or related tables instead so it is already in the right place when the cutover happens.
+    * Treat the current `Scan` / `Remove` / `Meta` / sidecar design as deprecated-in-place; document the deprecation in archiver code.
+    Schedule the actual cutover for the week before promoting S3 to production (the migration cost is zero only while no real data exists at scale, and that window will not stay open forever). Bundle it with the SQS+Lambda dual-mode rollout above.
 
 ## 6. Current Design Clarifications
 
@@ -386,13 +511,28 @@ User queries candidates table by keyword/date/source
 * **Collector pipeline is F→M→T→(S||P):** Minify (M) and Transform (T) are separate pipeline stages. Minify strips DOM noise and is idempotent. Transform handles semantic normalization (currently a no-op for HTML). The fork point for S is after Minify, not after Transform.
 * **`collector.Saver` is a narrow write-only interface** (`Save` only). The full archive abstraction lives in `internal/collector/archiver/`. `Archiver` (Save / Load / Scan / Remove) implements `collector.Saver`; the Handler accepts the narrower `collector.Saver` for `errorSaver` — it only needs to call `Save`.
 * **`internal/collector/saver/` will be deleted** once `internal/collector/archiver/` is implemented. `LocalArchiver` replaces `LocalSaver`; `S3Archiver` replaces the `S3Saver` stub. The `Archiver` URI scheme: `file:///path` for local, `s3://bucket/prefix` for S3.
+* **Avoid cloud anti-patterns by design; do not retrofit them out later.** The system is targeting SQS + Lambda / Fargate deployment (see Future Roadmap). Code that treats cloud primitives as if they were local primitives will degrade silently in production — wrong cost curves, wrong failure semantics, wrong scaling behavior. Identified anti-patterns to avoid:
+  * **Treating S3 as a filesystem.** No `List*` for filtered queries (paid + slow); no sidecar metadata files (use object metadata + tags, or a PG catalog); no read-modify-write on object content for soft-delete (use versioning + lifecycle); no atomic-rename assumptions (S3 has none — it is copy + delete); no inotify-style change watchers (use EventBridge / S3 Events).
+  * **Reinventing managed-service features.** Lifecycle, retention, daily inventory, tagging-based filtering, server-side encryption, versioning — these are platform features. Do not rebuild them in app code; budget time to learn the cloud primitive instead.
+  * **In-process state in horizontally-scalable services.** Rate limiters, dedup caches, leader-election state, request-coalescing buffers — anything that must coordinate across instances. State belongs in Valkey / DynamoDB / PG / SQS message attributes, not in a worker's RAM.
+  * **Application-layer retry for infrastructure problems.** PG outages, S3 outages, network partitions — these are infra-layer concerns solved by RDS Multi-AZ, S3's own retry semantics, and broker redelivery. Application code should set per-call timeouts via `context.WithTimeout`, return errors on failure, and let the broker / platform handle retry. Do not write circuit breakers, exponential backoff, or "wait for PG to come back" loops.
+  * **Long-running processes for cron-like work.** Components that wake on a tick to do < 1s of work (scheduler, batch detector, recover sweeper) should be EventBridge + Lambda / Fargate Scheduled Task, not EC2 + ticker. The local equivalent is `cron + --once` flag, not background goroutine.
+  * **Synchronous coupling across worker boundaries.** Worker A calling worker B's handler directly (in-process or RPC) defeats broker buffering and blocks the cheap-compute deployment shape. Cross-worker communication is always via broker topic.
+  * **Treating cloud DBs as if locally connected.** Long-held connections, prepared-statement reliance behind RDS Proxy transaction-mode, session-level features (advisory locks, temp tables) — all break when a connection pooler sits between app and DB. Prefer stateless queries; if session features are required, document the dependency and configure Proxy session-mode for that path only.
+  * **Polling where events are available.** PG `LISTEN/NOTIFY` for table changes, S3 Events for object lifecycle, SQS for message arrival — these exist; ticker-based polling should be reserved for cases where no event source exists (cron triggers) or where polling cost is genuinely lower than event delivery.
+  * **Hot prefix / hot partition concentration.** Date-prefixed paths (`YYYY/MM/DD/...`) concentrate writes on "today" and risk S3 partition throttle at scale. Use random / hashed prefixes for write-heavy paths; reserve date prefixes for read-by-time-range patterns that are actually exercised.
+  * **Cost-blind operations.** `ListObjectsV2`, `Scan`, full-table fan-out — these have free local-mode cost curves and paid cloud-mode cost curves. Code review must consider "what does this cost on the cloud backend?" before merging; benchmarking only on local SeaweedFS / single-node PG hides the worst regressions.
+* **Prototype first, then refine — but new code must not extend cloud anti-patterns.** Pipeline end-to-end correctness comes before architectural perfection: get the pipeline working with the current `Archiver`, current `meta.json` sidecar, current `Scan`-based recover, current in-memory rate limiter. Do not block prototype delivery on pre-emptive refactors. However, while prototyping, new code must not deepen the deprecated patterns identified above (cloud anti-patterns; Archiver direction). Concretely: (1) do not add new callers of `Archiver.Scan` or `Archiver.Remove`; (2) do not add new fields to `meta.json` or `Meta` struct — push new metadata into PG `contents` / related tables; (3) do not add new in-memory state in workers — use Valkey from day one for anything that must survive restart or coordinate across instances; (4) do not add new application-level retry / circuit-breaker logic — set `context.WithTimeout` and let the broker handle redelivery; (5) annotate deprecated APIs in archiver code with a comment pointing to the relevant Future Roadmap item. This keeps prototype velocity high while bounding the technical-debt surface to what already exists. Refactor cutover happens once: bundled with the SQS+Lambda promotion, not piecemeal.
+* **Archive metadata belongs in PG (catalog), not next to payload bytes (storage).** Filesystem and S3 differ fundamentally in cost and primitives — list is paid on S3, atomic rename does not exist on S3, metadata is a first-class field on S3 but requires sidecar files locally — but the deeper reframing is that PG is already the right home for this metadata regardless of storage backend. ~70% of the current `Meta` struct (URL, trace_id, source_abbr, batch_id, fetched_at, fingerprint) duplicates columns already in `contents`/`tasks`/`batches`; the truly archive-specific fields (kind, sha256, size, error, storage_uri) belong in a thin PG `archives` table. With this split the `Archiver` interface narrows to `Save(archiveID, bytes) → uri` + `Load(uri) → bytes` — bytes-only operations that are genuinely cost-equivalent across backends — and all queries become SQL joins instead of storage-layer scans. This is the standard catalog + storage separation used by data lake architectures (Hive Metastore / Iceberg over object storage). The abstraction principle: an interface should only cover operations whose cost curves are equivalent across implementations; querying and metadata are not such operations and should not have been in the storage interface at all.
 * **Error queue is a Saver, not an MQ topic.** Raw HTML is 100–500 KB, which exceeds SQS 256 KB limits. The error handler writes directly to SeaweedFS/S3 via `Archiver.Save`.
+* **CLI framework stays on `pflag + viper + bindflag` helper; cobra and Kong are not introduced.** Each `cmd/*` is an independent binary/image with no subcommand tree. An umbrella binary (`prism <subcmd>`) would conflict with the container-per-process deployment shape and the scheduler `--once` → cron/Lambda direction. Kong would also require rebuilding viper's CLI > env > file > default precedence chain. Revisit only if a single umbrella binary becomes desirable for unrelated reasons.
 * **R (Recoverer) is `cmd/recover`, a standalone operator CLI** — not part of the collector worker daemon. Recovery is a manual operation triggered after a bug fix. Uses `Archiver.Scan` to find failed archives and `Archiver.Load` to read them; replays through Minify→Transform→Parse→DB. Minify idempotency makes both raw and minified archives safe to replay through the same path.
 * **`cmd/recover` subcommands** mirror `migrate`-style ergonomics: `status` (summary, no DB required), `list` (details, no DB required), `run` (replay with `--dry-run`, `--since`, `--until`, `--limit`, `--trace-id`), `clean` (remove recovered archives, requires DB to verify).
 * **`html.RuleConfig` uses short field names:** `Title`, `Author`, `Date`, `Content` (all `[]string`). The `html:` YAML nesting provides context, so the longer `TitleSelectors`/`AuthorSelectors` etc. names are redundant. `DateLayouts []string` is at the `ParserConfig` top level (site-wide property), not inside `RuleConfig`.
 * **LLM parser generates config snippets for human review only.** `LLMArticleContent.ToConfigSnippet(host)` produces a YAML fragment suitable for pasting under `parsers:` in `parsers.yaml` after an engineer verifies selector stability. There is no automatic promotion path from LLM output to the parser registry.
 * **JSON-LD extraction uses regex, not goquery.** The pattern `(?is)<script[^>]+type=["']application/ld\+json["'][^>]*>([\s\S]*?)</script>` handles multi-block pages and arbitrary attribute ordering. The `@graph` array is unwrapped to extract individual typed objects.
 * **`article_parser.md` (renamed from `selector_builder.md`):** The LLM prompt's primary task is accurate article content extraction; selector recording is a secondary by-product for future rule configuration. Do not frame the LLM as a "selector builder."
+* **Testing strategy is four-layered:** (1) unit tests with mocked boundaries — widest net, per-component input/output correctness against fixed fixtures; (2) component/contract tests with real dependencies via testcontainers-go (`//go:build integration`) — catches SQL/migration/messenger wiring; (3) a small number of E2E happy paths on local `testdata/fixtures/` via `cmd/dev/fixture-server` — proves service wiring, **not** per-component correctness (assertions should be broad: `len(contents) > 0 && title != ""`, not exact strings); (4) scheduled real-site smoke via `cmd/dev/downloader` — detects source drift, not a release gate. Layer 1 carries most of the load; layers 2–4 exist to catch specifically what layer 1 can't (wiring bugs, migration drift, source changes). Do not add E2E matrices per source — maintenance cost dominates value.
 * **CSS multi-selector preserves DOM order:** For content that spans interleaved elements (e.g. `<p class="a">` mixed with `<p class="b">`), use a single comma-separated selector `"p.a, p.b"` as one array entry, not separate entries `["p.a", "p.b"]`. Separate entries break reading order because each selector is applied independently.
 
 ## 7. Immediate Next Steps
@@ -403,9 +543,39 @@ User queries candidates table by keyword/date/source
 4. ~~Add scheduler-fast/slow priority split, rate limiting, over-claim+release pattern.~~ (Done)
 5. ~~Implement Collector Worker F→M→T→(S||P) pipeline; avoid-refetch; PARTY/MEDIA routing.~~ (Done)
 6. ~~Implement KEYWORD_SEARCH execution path (2.4): Brave client, handler routing, config wiring, handler tests.~~ (Done)
-7. ~~Wire error Saver in Collector Worker (`saveOnMinifyError` + `--archive-dir`).~~ (Done)
+7. ~~Wire error Saver in Collector Worker (`saveOnMinifyError` + `--archive` URI).~~ (Done)
 8. ~~Refactor to `internal/collector/archiver/`: `Archiver` interface + `LocalArchiver` + `S3Archiver` stub + `ParseURI`; delete `saver/` and `fetcher/recover.go`.~~ (Done)
 9. ~~Implement `cmd/recover`: `status` / `list` / `run` / `clean` subcommands; soft-delete + purge; enriched archive metadata.~~ (Done)
-10. **Implement User-Facing Candidate Query API (2.6):** `GET /candidates`, `POST /page_fetch`, `GET /contents/{candidate_id}`.
-11. **Promote `LocalArchiver` → `S3Archiver` for production; wire archive publisher.**
-12. After collector intake is stable, start candidate/content embedding workers.
+10. ~~Implement User-Facing Candidate Query API (2.6): `GET /candidates`, `POST /page_fetch`, `GET /contents/{candidate_id}`.~~ (Done)
+11. **Fill layer 1 unit test gaps (2.9):** baseline coverage 46% across `internal/collector/parser/...` and `transformer`; gaps concentrated in dead/under-tested code. Two-phase plan:
+    * **Phase A — remove `ArticleParser`, add tests for kept components:**
+      * [x] Delete `internal/collector/parser/article.go` (`ArticleParser` is the implicit-default-parser anti-pattern; parsers should only exist via config)
+      * [x] `internal/collector/parser/registry.go`: remove `generic` field and fallback path; on host miss, return `ErrNoMatchingParser` directly
+      * [x] `cmd/recover/recover.go`: build parser via `config.BuildRegistry()` (same as worker); on `ErrNoMatchingParser` for an archive, `skipped++` + warn log with host/url/trace_id (best-effort, do not abort batch)
+      * [x] `cmd/dev/parse-probe/main.go`: remove `__generic__` line in `--all-parsers` mode
+      * [x] Add `internal/collector/parser/registry_test.go`: host match, host lowercasing, no-match returns `ErrNoMatchingParser`, URL parse error, nil-param checks
+      * [x] Add `internal/collector/parser/llm/schema_test.go`: `Value`, `Selectors`, `ToRuleConfig`, `ToConfigSnippet`, `ToArticleContent` round-trip
+      * [x] Add `internal/collector/transformer/noop_test.go`: identity behavior on empty / large / nil inputs
+      * [x] Run coverage → `parser` 36.4% → 79.5%, `parser/llm` 0% → 95.6%, `transformer` 75% → 100%; 149 tests passing across `internal/collector/...`
+    * **Phase B — config-opt-in LLM fallback parser (after Phase A lands):**
+      * [ ] Design fallback config schema: per-host empty config entry + `fallback: llm` flag (NOT a global "fallback all unmatched hosts" — too expensive, accidental coverage). Mechanism: to enable LLM extraction for a new host, operator adds an empty entry to `parsers.yaml` with `fallback: llm`. This makes LLM activation explicit, host-by-host, and reviewable.
+      * [ ] Wire LLM provider into `config.BuildRegistry`: when entry has `fallback: llm`, build an LLM parser bound to that host and register it in the map; no global fallback path.
+      * [ ] `cmd/dev/parse-probe`: when `--all-parsers` is set, include `__llm__` in the result map only if at least one host has `fallback: llm` configured (uses the configured LLM provider; no implicit baseline).
+      * [ ] Add `Registry`/`config.BuildRegistry` tests for LLM fallback path (use a stub LLM provider; do not call real API in unit tests).
+      * [ ] Add §6 Design Clarification: LLM has two roles — (a) parse-time extractor when host opts in via `fallback: llm`, (b) config-snippet generator for human review (`ToConfigSnippet`). Both are explicitly opt-in; there is no automatic promotion path from LLM output to formalized parser rules. The intended workflow for adopting a new site: operator adds empty config + `fallback: llm` → site is parseable via LLM → operator reviews extracted samples + LLM-generated snippet → if quality acceptable, operator promotes the snippet to a real `html`/`jsonld` rule and removes the `fallback` flag.
+      * [ ] Update plan.md checklist after each item completes.
+    * Fix `s3_test.go` flake separately. Defer layer 2 (`internal/repo/pg` testcontainers) until layer 1 lands.
+12. **Wire archive publisher end-to-end:** flip `archivePublisher` from `nil` to the real `msgr` instance in `cmd/worker/collector/main.go`; bring up `cmd/worker/archiver` to consume `prism.archive`; verify a PARTY page fetch produces a stored archive object.
+13. **Extend `cmd/recover` to dual-path replay:** support both `recover_from=Minify` (raw → M+T+P) and `recover_from=Transform/Parse` (minified/canonical → T+P or P only). Required to unblock the deferred Transform/Parse archive cases in `handler.go` (currently TODO).
+14. **Annotate deprecated archiver APIs in code:** add doc comments on `Archiver.Scan`, `Archiver.Remove`, `meta.go`, and the `YYYY/MM/DD/<traceID>` path layout pointing to the relevant Future Roadmap items. Goal: any new contributor reading the code sees the direction without needing plan.md context.
+15. **End-to-end smoke run:** drive a full happy path through scheduler → discovery → collector → archiver → recover via `cmd/dev/fixture-server`; broad assertions only (`len(contents) > 0 && title != ""`). Do not add per-source matrices.
+16. **Promote `S3Archiver` for production:** only after #11–#15 land. Deploy SeaweedFS or AWS S3, wire `--archive=s3://…`, configure lifecycle policy on `archives/` prefix per the retention plan in §5.
+17. After collector intake is stable: candidate/content embedding workers; planner KEYWORD_SEARCH wiring.
+
+**Deferred until pipeline prototype is end-to-end working:**
+- Valkey-backed rate limiter (Future Roadmap)
+- Archive metadata catalog refactor (Future Roadmap)
+- `--mode={worker,lambda}` dispatch (Future Roadmap)
+- Scheduler `--once` short-lived migration (Future Roadmap)
+
+These are bundled together for one cutover at the cloud-promotion phase, not done piecemeal during prototype.

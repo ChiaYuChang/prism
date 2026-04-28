@@ -26,7 +26,8 @@ func BuildRegistry(cfg Config, logger *slog.Logger, tracer trace.Tracer) (*parse
 
 		if pCfg.JSONLD {
 			jParser = jsonld.New()
-			cp, err := parser.NewCompositeParser(logger, hParser, jParser)
+			// JSON-LD is prioritized over HTML by placing it first in the list
+			cp, err := parser.NewCompositeParser(logger, jParser, hParser)
 			if err != nil {
 				return nil, fmt.Errorf("build composite parser for %s: %w", host, err)
 			}

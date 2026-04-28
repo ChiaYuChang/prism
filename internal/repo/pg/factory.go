@@ -20,15 +20,15 @@ const (
 	defaultMaxConnLifetime time.Duration = 30 * time.Minute
 )
 
-type Factory struct {
+type Builder struct {
 	config appconfig.PostgresConfig
 }
 
-func NewFactory(config appconfig.PostgresConfig) *Factory {
-	return &Factory{config: config}
+func NewRepositoryBuilder(config appconfig.PostgresConfig) *Builder {
+	return &Builder{config: config}
 }
 
-func (f *Factory) NewRepository(ctx context.Context) (repo.Repository, repo.Closer, error) {
+func (f *Builder) NewRepository(ctx context.Context) (repo.Repository, repo.Closer, error) {
 	poolCfg, err := pgxpool.ParseConfig(f.config.ConnString())
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse postgres config: %w", err)

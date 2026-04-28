@@ -12,10 +12,12 @@ import (
 
 	"github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/collector/archiver"
+	"github.com/ChiaYuChang/prism/internal/collector/parser/config"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 	"github.com/spf13/pflag"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 const CommandName = "recover"
@@ -23,15 +25,16 @@ const CommandName = "recover"
 var ErrUsage = errors.New("invalid command usage")
 
 type cliOptions struct {
-	subcommand string
-	archiveURI string
-	since      time.Time
-	until      time.Time
-	limit      int
-	traceID    string
-	dryRun     bool
-	purge      bool
-	postgres   appconfig.PostgresConfig
+	subcommand    string
+	archiveURI    string
+	parsersConfig string
+	since         time.Time
+	until         time.Time
+	limit         int
+	traceID       string
+	dryRun        bool
+	purge         bool
+	postgres      appconfig.PostgresConfig
 }
 
 func main() {
@@ -80,7 +83,18 @@ func main() {
 		}
 		defer func() { _ = closer.Close() }()
 
-		if err := runRecover(ctx, arch, pipeline, logger, opts); err != nil {
+		cfg, err := config.LoadConfig(opts.parsersConfig)
+		if err != nil {
+			logger.Error("failed to load parsers config", "path", opts.parsersConfig, "error", err)
+			os.Exit(1)
+		}
+		registry, err := config.BuildRegistry(cfg, logger, noop.NewTracerProvider().Tracer("recover"))
+		if err != nil {
+			logger.Error("failed to build parser registry", "error", err)
+			os.Exit(1)
+		}
+
+		if err := runRecover(ctx, arch, pipeline, registry, logger, opts); err != nil {
 			logger.Error("recover failed", "error", err)
 			os.Exit(1)
 		}
@@ -100,7 +114,7 @@ func main() {
 }
 
 func connectDB(ctx context.Context, pgCfg appconfig.PostgresConfig, logger *slog.Logger) (repo.Pipeline, repo.Closer, error) {
-	repository, closer, err := pg.NewFactory(pgCfg).NewRepository(ctx)
+	repository, closer, err := pg.NewRepositoryBuilder(pgCfg).NewRepository(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -114,13 +128,15 @@ func runStatus(ctx context.Context, arch archiver.Archiver, _ cliOptions) error 
 		return err
 	}
 
-	var raw, minified, other int
+	var raw, minified, canonical, other int
 	for _, m := range metas {
-		switch m.Stage {
-		case archiver.MetaStageRaw:
+		switch m.PayloadKind {
+		case archiver.PayloadKindRaw:
 			raw++
-		case archiver.MetaStageMinified:
+		case archiver.PayloadKindMinified:
 			minified++
+		case archiver.PayloadKindCanonical:
+			canonical++
 		default:
 			other++
 		}
@@ -129,6 +145,7 @@ func runStatus(ctx context.Context, arch archiver.Archiver, _ cliOptions) error 
 	fmt.Printf("Archives: %d total\n", len(metas))
 	fmt.Printf("  raw (minify failed): %d\n", raw)
 	fmt.Printf("  minified:            %d\n", minified)
+	fmt.Printf("  canonical:           %d\n", canonical)
 	if other > 0 {
 		fmt.Printf("  other:               %d\n", other)
 	}
@@ -153,7 +170,7 @@ func runList(ctx context.Context, arch archiver.Archiver, opts cliOptions) error
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "TRACE_ID\tURL\tSTAGE\tSOURCE\tCREATED\tERROR")
+	fmt.Fprintln(w, "TRACE_ID\tURL\tKIND\tSOURCE\tCREATED\tERROR")
 	for _, m := range metas {
 		errStr := m.Error
 		if len(errStr) > 60 {
@@ -162,7 +179,7 @@ func runList(ctx context.Context, arch archiver.Archiver, opts cliOptions) error
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			m.TraceID,
 			truncate(m.URL, 60),
-			m.Stage,
+			m.PayloadKind,
 			m.SourceAbbr,
 			m.CreatedAt.Format("2006-01-02"),
 			errStr,
@@ -267,6 +284,7 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 	}
 
 	fs.StringVar(&opts.archiveURI, "archive", "", "archive URI (file:///path or bare path)")
+	fs.StringVar(&opts.parsersConfig, "parsers-config", "internal/collector/parser/config/parsers.yaml", "path to parsers.yaml (used by run subcommand)")
 
 	var sinceRaw, untilRaw string
 	fs.StringVar(&sinceRaw, "since", "", "filter archives since date (YYYY-MM-DD)")

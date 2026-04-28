@@ -9,6 +9,7 @@ import (
 	"time"
 
 	collector "github.com/ChiaYuChang/prism/internal/collector"
+	"github.com/ChiaYuChang/prism/internal/collector/archiver"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
@@ -39,27 +40,21 @@ type ArchivePublisher interface {
 type Handler struct {
 	logger           *slog.Logger
 	tracer           trace.Tracer
-	fetcher          collector.Fetcher
-	errorSaver       collector.Saver // optional: nil = raw content lost on Minify failure
-	minifier         collector.Minifier
-	transformer      collector.Transformer
-	parser           collector.Parser
+	dispatcher       *collector.Dispatcher
+	errorSaver       collector.Saver  // optional: nil = raw content lost on Minify failure
 	archivePublisher ArchivePublisher // optional: nil = skip archive
 	pipeline         repo.Pipeline
-	scheduler        repo.Scheduler
+	reporter         repo.TaskReporter
 }
 
 func NewHandler(
 	logger *slog.Logger,
 	tracer trace.Tracer,
-	fetcher collector.Fetcher,
+	dispatcher *collector.Dispatcher,
 	errorSaver collector.Saver,
-	minifier collector.Minifier,
-	transformer collector.Transformer,
-	parser collector.Parser,
 	archivePublisher ArchivePublisher,
 	pipeline repo.Pipeline,
-	scheduler repo.Scheduler,
+	reporter repo.TaskReporter,
 ) (*Handler, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
@@ -67,35 +62,23 @@ func NewHandler(
 	if tracer == nil {
 		return nil, fmt.Errorf("%w: tracer", ErrParamMissing)
 	}
-	if fetcher == nil {
-		return nil, fmt.Errorf("%w: fetcher", ErrParamMissing)
-	}
-	if minifier == nil {
-		return nil, fmt.Errorf("%w: minifier", ErrParamMissing)
-	}
-	if transformer == nil {
-		return nil, fmt.Errorf("%w: transformer", ErrParamMissing)
-	}
-	if parser == nil {
-		return nil, fmt.Errorf("%w: parser", ErrParamMissing)
+	if dispatcher == nil {
+		return nil, fmt.Errorf("%w: dispatcher", ErrParamMissing)
 	}
 	if pipeline == nil {
 		return nil, fmt.Errorf("%w: pipeline", ErrParamMissing)
 	}
-	if scheduler == nil {
-		return nil, fmt.Errorf("%w: scheduler", ErrParamMissing)
+	if reporter == nil {
+		return nil, fmt.Errorf("%w: reporter", ErrParamMissing)
 	}
 	return &Handler{
 		logger:           logger,
 		tracer:           tracer,
-		fetcher:          fetcher,
-		errorSaver:       errorSaver, // nil = raw content not archived on Minify failure
-		minifier:         minifier,
-		transformer:      transformer,
-		parser:           parser,
+		dispatcher:       dispatcher,
+		errorSaver:       errorSaver,
 		archivePublisher: archivePublisher,
 		pipeline:         pipeline,
-		scheduler:        scheduler,
+		reporter:         reporter,
 	}, nil
 }
 
@@ -125,13 +108,13 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 
 	if err := h.process(ctx, logger, sig); err != nil {
 		logger.ErrorContext(ctx, "collector task failed", "error", err)
-		if failErr := h.scheduler.FailTask(ctx, sig.TaskID); failErr != nil {
+		if failErr := h.reporter.FailTask(ctx, sig.TaskID); failErr != nil {
 			return false, fmt.Errorf("process task %s: %w; mark failed: %w", sig.TaskID, err, failErr)
 		}
 		return true, err
 	}
 
-	if err := h.scheduler.CompleteTask(ctx, sig.TaskID); err != nil {
+	if err := h.reporter.CompleteTask(ctx, sig.TaskID); err != nil {
 		return false, fmt.Errorf("complete task %s: %w", sig.TaskID, err)
 	}
 
@@ -155,31 +138,19 @@ func (h *Handler) process(ctx context.Context, logger *slog.Logger, sig message.
 		return nil
 	}
 
-	// F: Fetch raw content from the live URL.
-	raw, err := h.fetcher.Fetch(ctx, sig.URL)
+	result, err := h.dispatcher.Dispatch(ctx, sig.SourceAbbr, sig.URL)
 	if err != nil {
-		return fmt.Errorf("fetch %s: %w", sig.URL, err)
+		if stageErr, ok := errors.AsType[*collector.StageError](err); ok {
+			switch stageErr.Stage {
+			case collector.PipelineStageMinify:
+				h.saveOnMinifyError(ctx, sig, stageErr.Intermediate, stageErr.Err)
+				// TODO: Transform/Parse archive — blocked on recover.go dual-path support
+			}
+		}
+		return fmt.Errorf("dispatch %s: %w", sig.URL, err)
 	}
-
-	// M: Minify raw HTML.
-	// On failure, archive raw content for later replay via the Recoverer.
-	minified, err := h.minifier.Minify(ctx, raw)
-	if err != nil {
-		h.saveOnMinifyError(ctx, sig, raw, err)
-		return fmt.Errorf("minify %s: %w", sig.URL, err)
-	}
-
-	// T: Transform minified HTML (Stage 2, currently no-op).
-	canonical, err := h.transformer.Transform(ctx, minified)
-	if err != nil {
-		return fmt.Errorf("transform %s: %w", sig.URL, err)
-	}
-
-	// P: Parse canonical HTML into structured content.
-	art, err := h.parser.Parse(ctx, sig.URL, canonical)
-	if err != nil {
-		return fmt.Errorf("parse %s: %w", sig.URL, err)
-	}
+	art := result.Article
+	canonical := result.Canonical
 
 	contentType := sourceTypeToContentType(sig.SourceType)
 	fetchedAt := time.Now()
@@ -289,9 +260,9 @@ func (h *Handler) saveOnMinifyError(ctx context.Context, sig message.TaskSignal,
 		TraceID:   sig.TraceID,
 		Timestamp: time.Now(),
 		Metadata: map[string]any{
-			"stage":        "raw",
+			"kind":         archiver.PayloadKindRaw,
 			"error":        minifyErr.Error(),
-			"recover_from": "minify",
+			"recover_from": collector.PipelineStageMinify,
 			"recover_key":  sig.TraceID,
 			"source_abbr":  sig.SourceAbbr,
 			"source_type":  sig.SourceType,

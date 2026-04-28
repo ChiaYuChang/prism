@@ -65,8 +65,10 @@ func parseMeta(data []byte, fallbackTime time.Time) (Meta, error) {
 		DeletedAt:     raw.DeletedAt,
 	}
 	if pm := raw.PrismMetadata; pm != nil {
-		if v, ok := pm["stage"].(string); ok {
-			m.Stage = v
+		if v, ok := pm["kind"].(string); ok {
+			if k, err := ParsePayloadKind(v); err == nil {
+				m.PayloadKind = k
+			}
 		}
 		if v, ok := pm["error"].(string); ok {
 			m.Error = v
@@ -132,7 +134,7 @@ func matchesScanOpts(m Meta, opts ScanOptions) bool {
 	if !opts.Until.IsZero() && m.CreatedAt.After(opts.Until) {
 		return false
 	}
-	if opts.Stage != "" && m.Stage != opts.Stage {
+	if opts.PayloadKind != "" && m.PayloadKind != opts.PayloadKind {
 		return false
 	}
 	return true

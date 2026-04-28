@@ -237,6 +237,140 @@ func (_c *MockScout_GetCandidateByFingerprint_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
+// GetCandidateByID provides a mock function for the type MockScout
+func (_mock *MockScout) GetCandidateByID(ctx context.Context, id uuid.UUID) (repo.Candidate, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetCandidateByID")
+	}
+
+	var r0 repo.Candidate
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repo.Candidate, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) repo.Candidate); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Get(0).(repo.Candidate)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockScout_GetCandidateByID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCandidateByID'
+type MockScout_GetCandidateByID_Call struct {
+	*mock.Call
+}
+
+// GetCandidateByID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id uuid.UUID
+func (_e *MockScout_Expecter) GetCandidateByID(ctx interface{}, id interface{}) *MockScout_GetCandidateByID_Call {
+	return &MockScout_GetCandidateByID_Call{Call: _e.mock.On("GetCandidateByID", ctx, id)}
+}
+
+func (_c *MockScout_GetCandidateByID_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockScout_GetCandidateByID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockScout_GetCandidateByID_Call) Return(candidate repo.Candidate, err error) *MockScout_GetCandidateByID_Call {
+	_c.Call.Return(candidate, err)
+	return _c
+}
+
+func (_c *MockScout_GetCandidateByID_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) (repo.Candidate, error)) *MockScout_GetCandidateByID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetCandidatesByIDs provides a mock function for the type MockScout
+func (_mock *MockScout) GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]repo.Candidate, error) {
+	ret := _mock.Called(ctx, ids)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetCandidatesByIDs")
+	}
+
+	var r0 []repo.Candidate
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []uuid.UUID) ([]repo.Candidate, error)); ok {
+		return returnFunc(ctx, ids)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []uuid.UUID) []repo.Candidate); ok {
+		r0 = returnFunc(ctx, ids)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Candidate)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, ids)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockScout_GetCandidatesByIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCandidatesByIDs'
+type MockScout_GetCandidatesByIDs_Call struct {
+	*mock.Call
+}
+
+// GetCandidatesByIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ids []uuid.UUID
+func (_e *MockScout_Expecter) GetCandidatesByIDs(ctx interface{}, ids interface{}) *MockScout_GetCandidatesByIDs_Call {
+	return &MockScout_GetCandidatesByIDs_Call{Call: _e.mock.On("GetCandidatesByIDs", ctx, ids)}
+}
+
+func (_c *MockScout_GetCandidatesByIDs_Call) Run(run func(ctx context.Context, ids []uuid.UUID)) *MockScout_GetCandidatesByIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].([]uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockScout_GetCandidatesByIDs_Call) Return(candidates []repo.Candidate, err error) *MockScout_GetCandidatesByIDs_Call {
+	_c.Call.Return(candidates, err)
+	return _c
+}
+
+func (_c *MockScout_GetCandidatesByIDs_Call) RunAndReturn(run func(ctx context.Context, ids []uuid.UUID) ([]repo.Candidate, error)) *MockScout_GetCandidatesByIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetSourceByAbbr provides a mock function for the type MockScout
 func (_mock *MockScout) GetSourceByAbbr(ctx context.Context, abbr string) (repo.Source, error) {
 	ret := _mock.Called(ctx, abbr)
@@ -299,6 +433,74 @@ func (_c *MockScout_GetSourceByAbbr_Call) Return(source repo.Source, err error) 
 }
 
 func (_c *MockScout_GetSourceByAbbr_Call) RunAndReturn(run func(ctx context.Context, abbr string) (repo.Source, error)) *MockScout_GetSourceByAbbr_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListCandidates provides a mock function for the type MockScout
+func (_mock *MockScout) ListCandidates(ctx context.Context, arg repo.ListCandidatesParams) ([]repo.Candidate, error) {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListCandidates")
+	}
+
+	var r0 []repo.Candidate
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.ListCandidatesParams) ([]repo.Candidate, error)); ok {
+		return returnFunc(ctx, arg)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.ListCandidatesParams) []repo.Candidate); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Candidate)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.ListCandidatesParams) error); ok {
+		r1 = returnFunc(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockScout_ListCandidates_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListCandidates'
+type MockScout_ListCandidates_Call struct {
+	*mock.Call
+}
+
+// ListCandidates is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.ListCandidatesParams
+func (_e *MockScout_Expecter) ListCandidates(ctx interface{}, arg interface{}) *MockScout_ListCandidates_Call {
+	return &MockScout_ListCandidates_Call{Call: _e.mock.On("ListCandidates", ctx, arg)}
+}
+
+func (_c *MockScout_ListCandidates_Call) Run(run func(ctx context.Context, arg repo.ListCandidatesParams)) *MockScout_ListCandidates_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.ListCandidatesParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.ListCandidatesParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockScout_ListCandidates_Call) Return(candidates []repo.Candidate, err error) *MockScout_ListCandidates_Call {
+	_c.Call.Return(candidates, err)
+	return _c
+}
+
+func (_c *MockScout_ListCandidates_Call) RunAndReturn(run func(ctx context.Context, arg repo.ListCandidatesParams) ([]repo.Candidate, error)) *MockScout_ListCandidates_Call {
 	_c.Call.Return(run)
 	return _c
 }

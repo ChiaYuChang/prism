@@ -8,25 +8,37 @@ parsers:
       - "2006-01-02"
     html:
       title:
-        - "h3.news_list_title"
+        - "article.news_content h2"
       date:
-        - "p.news_list_date"
+        - "p.news_content_date"
       content:
-        - "div.news_content"
-        - "div.news_txt"
+        - "#media_contents p"
 
   www.tpp.org.tw:
     enabled: true
     jsonld: false
     date_layouts:
-      - "2006年01月02日"
+      - "2006/01/02"
     html:
       title:
-        - "div.list_name"
+        - "div.content_topic"
       date:
-        - "div.list_date"
+        - "span.content_date"
       content:
-        - "div.latest_outer"
+        - "div.content_description"
+
+  www.kmt.org.tw:
+    enabled: true
+    jsonld: false
+    date_layouts:
+      - "2006-01-02T15:04:05-07:00"
+    html:
+      title:
+        - "#div1 h3"
+      date:
+        - "#div1 div.post-footer-line i.pdt abbr.published@title"
+      content:
+        - "#div1 div.post-body p"
 
   tw.news.yahoo.com:
     enabled: true

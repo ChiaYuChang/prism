@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,24 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// writeS3ConfigFile writes a minimal YAML file that satisfies the S3Config
-// required fields. S3 flag bindings do not populate the nested "s3.*"
-// mapstructure keys, so tests provide them via --config instead.
-func writeS3ConfigFile(t *testing.T) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "collector.yaml")
-	contents := `s3:
-  endpoint: http://localhost:8333
-  bucket: prism-archive
-  access-key: any
-  secret-key: any
-`
-	require.NoError(t, os.WriteFile(path, []byte(contents), 0o600))
-	return path
-}
-
 func TestLoadConfigDefaults(t *testing.T) {
-	cfg, err := LoadConfig([]string{"--config=" + writeS3ConfigFile(t)})
+	cfg, err := LoadConfig(nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, 8082, cfg.HealthPort)
@@ -35,18 +18,19 @@ func TestLoadConfigDefaults(t *testing.T) {
 	assert.Equal(t, 2*time.Minute, cfg.MaxProcessingTime)
 	assert.Equal(t, "localhost", cfg.Postgres.Host)
 	assert.Equal(t, "nats", cfg.MessengerType)
+	assert.Equal(t, "", cfg.Archive)
 	require.NotNil(t, cfg.Messenger)
 }
 
 func TestLoadConfigFromFlags(t *testing.T) {
 	cfg, err := LoadConfig([]string{
-		"--config=" + writeS3ConfigFile(t),
 		"--health-port=9092",
 		"--http-timeout=45s",
 		"--max-processing-time=90s",
 		"--pg-host=127.0.0.1",
 		"--pg-port=5433",
 		"--messenger-type=gochannel",
+		"--archive=file:///tmp/archives",
 	})
 	require.NoError(t, err)
 
@@ -56,6 +40,7 @@ func TestLoadConfigFromFlags(t *testing.T) {
 	assert.Equal(t, "127.0.0.1", cfg.Postgres.Host)
 	assert.Equal(t, 5433, cfg.Postgres.Port)
 	assert.Equal(t, "gochannel", cfg.MessengerType)
+	assert.Equal(t, "file:///tmp/archives", cfg.Archive)
 }
 
 func TestLoadConfigFromEnvironment(t *testing.T) {
@@ -66,7 +51,7 @@ func TestLoadConfigFromEnvironment(t *testing.T) {
 		_ = os.Unsetenv("PRISM_COLLECTOR_WORKER_POSTGRES_USERNAME")
 	}()
 
-	cfg, err := LoadConfig([]string{"--config=" + writeS3ConfigFile(t)})
+	cfg, err := LoadConfig(nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, 75*time.Second, cfg.MaxProcessingTime)

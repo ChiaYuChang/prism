@@ -54,7 +54,7 @@ func main() {
 	}
 	defer func() { _ = msgr.Close() }()
 
-	repository, repositoryCloser, err := pg.NewFactory(config.Postgres).NewRepository(ctx)
+	repository, repositoryCloser, err := pg.NewRepositoryBuilder(config.Postgres).NewRepository(ctx)
 	if err != nil {
 		logger.Error("failed to initialize repository", "backend", "postgres", "host", config.Postgres.Host, "error", err)
 		os.Exit(1)

@@ -15,6 +15,121 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/candidates": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "candidates"
+                ],
+                "summary": "List candidate article briefs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Keyword matched against title/description (ILIKE)",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by source abbreviation (e.g. dpp, tpp, yahoo)",
+                        "name": "source_abbr",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lower bound on published_at/discovered_at (RFC3339)",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Upper bound on published_at/discovered_at (RFC3339)",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 50, max 200)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Pagination offset (default 0)",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ListCandidatesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/contents/{candidate_id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contents"
+                ],
+                "summary": "Get fetched content for a candidate",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Candidate UUID",
+                        "name": "candidate_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.Content"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/healthz": {
             "get": {
                 "produces": [
@@ -29,6 +144,51 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/obs.HealthStatus"
+                        }
+                    }
+                }
+            }
+        },
+        "/page_fetch": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "candidates"
+                ],
+                "summary": "Request full-article fetch for candidates",
+                "parameters": [
+                    {
+                        "description": "Candidate IDs to promote to contents",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.PageFetchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/api.PageFetchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -61,6 +221,149 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.Candidate": {
+            "type": "object",
+            "properties": {
+                "batch_id": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "discovered_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "ingestion_method": {
+                    "type": "string"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "source_abbr": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.Content": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "batch_id": {
+                    "type": "string"
+                },
+                "candidate_id": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "fetched_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "source_abbr": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.ListCandidatesResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.Candidate"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.PageFetchRequest": {
+            "type": "object",
+            "properties": {
+                "candidate_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "api.PageFetchResponse": {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.PageFetchTaskResult"
+                    }
+                }
+            }
+        },
+        "api.PageFetchTaskResult": {
+            "type": "object",
+            "properties": {
+                "candidate_id": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
         "obs.HealthLevel": {
             "type": "string",
             "enum": [

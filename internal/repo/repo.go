@@ -16,12 +16,19 @@ type Repository interface {
 	BatchTrigger() BatchTrigger
 }
 
+// TaskReporter is the push side of the task lifecycle: workers use it to
+// report the outcome of a claimed task. It is intentionally narrower than
+// Scheduler so worker handlers only depend on what they actually call.
+type TaskReporter interface {
+	CompleteTask(ctx context.Context, id uuid.UUID) error
+	FailTask(ctx context.Context, id uuid.UUID) error
+}
+
 type Scheduler interface {
+	TaskReporter
 	// ClaimTasks claims up to limit runnable tasks of the given kinds.
 	// sourceTypes filters by source_type; an empty slice matches all source types.
 	ClaimTasks(ctx context.Context, limit int32, kinds []string, sourceTypes []string) ([]Task, error)
-	CompleteTask(ctx context.Context, id uuid.UUID) error
-	FailTask(ctx context.Context, id uuid.UUID) error
 	// ReleaseTasks resets RUNNING tasks back to PENDING, undoing the retry_count
 	// increment from ClaimTasks. Used when dispatch is skipped (e.g. rate-limited).
 	ReleaseTasks(ctx context.Context, ids []uuid.UUID) error
@@ -31,7 +38,10 @@ type Scheduler interface {
 type Scout interface {
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
 	ListSourcesByType(ctx context.Context, sourceType string) ([]Source, error)
+	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
+	GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]Candidate, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
+	ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)

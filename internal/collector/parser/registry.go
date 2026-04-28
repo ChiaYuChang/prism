@@ -21,7 +21,6 @@ type Registry struct {
 	logger  *slog.Logger
 	tracer  trace.Tracer
 	parsers map[string]collector.Parser
-	generic collector.Parser
 }
 
 func NewRegistry(logger *slog.Logger, tracer trace.Tracer, parsers map[string]collector.Parser) (*Registry, error) {
@@ -41,7 +40,6 @@ func NewRegistry(logger *slog.Logger, tracer trace.Tracer, parsers map[string]co
 		logger:  logger,
 		tracer:  tracer,
 		parsers: cloned,
-		generic: NewArticleParser(),
 	}, nil
 }
 
@@ -57,11 +55,8 @@ func (r *Registry) Parse(ctx context.Context, rawURL string, data string) (*coll
 	host := strings.ToLower(u.Hostname())
 	p, ok := r.parsers[host]
 	if !ok {
-		r.logger.DebugContext(ctx, "no specific parser for host, using generic", slog.String("host", host))
-		p = r.generic
-	} else {
-		r.logger.DebugContext(ctx, "using specific parser for host", slog.String("host", host))
+		return nil, fmt.Errorf("%w: %s", ErrNoMatchingParser, host)
 	}
-
+	r.logger.DebugContext(ctx, "using specific parser for host", slog.String("host", host))
 	return p.Parse(ctx, rawURL, data)
 }

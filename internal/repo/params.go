@@ -21,6 +21,15 @@ type CreateCandidateParams struct {
 
 type UpsertCandidateParams = CreateCandidateParams
 
+type ListCandidatesParams struct {
+	Query      *string    `validate:"omitempty"`
+	SourceAbbr *string    `validate:"omitempty"`
+	Since      *time.Time `validate:"omitempty"`
+	Until      *time.Time `validate:"omitempty"`
+	Limit      int32      `validate:"min=1,max=500"`
+	Offset     int32      `validate:"min=0"`
+}
+
 type CreateTaskParams struct {
 	BatchID    uuid.UUID      `validate:"required"`
 	Kind       string         `validate:"required"`

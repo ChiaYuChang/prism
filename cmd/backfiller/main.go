@@ -144,7 +144,7 @@ func main() {
 	)
 
 	tracer := infra.Tracer()
-	var repositoryFactory repo.Factory = pg.NewFactory(opts.postgres)
+	var repositoryFactory repo.Factory = pg.NewRepositoryBuilder(opts.postgres)
 	repository, repositoryCloser, err := repositoryFactory.NewRepository(context.Background())
 	if err != nil {
 		logger.Error("failed to initialize repository", "backend", "postgres", "host", opts.postgres.Host, "error", err)

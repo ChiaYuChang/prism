@@ -10,10 +10,9 @@ import (
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/collector"
-	"github.com/ChiaYuChang/prism/internal/collector/archiver"
 	"github.com/ChiaYuChang/prism/internal/collector/fetcher"
 	"github.com/ChiaYuChang/prism/internal/collector/minifier"
-	"github.com/ChiaYuChang/prism/internal/collector/parser"
+	parserconfig "github.com/ChiaYuChang/prism/internal/collector/parser/config"
 	"github.com/ChiaYuChang/prism/internal/collector/transformer"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/message"
@@ -66,7 +65,7 @@ func main() {
 		}
 	}()
 
-	dbRepo, dbRepoCloser, err := pg.NewFactory(config.Postgres).NewRepository(ctx)
+	dbRepo, dbRepoCloser, err := pg.NewRepositoryBuilder(config.Postgres).NewRepository(ctx)
 	if err != nil {
 		logger.Error("failed to initialize repository", "backend", "postgres", "host", config.Postgres.Host, "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to connect to Postgres")
@@ -87,28 +86,53 @@ func main() {
 		Handle(http.StatusForbidden, fetcher.FailFastHandler).
 		Handle(http.StatusUnauthorized, fetcher.FailFastHandler)
 
-	// Wire LocalArchiver as errorSaver when ArchiveDir is set.
-	// When nil, raw content is not archived on Minify failures.
+	// Wire Archiver as errorSaver when Archive URI is set.
+	// When empty, raw content is not archived on Minify failures.
 	var errorSaver collector.Saver
-	if config.ArchiveDir != "" {
-		arch, err := archiver.NewLocalArchiver(config.ArchiveDir, logger)
+	if config.Archive != "" {
+		arch, err := openArchiver(ctx, config.Archive, config.S3, logger)
 		if err != nil {
-			logger.Error("failed to initialize archiver", "archive_dir", config.ArchiveDir, "error", err)
+			logger.Error("failed to initialize archiver", "archive", config.Archive, "error", err)
 			monitor.SetStatus(obs.LevelError, "Failed to initialize archiver")
 			os.Exit(1)
 		}
 		errorSaver = arch
-		logger.Info("local archive enabled", "archive_dir", config.ArchiveDir)
+		logger.Info("archive enabled", "archive", config.Archive)
+	}
+
+	pCfg, err := parserconfig.LoadConfig(config.ParsersConfigPath)
+	if err != nil {
+		logger.Error("failed to load parsers config", "path", config.ParsersConfigPath, "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to load parsers config")
+		os.Exit(1)
+	}
+
+	registry, err := parserconfig.BuildRegistry(pCfg, logger, tracer)
+	if err != nil {
+		logger.Error("failed to build parser registry", "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to build parser registry")
+		os.Exit(1)
+	}
+
+	pipelineRegistry := collector.NewPipelineRegistry(collector.Pipeline{
+		Fetcher:      pageFetcher,
+		Minifier:     minifier.New(),
+		Transformers: []collector.Transformer{transformer.NewNoOpTransformer()},
+		Parser:       registry,
+	})
+
+	dispatcher, err := collector.NewDispatcher(logger, tracer, pipelineRegistry)
+	if err != nil {
+		logger.Error("failed to build collector dispatcher", "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to build collector dispatcher")
+		os.Exit(1)
 	}
 
 	handler, err := NewHandler(
 		logger,
 		tracer,
-		pageFetcher,
+		dispatcher,
 		errorSaver,
-		minifier.New(),
-		transformer.NewNoOpTransformer(),
-		parser.NewArticleParser(),
 		msgr, // archivePublisher wired up to send messages to the archive topic
 		dbRepo.Pipeline(),
 		dbRepo.Scheduler(),

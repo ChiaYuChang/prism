@@ -104,72 +104,6 @@ func (_c *MockCollector_Fetch_Call) RunAndReturn(run func(ctx context.Context, u
 	return _c
 }
 
-// Minify provides a mock function for the type MockCollector
-func (_mock *MockCollector) Minify(ctx context.Context, raw string) (string, error) {
-	ret := _mock.Called(ctx, raw)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Minify")
-	}
-
-	var r0 string
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
-		return returnFunc(ctx, raw)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = returnFunc(ctx, raw)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, raw)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
-}
-
-// MockCollector_Minify_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Minify'
-type MockCollector_Minify_Call struct {
-	*mock.Call
-}
-
-// Minify is a helper method to define mock.On call
-//   - ctx context.Context
-//   - raw string
-func (_e *MockCollector_Expecter) Minify(ctx interface{}, raw interface{}) *MockCollector_Minify_Call {
-	return &MockCollector_Minify_Call{Call: _e.mock.On("Minify", ctx, raw)}
-}
-
-func (_c *MockCollector_Minify_Call) Run(run func(ctx context.Context, raw string)) *MockCollector_Minify_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *MockCollector_Minify_Call) Return(s string, err error) *MockCollector_Minify_Call {
-	_c.Call.Return(s, err)
-	return _c
-}
-
-func (_c *MockCollector_Minify_Call) RunAndReturn(run func(ctx context.Context, raw string) (string, error)) *MockCollector_Minify_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Parse provides a mock function for the type MockCollector
 func (_mock *MockCollector) Parse(ctx context.Context, url string, data string) (*collector.Article, error) {
 	ret := _mock.Called(ctx, url, data)
@@ -302,8 +236,8 @@ func (_c *MockCollector_Save_Call) RunAndReturn(run func(ctx context.Context, re
 }
 
 // Transform provides a mock function for the type MockCollector
-func (_mock *MockCollector) Transform(ctx context.Context, minified string) (string, error) {
-	ret := _mock.Called(ctx, minified)
+func (_mock *MockCollector) Transform(ctx context.Context, in string) (string, error) {
+	ret := _mock.Called(ctx, in)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Transform")
@@ -312,15 +246,15 @@ func (_mock *MockCollector) Transform(ctx context.Context, minified string) (str
 	var r0 string
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
-		return returnFunc(ctx, minified)
+		return returnFunc(ctx, in)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = returnFunc(ctx, minified)
+		r0 = returnFunc(ctx, in)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, minified)
+		r1 = returnFunc(ctx, in)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -334,12 +268,12 @@ type MockCollector_Transform_Call struct {
 
 // Transform is a helper method to define mock.On call
 //   - ctx context.Context
-//   - minified string
-func (_e *MockCollector_Expecter) Transform(ctx interface{}, minified interface{}) *MockCollector_Transform_Call {
-	return &MockCollector_Transform_Call{Call: _e.mock.On("Transform", ctx, minified)}
+//   - in string
+func (_e *MockCollector_Expecter) Transform(ctx interface{}, in interface{}) *MockCollector_Transform_Call {
+	return &MockCollector_Transform_Call{Call: _e.mock.On("Transform", ctx, in)}
 }
 
-func (_c *MockCollector_Transform_Call) Run(run func(ctx context.Context, minified string)) *MockCollector_Transform_Call {
+func (_c *MockCollector_Transform_Call) Run(run func(ctx context.Context, in string)) *MockCollector_Transform_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -362,7 +296,7 @@ func (_c *MockCollector_Transform_Call) Return(s string, err error) *MockCollect
 	return _c
 }
 
-func (_c *MockCollector_Transform_Call) RunAndReturn(run func(ctx context.Context, minified string) (string, error)) *MockCollector_Transform_Call {
+func (_c *MockCollector_Transform_Call) RunAndReturn(run func(ctx context.Context, in string) (string, error)) *MockCollector_Transform_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -155,6 +155,48 @@ func (r *PGScout) ListSourcesByType(ctx context.Context, sourceType string) ([]r
 	return out, nil
 }
 
+func (r *PGScout) GetCandidateByID(ctx context.Context, id uuid.UUID) (repo.Candidate, error) {
+	row, err := r.q.GetCandidateByID(ctx, id)
+	if err != nil {
+		return repo.Candidate{}, err
+	}
+	return dbCandidateToRepoCandidate(row), nil
+}
+
+func (r *PGScout) GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]repo.Candidate, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := r.q.GetCandidatesByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Candidate, len(rows))
+	for i, row := range rows {
+		out[i] = dbCandidateToRepoCandidate(row)
+	}
+	return out, nil
+}
+
+func (r *PGScout) ListCandidates(ctx context.Context, arg repo.ListCandidatesParams) ([]repo.Candidate, error) {
+	rows, err := r.q.ListCandidates(ctx, ListCandidatesParams{
+		Query:      pgconv.StringPtrToPgText(arg.Query),
+		SourceAbbr: pgconv.StringPtrToPgText(arg.SourceAbbr),
+		Since:      pgconv.TimePtrToPgTimestamptz(arg.Since),
+		Until:      pgconv.TimePtrToPgTimestamptz(arg.Until),
+		Lim:        arg.Limit,
+		Off:        arg.Offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Candidate, len(rows))
+	for i, row := range rows {
+		out[i] = dbCandidateToRepoCandidate(row)
+	}
+	return out, nil
+}
+
 func (r *PGScout) GetCandidateByFingerprint(ctx context.Context, fingerprint string) (repo.Candidate, error) {
 	row, err := r.q.GetCandidateByFingerprint(ctx, fingerprint)
 	if err != nil {

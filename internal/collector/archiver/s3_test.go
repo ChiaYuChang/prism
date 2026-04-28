@@ -3,6 +3,8 @@ package archiver_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -14,18 +16,74 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const (
-	testBucket   = "prism-archives"
-	testEndpoint = "http://127.0.0.1:8333"
+	testBucket = "prism-archives"
 )
+
+var testEndpoint string
+
+func TestMain(m *testing.M) {
+	ctx := context.Background()
+
+	// Start SeaweedFS container using testcontainers.
+	swContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "chrislusf/seaweedfs:4.05",
+			ExposedPorts: []string{"8333/tcp", "9333/tcp"},
+			Cmd:          []string{"server", "-s3", "-s3.port=8333", "-dir=/data", "-ip.bind=0.0.0.0"},
+			WaitingFor:   wait.ForHTTP("/cluster/status").WithPort("9333/tcp"),
+		},
+		Started: true,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to start seaweedfs container: %s", err))
+	}
+
+	// Try to get the host port mapped to the container's 8333.
+	mappedPort, err := swContainer.MappedPort(ctx, "8333/tcp")
+	if err != nil {
+		panic(fmt.Sprintf("failed to get host port for 8333/tcp: %s", err))
+	}
+
+	testEndpoint = fmt.Sprintf("http://localhost:%s", mappedPort.Port())
+
+	// Create the test bucket before running tests.
+	// SeaweedFS in test mode doesn't strictly check credentials unless configured.
+	cfg, _ := config.LoadDefaultConfig(ctx,
+		config.WithRegion("us-east-1"),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("any", "any", "")),
+	)
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(testEndpoint)
+		o.UsePathStyle = true
+	})
+	_, err = client.CreateBucket(ctx, &s3.CreateBucketInput{
+		Bucket: aws.String(testBucket),
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to create test bucket %s: %s", testBucket, err))
+	}
+
+	// Run tests.
+	code := m.Run()
+
+	// Terminate container.
+	if err := swContainer.Terminate(ctx); err != nil {
+		panic(fmt.Errorf("failed to terminate seaweedfs container: %w", err))
+	}
+
+	os.Exit(code)
+}
 
 func newTestS3Client(t *testing.T) *s3.Client {
 	t.Helper()
 	cfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithRegion("us-east-1"),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("test", "test", "")),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("any", "any", "")),
 	)
 	require.NoError(t, err)
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
@@ -53,7 +111,7 @@ func TestS3Archiver_SaveAndLoad_RoundTrip(t *testing.T) {
 		TraceID:   "s3-trace-001",
 		Timestamp: time.Now(),
 		Metadata: map[string]any{
-			"stage":       "raw",
+			"kind":        "raw",
 			"error":       "minify failed",
 			"source_abbr": "dpp",
 			"source_type": "PARTY",
@@ -88,7 +146,7 @@ func TestS3Archiver_Scan(t *testing.T) {
 		TraceID:   "scan-t1",
 		Timestamp: now,
 		Metadata: map[string]any{
-			"stage": "raw",
+			"kind":  "raw",
 			"error": "fail1",
 		},
 	}))
@@ -103,7 +161,7 @@ func TestS3Archiver_Scan(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, all, 2)
 
-	rawOnly, err := a.Scan(ctx, archiver.ScanOptions{Stage: "raw"})
+	rawOnly, err := a.Scan(ctx, archiver.ScanOptions{PayloadKind: archiver.PayloadKindRaw})
 	require.NoError(t, err)
 	require.Len(t, rawOnly, 1)
 	require.Equal(t, "scan-t1", rawOnly[0].TraceID)
@@ -207,7 +265,7 @@ func TestS3Archiver_ScanMeta_SourceFields(t *testing.T) {
 		TraceID:   "src-trace",
 		Timestamp: time.Now(),
 		Metadata: map[string]any{
-			"stage":       "raw",
+			"kind":        "raw",
 			"source_abbr": "kmt",
 			"source_type": "PARTY",
 			"batch_id":    "batch-123",

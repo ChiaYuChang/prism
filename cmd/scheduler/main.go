@@ -286,7 +286,7 @@ func main() {
 	}()
 
 	// 7. Repository
-	dbRepo, dbRepoCloser, err := pg.NewFactory(config.Postgres).NewRepository(ctx)
+	dbRepo, dbRepoCloser, err := pg.NewRepositoryBuilder(config.Postgres).NewRepository(ctx)
 	if err != nil {
 		slog.Error("failed to initialize repository", "host", config.Postgres.Host, "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to connect to Postgres")

@@ -39,7 +39,7 @@ type Handler struct {
 	searchClients map[string]discovery.SearchClient
 	sink          discoverysink.CandidateSink
 	scoutRepo     repo.Scout
-	scheduler     repo.Scheduler
+	reporter      repo.TaskReporter
 }
 
 func NewHandler(
@@ -49,7 +49,7 @@ func NewHandler(
 	searchClients map[string]discovery.SearchClient,
 	sink discoverysink.CandidateSink,
 	scoutRepo repo.Scout,
-	scheduler repo.Scheduler,
+	reporter repo.TaskReporter,
 ) (*Handler, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
@@ -66,8 +66,8 @@ func NewHandler(
 	if scoutRepo == nil {
 		return nil, fmt.Errorf("%w: scout_repository", ErrParamMissing)
 	}
-	if scheduler == nil {
-		return nil, fmt.Errorf("%w: scheduler_repository", ErrParamMissing)
+	if reporter == nil {
+		return nil, fmt.Errorf("%w: task_reporter", ErrParamMissing)
 	}
 	if searchClients == nil {
 		searchClients = map[string]discovery.SearchClient{}
@@ -80,7 +80,7 @@ func NewHandler(
 		searchClients: searchClients,
 		sink:          sink,
 		scoutRepo:     scoutRepo,
-		scheduler:     scheduler,
+		reporter:      reporter,
 	}, nil
 }
 
@@ -108,13 +108,13 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 
 	if err := h.process(ctx, sig); err != nil {
 		logger.ErrorContext(ctx, "discovery task failed", "error", err)
-		if failErr := h.scheduler.FailTask(ctx, sig.TaskID); failErr != nil {
+		if failErr := h.reporter.FailTask(ctx, sig.TaskID); failErr != nil {
 			return false, fmt.Errorf("process task %s: %w; mark failed: %w", sig.TaskID, err, failErr)
 		}
 		return true, err
 	}
 
-	if err := h.scheduler.CompleteTask(ctx, sig.TaskID); err != nil {
+	if err := h.reporter.CompleteTask(ctx, sig.TaskID); err != nil {
 		return false, fmt.Errorf("complete task %s: %w", sig.TaskID, err)
 	}
 

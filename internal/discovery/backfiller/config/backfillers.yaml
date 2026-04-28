@@ -35,3 +35,23 @@ backfiller:
         params:
           start-index: "{{.Value}}"
           max-results: "10"
+
+    pts:
+      format: atom
+      base_url: https://news.pts.org.tw
+      pager:
+        type: "index"
+        mode: "index"
+        url_template: "{{.BaseURL}}/xml/newsfeed.xml"
+        first: 1
+        step: 1
+
+    cna:
+      format: rss
+      base_url: https://feeds.feedburner.com
+      pager:
+        type: "index"
+        mode: "index"
+        url_template: "{{.BaseURL}}/rsscna/politics"
+        first: 1
+        step: 1

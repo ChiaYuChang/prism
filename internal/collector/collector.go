@@ -31,10 +31,9 @@ type Archive struct {
 }
 
 // Collector defines a unified interface that composes all the core pipeline
-// components: Fetching, Minifying, Transforming, Parsing, and Saving.
+// components: Fetching, Transforming, Parsing, and Saving.
 type Collector interface {
 	Fetcher
-	Minifier
 	Transformer
 	Parser
 	Saver
@@ -46,20 +45,13 @@ type Fetcher interface {
 	Fetch(ctx context.Context, url string) (string, error)
 }
 
-// Minifier strips noise from raw content and reduces its size.
-// Its output is the archive point: the Saver receives minified content on the
-// success path, and raw content on the error path.
-// Stage 1 of the two-stage transform pipeline.
-type Minifier interface {
-	Minify(ctx context.Context, raw string) (string, error)
-}
-
-// Transformer applies semantic transformations to minified content.
-// Currently a no-op for HTML; meaningful for future non-HTML inputs
-// such as API responses or structured data formats.
-// Stage 2 of the two-stage transform pipeline.
+// Transformer applies a string → string transformation to content.
+// This single interface covers both minification (strip noise, reduce size)
+// and semantic reshaping (type-specific canonicalisation). Which role a
+// particular implementation plays is determined by its position in a
+// pipeline.Pipeline, not by its type — see docs/pipeline-wiring-design.md.
 type Transformer interface {
-	Transform(ctx context.Context, minified string) (string, error)
+	Transform(ctx context.Context, in string) (string, error)
 }
 
 // Saver persists an Archive record to object storage (SeaweedFS / S3).

@@ -21,9 +21,10 @@ type Config struct {
 	MessengerType     string                    `mapstructure:"messenger-type"      validate:"oneof=nats gochannel"`
 	Messenger         appconfig.MessengerConfig `mapstructure:"-"`
 
-	// ArchiveDir is the base directory for LocalSaver archives.
-	// When non-empty, a LocalRecoverer is enabled and recovery tasks are supported.
-	ArchiveDir string `mapstructure:"archive-dir"`
+	// Archive is the archive destination URI: "file:///path" for local or
+	// "s3://bucket/prefix" for S3. When empty, archiving on Minify failure is disabled.
+	Archive           string `mapstructure:"archive"`
+	ParsersConfigPath string `mapstructure:"parsers-config"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -40,7 +41,8 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
 	fs.Duration("http-timeout", 30*time.Second, "HTTP timeout for page fetch requests")
 	fs.Duration("max-processing-time", 2*time.Minute, "Maximum wall-clock time for handling a single message (ctx timeout passed to handler)")
-	fs.String("archive-dir", "", "Base directory for local archive storage; enables LocalRecoverer when set")
+	fs.String("archive", "", "Archive URI for error payloads (file:///path or s3://bucket/prefix); empty disables archiving")
+	fs.String("parsers-config", "internal/collector/parser/config/parsers.yaml", "Path to the parsers configuration file (YAML)")
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
