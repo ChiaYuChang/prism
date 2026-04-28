@@ -2,6 +2,7 @@ package message
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,8 @@ const (
 	// TaskTopic is the NATS/Watermill topic for triggering runnable tasks.
 	TaskTopic = "prism.task"
 )
+
+var ErrNilPublisher = errors.New("publisher is nil")
 
 // TaskSignal represents one runnable task dispatched from the scheduler.
 type TaskSignal struct {
