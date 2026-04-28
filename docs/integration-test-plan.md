@@ -13,10 +13,10 @@ Goal: verify the existing microservices (scheduler, discovery worker, collector 
   - Wraps any `http.RoundTripper`; tees successful response bodies to `<dir>/<host>/<path>.html`.
   - Opt-in via `--capture-dir` flag on discovery and collector.
 
-- [ ] **Add `--max-directory-pages` cap to discovery worker / scout**
-  - Dev-only limit at the directory-traversal layer (not at candidate count downstream).
-  - Stops the scout after N directory pages; every candidate extracted from those pages gets fully processed → fixture stays self-consistent (no orphan candidate URLs pointing at article pages that were never captured).
-  - Logs a warning when the cap engages.
+- [~] **`--max-directory-pages` cap — not needed by design**
+  - Daily scouts intentionally fetch a single index page per run; one DIRECTORY_FETCH task = one URL = one page. Pagination is only implemented in the backfiller (where it already has `MaxPages`).
+  - Design rationale: ~10 press releases/day per source is the expected upper bound. Sources that publish more frequently should be handled by raising scout cadence (multiple DIRECTORY_FETCH tasks per day) rather than adding a daily-mode pager — pagination introduces ordering / dedup / "where to stop" complexity that scheduling solves for free.
+  - Phase 1 implication: to broaden the fixture corpus, seed DIRECTORY_FETCH tasks for *multiple sources*, not multiple pages of one source.
 
 - [ ] **Seed SQL for one DIRECTORY_FETCH task**
   - Target `source_abbr='dpp'`, `runnable_at=NOW()`, state `pending`.
@@ -28,9 +28,9 @@ Goal: verify the existing microservices (scheduler, discovery worker, collector 
 - [ ] `task migrate:up` — migrations (sources/candidates/contents/tasks tables)
 - [ ] Apply seed SQL from Phase 0
 - [ ] Start scheduler + discovery + collector in three terminals
-  - Discovery: `--capture-dir=testdata/fixtures --max-directory-pages=3`
+  - Discovery: `--capture-dir=testdata/fixtures`
   - Collector: `--capture-dir=testdata/fixtures --archive=file://./tmp/archives`
-- [ ] Target roughly 3 directory pages × 10 articles ≈ 30 articles from DPP
+- [ ] Target roughly 1 directory page × ~10 articles per source; seed 3–4 source tasks to reach ~30 articles in the fixture set
 - [ ] Verify after run:
   - `candidates` table has ~30 rows, `source_abbr='dpp'`, `source_type='PARTY'`
   - `contents` table has ~30 rows with article title/body
