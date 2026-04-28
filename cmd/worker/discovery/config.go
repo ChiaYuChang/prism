@@ -25,6 +25,11 @@ type Config struct {
 	Messenger       appconfig.MessengerConfig `mapstructure:"-"`
 
 	BraveAPIKey string `mapstructure:"brave-api-key"`
+
+	// CaptureDir, when non-empty, tees successful HTTP response bodies into
+	// <dir>/<host>/<path>.html. Dev-only; used to build local fixtures during
+	// the integration test plan Phase 1 real-site run.
+	CaptureDir string `mapstructure:"capture-dir"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -42,6 +47,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("scout-config", DefaultScoutConfigPath, "path to scout config file")
 	fs.Duration("http-timeout", 30*time.Second, "HTTP timeout for outbound discovery requests")
 	fs.String("brave-api-key", "", "Brave Search API subscription token (enables KEYWORD_SEARCH via Brave)")
+	fs.String("capture-dir", "", "Dev-only: tee successful response bodies to <dir>/<host>/<path>.html for fixture capture")
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")

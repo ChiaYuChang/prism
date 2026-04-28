@@ -25,6 +25,11 @@ type Config struct {
 	// "s3://bucket/prefix" for S3. When empty, archiving on Minify failure is disabled.
 	Archive           string `mapstructure:"archive"`
 	ParsersConfigPath string `mapstructure:"parsers-config"`
+
+	// CaptureDir, when non-empty, tees successful HTTP response bodies into
+	// <dir>/<host>/<path>.html. Dev-only; used to build local fixtures during
+	// the integration test plan Phase 1 real-site run.
+	CaptureDir string `mapstructure:"capture-dir"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -43,6 +48,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Duration("max-processing-time", 2*time.Minute, "Maximum wall-clock time for handling a single message (ctx timeout passed to handler)")
 	fs.String("archive", "", "Archive URI for error payloads (file:///path or s3://bucket/prefix); empty disables archiving")
 	fs.String("parsers-config", "internal/collector/parser/config/parsers.yaml", "Path to the parsers configuration file (YAML)")
+	fs.String("capture-dir", "", "Dev-only: tee successful response bodies to <dir>/<host>/<path>.html for fixture capture")
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")

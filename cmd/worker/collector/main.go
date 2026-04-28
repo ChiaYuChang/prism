@@ -14,6 +14,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/collector/minifier"
 	parserconfig "github.com/ChiaYuChang/prism/internal/collector/parser/config"
 	"github.com/ChiaYuChang/prism/internal/collector/transformer"
+	"github.com/ChiaYuChang/prism/internal/dev"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
@@ -77,7 +78,7 @@ func main() {
 		}
 	}()
 
-	httpClient := &http.Client{Timeout: config.HTTPTimeout}
+	httpClient := dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger)
 	pageFetcher := fetcher.NewRetryFetcher(
 		fetcher.NewHTTPFetcher(httpClient), 3, time.Second,
 	)

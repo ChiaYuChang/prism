@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/ChiaYuChang/prism/internal/dev"
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	scoutconfig "github.com/ChiaYuChang/prism/internal/discovery/scout/config"
 	"github.com/ChiaYuChang/prism/internal/discovery/search/brave"
@@ -92,7 +93,7 @@ func main() {
 		scoutRepo,
 		logger,
 		tracer,
-		&http.Client{Timeout: config.HTTPTimeout})
+		dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger))
 	if err != nil {
 		logger.Error("failed to build scout registry", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to build scout registry")
@@ -106,7 +107,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	searchClients := buildSearchClients(config, &http.Client{Timeout: config.HTTPTimeout}, logger)
+	searchClients := buildSearchClients(config, dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger), logger)
 
 	handler, err := NewHandler(
 		logger,
