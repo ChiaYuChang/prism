@@ -143,8 +143,9 @@ func (h *Handler) process(ctx context.Context, logger *slog.Logger, sig message.
 		if stageErr, ok := errors.AsType[*collector.StageError](err); ok {
 			switch stageErr.Stage {
 			case collector.PipelineStageMinify:
-				h.saveOnMinifyError(ctx, sig, stageErr.Intermediate, stageErr.Err)
-				// TODO: Transform/Parse archive — blocked on recover.go dual-path support
+				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err, archiver.PayloadKindRaw, collector.PipelineStageMinify)
+			case collector.PipelineStageTransform, collector.PipelineStageParse:
+				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err, archiver.PayloadKindMinified, stageErr.Stage)
 			}
 		}
 		return fmt.Errorf("dispatch %s: %w", sig.URL, err)
@@ -246,23 +247,21 @@ func sourceTypeToContentType(sourceType string) string {
 	}
 }
 
-// saveOnMinifyError archives raw content when Minify fails so it can be
-// replayed later via LocalRecoverer. Non-fatal: logs a warning on failure.
-// The recover_key stored in meta is the task's TraceID; the caller uses it
-// to locate the archive file via LocalRecoverer.Fetch(ctx, traceID).
-func (h *Handler) saveOnMinifyError(ctx context.Context, sig message.TaskSignal, raw string, minifyErr error) {
+// saveErrorArchive archives intermediate content when a pipeline stage fails
+// so it can be replayed later via LocalRecoverer. Non-fatal: logs a warning on failure.
+func (h *Handler) saveErrorArchive(ctx context.Context, sig message.TaskSignal, payload string, err error, kind string, stage collector.PipelineStage) {
 	if h.errorSaver == nil {
 		return
 	}
 	archive := collector.Archive{
 		URL:       sig.URL,
-		Payload:   raw,
+		Payload:   payload,
 		TraceID:   sig.TraceID,
 		Timestamp: time.Now(),
 		Metadata: map[string]any{
-			"kind":         archiver.PayloadKindRaw,
-			"error":        minifyErr.Error(),
-			"recover_from": collector.PipelineStageMinify,
+			"kind":         kind,
+			"error":        err.Error(),
+			"recover_from": stage,
 			"recover_key":  sig.TraceID,
 			"source_abbr":  sig.SourceAbbr,
 			"source_type":  sig.SourceType,
@@ -270,9 +269,11 @@ func (h *Handler) saveOnMinifyError(ctx context.Context, sig message.TaskSignal,
 		},
 	}
 	if err := h.errorSaver.Save(ctx, archive); err != nil {
-		h.logger.WarnContext(ctx, "failed to archive raw content on minify error (content may be lost)",
+		h.logger.WarnContext(ctx, "failed to archive content on pipeline error (content may be lost)",
 			slog.String("url", sig.URL),
 			slog.String("trace_id", sig.TraceID),
+			slog.String("stage", string(stage)),
+			slog.String("kind", kind),
 			slog.Any("error", err),
 		)
 	}
