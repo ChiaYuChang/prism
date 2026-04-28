@@ -109,15 +109,15 @@ This checklist is for a repo-wide engineering review of Prism. The review should
 
 ## Phase 4: `internal/collector`
 
-- [ ] Review the collector pipeline against its intended invariant: Fetch -> Minify -> Transform -> Save/Parse.
-- [ ] Verify minify, transform, save, parse, archive, and recover responsibilities are separated cleanly.
-- [ ] Review error handling for fetch, minify, transform, parse, archive save, archive load, and database persistence.
-- [ ] Verify recovery behavior is idempotent and does not silently create duplicates or corrupt metadata.
-- [ ] Verify archive metadata is sufficient for replay, debugging, and provenance tracking.
-- [ ] Review parser registry and parser composition for extensibility and host-specific behavior safety.
-- [ ] Review fetchers for timeout handling, retry policy, HTTP safety, and cancellation behavior.
-- [ ] Review S3/local archiver behavior for data integrity, deletion semantics, and scan correctness.
-- [ ] Verify collector tests protect pipeline invariants and failure-path behavior.
+- [x] Review the collector pipeline against its intended invariant: Fetch -> Minify -> Transform -> Save/Parse.
+- [x] Verify minify, transform, save, parse, archive, and recover responsibilities are separated cleanly.
+- [x] Review error handling for fetch, minify, transform, parse, archive save, archive load, and database persistence.
+- [x] Verify recovery behavior is idempotent and does not silently create duplicates or corrupt metadata.
+- [x] Verify archive metadata is sufficient for replay, debugging, and provenance tracking.
+- [x] Review parser registry and parser composition for extensibility and host-specific behavior safety.
+- [x] Review fetchers for timeout handling, retry policy, HTTP safety, and cancellation behavior.
+- [x] Review S3/local archiver behavior for data integrity, deletion semantics, and scan correctness.
+- [x] Verify collector tests protect pipeline invariants and failure-path behavior.
 
 ## Phase 5: `cmd/*`, integration wiring, and operational composition
 
@@ -148,20 +148,27 @@ This checklist is for a repo-wide engineering review of Prism. The review should
 
 ---
 
-## Review Pass 1-3 Summary
+## Review Pass 1-4 Summary
 
 ### Findings
 1.  **pkg/errorcode**: `Error` struct implements `error` but lacks `Unwrap() []error`, limiting interoperability with `errors.Join`.
 2.  **internal/batch**: Refactored from `internal/trigger/batch`. Split into `Detector` and `Publisher` to support Lambda-ready architecture. Added bulk SQL detection to minimize DB load.
 3.  **internal/discovery**: Fixed a resource leak in `Backfiller.Run` where `defer cancel()` was called inside a loop.
 4.  **internal/repo/pg**: Centralized all hardcoded SQL into SQLC templates. Added `FindNewlyCompletedBatches` for optimized detection.
+5.  **internal/collector**: `Dispatcher` and `Handler` have duplicate logic. `Handler` re-implements the F-M-T-P pipeline instead of using `Dispatcher`.
+6.  **internal/collector/fetcher**: `RetryAfterHandler` uses `time.Sleep`, blocking the goroutine and ignoring context cancellation.
+7.  **Collector Archive Gap**: Minified content is only archived if the entire pipeline (including DB persistence) succeeds. If `Parse` fails, the "archive point" content is lost, preventing parser replay.
 
 ### Design Notes
 *   **Lambda-Ready Evolution**: The move from long-running Trigger Workers to discrete `Detector`/`Publisher` components allows for seamless transition to AWS Lambda/EventBridge.
 *   **Bulk Detection Pattern**: Using optimized SQL to detect batch completion is significantly more efficient than N+1 Go-level checks.
 *   **Scout Registry**: The hostname-based routing in `Scout Registry` provides a clean and extensible plugin architecture for new sources.
+*   **Archive Point Stability**: The `Minifier` output is the intended stable replay point. The architecture should guarantee this is saved even if downstream components (`Parser`, `DB`) fail.
 
 ### Action Items
 *   [ ] Implement `Unwrap() []error` in `pkg/errorcode/error.go`.
 *   [ ] Update `pkg/logger/logger.go` comments to remove outdated `utils.SecretMask` references.
 *   [ ] Consider moving `pkg/rss/yahoo.go` to `internal/discovery/scout/custom/yahoo` (Logic already partially moved during Phase 3).
+*   [ ] Refactor `internal/collector.Dispatcher` to handle both `errorSaver` and `successSaver` to guarantee archiving at the stable "archive point".
+*   [ ] Replace `cmd/worker/collector/handler.go` custom pipeline with a call to `internal/collector.Dispatcher`.
+*   [ ] Fix `fetcher.RetryAfterHandler` to honor `context.Context` during backoff.
