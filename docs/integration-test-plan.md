@@ -4,38 +4,44 @@ Goal: verify the existing microservices (scheduler, discovery worker, collector 
 
 ## Phase 0 — Pre-work (~30–45 min, code changes)
 
-- [ ] **Confirm discovery → collector message wiring**
-  - Verify which topic discovery publishes `page_fetch` task signals to, which topic collector subscribes to, and that the signal struct (`TaskSignal` with `kind=PAGE_FETCH`) matches on both ends.
-  - Read targets: `cmd/worker/discovery/handler.go`, `cmd/worker/collector/main.go:122`, `internal/message/*`.
+- [x] **Confirmed discovery → collector message wiring**
+  - PAGE_FETCH does **not** travel on a dedicated topic. The discovery candidate sink writes a PAGE_FETCH row into the `tasks` table; the scheduler claims it like any other task and publishes `TaskSignal{Kind=PAGE_FETCH}` to `prism.task`. Collector subscribes to `prism.task` and filters by `Kind`. Routing through the tasks table gives PAGE_FETCH the same retry / rate-limit / observability handling as every other task class.
+  - The unused `PageFetchTopic` / `PageFetchSignal` / `WatermillPageFetchPublisher` infra in `internal/message/page_fetch.go` was removed; CLAUDE.md updated to match.
 
-- [ ] **Add `CaptureTransport` to fetcher**
-  - New file `internal/collector/fetcher/capture.go`, ~30 lines.
-  - Wraps any `http.RoundTripper`; tees successful response bodies to `<dir>/<host>/<path>.html`.
-  - Opt-in via `--capture-dir` flag on discovery and collector.
+- [x] **`CaptureTransport` lives in `internal/dev/capture.go`** (not `internal/collector/fetcher/`)
+  - Dev-only `http.RoundTripper` that tees successful response bodies to `<dir>/<host>/<path>.html`. Filename rules: trailing-slash / empty paths → `index.html`; non-`.html` paths get `.html` appended; query strings encode as `__<sanitized>` before the extension.
+  - Wired into both workers via `--capture-dir` flag and `dev.WrapClient(...)`.
+  - Placement decision: shared dev shim across discovery + collector + future `FailingMinifier` (Phase 3); `internal/dev/` clearly signals "non-production" without coupling discovery to the collector domain.
 
 - [~] **`--max-directory-pages` cap — not needed by design**
   - Daily scouts intentionally fetch a single index page per run; one DIRECTORY_FETCH task = one URL = one page. Pagination is only implemented in the backfiller (where it already has `MaxPages`).
   - Design rationale: ~10 press releases/day per source is the expected upper bound. Sources that publish more frequently should be handled by raising scout cadence (multiple DIRECTORY_FETCH tasks per day) rather than adding a daily-mode pager — pagination introduces ordering / dedup / "where to stop" complexity that scheduling solves for free.
   - Phase 1 implication: to broaden the fixture corpus, seed DIRECTORY_FETCH tasks for *multiple sources*, not multiple pages of one source.
 
-- [ ] **Seed SQL for one DIRECTORY_FETCH task**
-  - Target `source_abbr='dpp'`, `runnable_at=NOW()`, state `pending`.
-  - Include all NOT NULL columns required by the `tasks` schema.
+- [x] **Seed SQL for DIRECTORY_FETCH tasks** — `testdata/seed-tasks.sql`
+  - Three PARTY sources (dpp, tpp, kmt) seeded with index-page URLs from `internal/discovery/backfiller/config/backfillers.yaml`.
+  - Apply with `psql "$PRISM_DSN" -f testdata/seed-tasks.sql` after migrations.
 
 ## Phase 1 — One-shot real-site run (~10 min, only time we touch real sites)
 
-- [ ] `task compose:up` — infra up (postgres, nats, seaweedfs)
-- [ ] `task migrate:up` — migrations (sources/candidates/contents/tasks tables)
-- [ ] Apply seed SQL from Phase 0
-- [ ] Start scheduler + discovery + collector in three terminals
-  - Discovery: `--capture-dir=testdata/fixtures`
-  - Collector: `--capture-dir=testdata/fixtures --archive=file://./tmp/archives`
-- [ ] Target roughly 1 directory page × ~10 articles per source; seed 3–4 source tasks to reach ~30 articles in the fixture set
+The flow is driven by Taskfile so a single terminal can orchestrate the run.
+`MODE=e2e` namespacing isolates the e2e stack from the daily `dev` stack
+(separate `prism-e2e_*` volumes / networks via `COMPOSE_PROJECT_NAME`), and
+workers run detached so the operator just tails logs instead of juggling
+three terminals.
+
+- [ ] `task test:e2e:setup` — bring up isolated e2e stack + migrate + seed DIRECTORY_FETCH tasks
+- [ ] `task worker:start` — launch scheduler + discovery + collector in background
+  - PIDs are written to `.task/<name>.pid`, logs to `logs/<name>.log`
+  - Discovery + collector both start with `--capture-dir=testdata/fixtures`; collector also archives to `file://./tmp/archives`
+- [ ] `tail -f logs/*.log` — watch ~30 articles flow through (3 PARTY sources × ~10 each)
 - [ ] Verify after run:
-  - `candidates` table has ~30 rows, `source_abbr='dpp'`, `source_type='PARTY'`
+  - `candidates` table has ~30 rows across `source_abbr in ('dpp','tpp','kmt')`, `source_type='PARTY'`
   - `contents` table has ~30 rows with article title/body
-  - `testdata/fixtures/www.dpp.org.tw/...` holds the captured HTML files
+  - `testdata/fixtures/<host>/...` holds the captured HTML files
   - `./tmp/archives/` has the minified archives (normal success path)
+- [ ] `task worker:stop` — kill the background workers via the `.task/*.pid` files
+- [ ] `task test:e2e:teardown` — drop the e2e stack including volumes (subsequent runs start clean, so seed SQL stays non-idempotent on purpose)
 
 ## Phase 2 — Local replay mode (fixture server)
 

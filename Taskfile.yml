@@ -14,11 +14,23 @@ vars:
   POSTGRES_URL: "postgres://{{.POSTGRES_ADMIN_USER}}:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{.POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
 
   COMPOSE_SOURCES: >-
-    -f {{.DEPLOY_DIR}}/docker-compose.yaml 
-    -f {{.DEPLOY_DIR}}/docker-compose.dev.yaml 
-    -f {{.DEPLOY_DIR}}/docker-compose.obs.yaml 
+    -f {{.DEPLOY_DIR}}/docker-compose.yaml
+    -f {{.DEPLOY_DIR}}/docker-compose.dev.yaml
+    -f {{.DEPLOY_DIR}}/docker-compose.obs.yaml
     -f {{.DEPLOY_DIR}}/docker-compose.ai.yaml
   COMPOSE_MERGED: .docker-compose.merged.yaml
+
+  # Stack mode and project namespacing.
+  # NAME-MODE drives docker compose's COMPOSE_PROJECT_NAME so dev / e2e / prod
+  # stacks get isolated containers, networks, and volumes.
+  # .task/mode is a lockfile recording the currently-up stack's MODE so
+  # compose:down/clean can target the right project even after the user
+  # leaves the terminal that did compose:up.
+  NAME: prism
+  MODE: '{{.MODE | default "dev"}}'
+  PROJECT: '{{.NAME}}-{{.MODE}}'
+  TASK_DIR: .task
+  MODE_FILE: '{{.TASK_DIR}}/mode'
 
 tasks:
   default:
@@ -53,24 +65,54 @@ tasks:
       - .docker-compose.merged.yaml
 
   compose:up:
-    desc: start all services
+    desc: start all services (project = {NAME}-{MODE}; refuses if .task/mode exists)
     deps: [compose:bake]
+    preconditions:
+      - sh: |
+          if [ -f {{.MODE_FILE}} ]; then
+            echo "stack '$(cat {{.MODE_FILE}})' is already up; run 'task compose:down' first" >&2
+            exit 1
+          fi
+    env:
+      COMPOSE_PROJECT_NAME: '{{.PROJECT}}'
     cmds:
+      - mkdir -p {{.TASK_DIR}}
       - docker compose -f {{.COMPOSE_MERGED}} up -d
+      - 'echo {{.MODE}} > {{.MODE_FILE}}'
 
   compose:down:
-    desc: stop and remove all services
+    desc: stop and remove all services (honors .task/mode if present)
+    vars:
+      EFFECTIVE_MODE:
+        sh: 'cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}'
+      EFFECTIVE_PROJECT: '{{.NAME}}-{{.EFFECTIVE_MODE}}'
+    env:
+      COMPOSE_PROJECT_NAME: '{{.EFFECTIVE_PROJECT}}'
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down
+      - rm -f {{.MODE_FILE}}
 
   compose:clean:
-    desc: stop and remove all services and volumes
+    desc: stop and remove all services + volumes (honors .task/mode if present)
+    vars:
+      EFFECTIVE_MODE:
+        sh: 'cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}'
+      EFFECTIVE_PROJECT: '{{.NAME}}-{{.EFFECTIVE_MODE}}'
+    env:
+      COMPOSE_PROJECT_NAME: '{{.EFFECTIVE_PROJECT}}'
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down -v --remove-orphans
+      - rm -f {{.MODE_FILE}}
 
   compose:logs:
     desc: list all service logs
     deps: [compose:bake]
+    vars:
+      EFFECTIVE_MODE:
+        sh: 'cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}'
+      EFFECTIVE_PROJECT: '{{.NAME}}-{{.EFFECTIVE_MODE}}'
+    env:
+      COMPOSE_PROJECT_NAME: '{{.EFFECTIVE_PROJECT}}'
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f
 
@@ -216,6 +258,10 @@ tasks:
     cmds:
       - go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/main.go
 
+  build:collector:
+    cmds:
+      - go build -o {{.BUILD_DIR}}/collector ./{{.CMD_DIR}}/worker/collector
+
   build:pipeline:
     cmds:
       - go build -o {{.BUILD_DIR}}/pipeline ./{{.CMD_DIR}}/pipeline-worker/main.go
@@ -227,6 +273,112 @@ tasks:
   build:batch-publisher:
     cmds:
       - go build -o {{.BUILD_DIR}}/batch/publisher ./{{.CMD_DIR}}/batch/publisher/*.go
+
+  # ----------------------------------------------------------------------------
+  # E2E Integration Test (localhost only — see preconditions)
+  # See docs/integration-test-plan.md.
+  # MODE=e2e isolates this stack from the daily 'dev' stack via
+  # COMPOSE_PROJECT_NAME=prism-e2e (separate volumes / networks).
+  # ----------------------------------------------------------------------------
+  test:e2e:setup:
+    desc: bring up a fresh e2e stack and seed DIRECTORY_FETCH tasks
+    vars:
+      MODE: e2e
+      PROJECT: '{{.NAME}}-{{.MODE}}'
+    preconditions:
+      - sh: 'test "{{.POSTGRES_HOST}}" = "localhost" -o "{{.POSTGRES_HOST}}" = "127.0.0.1"'
+        msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}; e2e never targets production"
+    cmds:
+      - task: compose:up
+        vars: { MODE: '{{.MODE}}', PROJECT: '{{.PROJECT}}' }
+      - task: migrate:up
+      - task: test:e2e:seed
+
+  test:e2e:seed:
+    desc: insert DIRECTORY_FETCH tasks for dpp / tpp / kmt (testdata/seed-tasks.sql)
+    preconditions:
+      - sh: 'test "{{.POSTGRES_HOST}}" = "localhost" -o "{{.POSTGRES_HOST}}" = "127.0.0.1"'
+        msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}"
+    cmds:
+      - psql "{{.POSTGRES_URL}}" -f testdata/seed-tasks.sql
+
+  test:e2e:teardown:
+    desc: tear down e2e stack including volumes (drops the seeded data)
+    vars:
+      MODE: e2e
+      PROJECT: '{{.NAME}}-{{.MODE}}'
+    preconditions:
+      - sh: 'test "{{.POSTGRES_HOST}}" = "localhost" -o "{{.POSTGRES_HOST}}" = "127.0.0.1"'
+        msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}"
+    cmds:
+      - task: compose:clean
+        vars: { MODE: '{{.MODE}}', PROJECT: '{{.PROJECT}}' }
+
+  # ----------------------------------------------------------------------------
+  # Worker Lifecycle (background processes; PIDs in .task/<name>.pid,
+  # logs in logs/<name>.log). Replaces "open three terminals manually"
+  # for the integration test plan Phase 1 — the workers run detached so
+  # one terminal can drive the whole flow and `tail logs/*.log` for
+  # observation.
+  # ----------------------------------------------------------------------------
+  worker:start:
+    desc: start scheduler + discovery + collector in background
+    preconditions:
+      - sh: 'test "{{.POSTGRES_HOST}}" = "localhost" -o "{{.POSTGRES_HOST}}" = "127.0.0.1"'
+        msg: "refusing non-localhost POSTGRES_HOST"
+      - sh: 'ls {{.TASK_DIR}}/*.pid >/dev/null 2>&1 && exit 1 || exit 0'
+        msg: "workers already running ({{.TASK_DIR}}/*.pid). Run 'task worker:stop' first."
+    deps: [build:scheduler, build:discovery, build:collector]
+    cmds:
+      - mkdir -p {{.TASK_DIR}} logs tmp/archives testdata/fixtures
+      - |
+        ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}" \
+          > logs/scheduler.log 2>&1 &
+        echo $! > {{.TASK_DIR}}/scheduler.pid
+      - |
+        ./{{.BUILD_DIR}}/discovery --messenger-type nats \
+          --capture-dir testdata/fixtures \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          > logs/discovery.log 2>&1 &
+        echo $! > {{.TASK_DIR}}/discovery.pid
+      - |
+        ./{{.BUILD_DIR}}/collector --messenger-type nats \
+          --capture-dir testdata/fixtures \
+          --archive "file://$(pwd)/tmp/archives" \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          > logs/collector.log 2>&1 &
+        echo $! > {{.TASK_DIR}}/collector.pid
+      - |
+        sleep 1
+        for f in {{.TASK_DIR}}/*.pid; do
+          name=$(basename "$f" .pid)
+          echo "started $name (pid=$(cat "$f"))"
+        done
+        echo "tail logs with: tail -f logs/*.log"
+
+  worker:stop:
+    desc: stop background workers started by worker:start
+    cmds:
+      - |
+        for f in {{.TASK_DIR}}/*.pid; do
+          [ -f "$f" ] || continue
+          pid=$(cat "$f")
+          name=$(basename "$f" .pid)
+          if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" && echo "stopped $name (pid=$pid)"
+          else
+            echo "$name (pid=$pid) already gone"
+          fi
+          rm -f "$f"
+        done
 
   # ----------------------------------------------------------------------------
   # Run Services (Local Development)
