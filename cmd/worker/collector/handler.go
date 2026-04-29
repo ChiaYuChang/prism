@@ -249,7 +249,7 @@ func sourceTypeToContentType(sourceType string) string {
 
 // saveErrorArchive archives intermediate content when a pipeline stage fails
 // so it can be replayed later via LocalRecoverer. Non-fatal: logs a warning on failure.
-func (h *Handler) saveErrorArchive(ctx context.Context, sig message.TaskSignal, payload string, err error, kind string, stage collector.PipelineStage) {
+func (h *Handler) saveErrorArchive(ctx context.Context, sig message.TaskSignal, payload string, err error, kind archiver.PayloadKind, stage collector.PipelineStage) {
 	if h.errorSaver == nil {
 		return
 	}
@@ -259,7 +259,7 @@ func (h *Handler) saveErrorArchive(ctx context.Context, sig message.TaskSignal, 
 		TraceID:   sig.TraceID,
 		Timestamp: time.Now(),
 		Metadata: map[string]any{
-			"kind":         kind,
+			"kind":         string(kind),
 			"error":        err.Error(),
 			"recover_from": stage,
 			"recover_key":  sig.TraceID,
@@ -273,7 +273,7 @@ func (h *Handler) saveErrorArchive(ctx context.Context, sig message.TaskSignal, 
 			slog.String("url", sig.URL),
 			slog.String("trace_id", sig.TraceID),
 			slog.String("stage", string(stage)),
-			slog.String("kind", kind),
+			slog.String("kind", string(kind)),
 			slog.Any("error", err),
 		)
 	}
