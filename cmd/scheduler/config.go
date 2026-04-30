@@ -13,7 +13,7 @@ import (
 
 // Config holds the scheduler's runtime configuration.
 type Config struct {
-	Interval      time.Duration       `mapstructure:"interval"       validate:"required,min=1m"`
+	Interval      time.Duration       `mapstructure:"interval"       validate:"required,min=1s"`
 	HealthPort    int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
 	Valkey        app.ValkeyConfig    `mapstructure:"valkey"`
 	Logger        app.LoggerConfig    `mapstructure:"logger"`
@@ -54,8 +54,8 @@ func LoadConfig(args []string) (*Config, error) {
 	// Add config file flag
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 
-	fs.Duration("interval", 10*time.Minute, "The ticker interval for the scheduler (min: 1m, default: 10m)")
-	fs.Int("health-port", 8080, "The port for the health check server (default: 8080)")
+	fs.Duration("interval", 10*time.Minute, "The ticker interval for the scheduler (min: 1s, default: 10m)")
+	fs.Int("health-port", 8090, "The port for the health check server (default: 8090)")
 	fs.String("valkey-host", "localhost", "The host of the Valkey/Redis instance")
 	fs.Int("valkey-port", 6379, "The port of the Valkey/Redis instance")
 	fs.String("valkey-username", "", "The username for the Valkey/Redis instance")
@@ -70,7 +70,9 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("pg-db", "prism", "Postgres database name")
 	fs.String("pg-sslmode", "disable", "Postgres SSL mode (disable, require, etc.)")
 
-	fs.String("nats-url", "nats://localhost:4222", "The URL for the NATS server (default: nats://localhost:4222)")
+	fs.String("nats-host", "localhost", "The NATS server host")
+	fs.Int("nats-port", 4222, "The NATS server port")
+	fs.String("nats-token", "", "The NATS server auth token")
 	fs.String("queue-group", "", "Queue group for NATS subscribers (unused by scheduler publisher)")
 	fs.Int("subscribers-count", 1, "Subscriber count for NATS consumers (unused by scheduler publisher)")
 	fs.Duration("ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscribers (unused by scheduler publisher)")

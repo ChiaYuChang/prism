@@ -27,9 +27,15 @@ type Config struct {
 	BraveAPIKey string `mapstructure:"brave-api-key"`
 
 	// CaptureDir, when non-empty, tees successful HTTP response bodies into
-	// <dir>/<host>/<path>.html. Dev-only; used to build local fixtures during
+	// <dir>/<host>/<path>. Dev-only; used to build local fixtures during
 	// the integration test plan Phase 1 real-site run.
 	CaptureDir string `mapstructure:"capture-dir"`
+
+	// FixtureBase, when non-empty, rewrites outbound HTTP requests to the
+	// fixture-server at this URL (e.g. http://localhost:9999) so the worker
+	// runs against captured fixtures without touching real sites. Mutually
+	// exclusive with CaptureDir; integration test plan Phase 2.
+	FixtureBase string `mapstructure:"fixture-base"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -40,14 +46,15 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs := pflag.NewFlagSet("worker-discovery", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
-	fs.Int("health-port", 8081, "The port for the health check server")
+	fs.Int("health-port", 8092, "The port for the health check server")
 	fs.String("log-path", "", "The file path for logs (empty for stdout)")
 	fs.String("log-level", "info", "The log level (debug, info, warn, error)")
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
 	fs.String("scout-config", DefaultScoutConfigPath, "path to scout config file")
 	fs.Duration("http-timeout", 30*time.Second, "HTTP timeout for outbound discovery requests")
 	fs.String("brave-api-key", "", "Brave Search API subscription token (enables KEYWORD_SEARCH via Brave)")
-	fs.String("capture-dir", "", "Dev-only: tee successful response bodies to <dir>/<host>/<path>.html for fixture capture")
+	fs.String("capture-dir", "", "Dev-only: tee successful response bodies to <dir>/<host>/<path> for fixture capture")
+	fs.String("fixture-base", "", "Dev-only: rewrite outbound requests to this fixture-server URL (mutually exclusive with --capture-dir)")
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -56,7 +63,9 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("pg-db", "prism", "Postgres database name")
 	fs.String("pg-sslmode", "disable", "Postgres SSL mode")
 
-	fs.String("nats-url", "nats://localhost:4222", "The URL for the NATS server")
+	fs.String("nats-host", "localhost", "The NATS server host")
+	fs.Int("nats-port", 4222, "The NATS server port")
+	fs.String("nats-token", "", "The NATS server auth token")
 	fs.String("queue-group", "discovery-worker", "Queue group for worker subscriptions")
 	fs.Int("subscribers-count", 1, "How many subscriber goroutines to run")
 	fs.Duration("ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscriber")
@@ -111,6 +120,10 @@ func LoadConfig(args []string) (*Config, error) {
 			goChannelCfg.ChannelBuffer = 100
 		}
 		config.Messenger = &goChannelCfg
+	}
+
+	if config.CaptureDir != "" && config.FixtureBase != "" {
+		return nil, fmt.Errorf("--capture-dir and --fixture-base are mutually exclusive")
 	}
 
 	validate := validator.New()

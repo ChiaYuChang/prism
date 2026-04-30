@@ -1,7 +1,12 @@
 version: "3"
 
 # 自動載入環境變數
-dotenv: [".env"]
+dotenv: [ ".env" ]
+
+env:
+  POSTGRES_DATABASE: "{{.POSTGRES_APP_DB}}"
+  POSTGRES_USER: "{{.POSTGRES_APP_USER}}"
+  POSTGRES_PASSWORD: "$(cat {{.POSTGRES_APP_PASSWORD_FILE}})"
 
 vars:
   DEPLOY_DIR: deployments
@@ -11,13 +16,20 @@ vars:
 
   POSTGRES_APP_PASSWORD: "$(cat {{.POSTGRES_APP_PASSWORD_FILE}})"
   POSTGRES_ADMIN_PASSWORD: "$(cat {{.POSTGRES_ADMIN_PASSWORD_FILE}})"
-  POSTGRES_URL: "postgres://{{.POSTGRES_ADMIN_USER}}:{{.POSTGRES_ADMIN_PASSWORD}}@localhost:{{.POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
+  POSTGRES_HOST: "localhost"
+  POSTGRES_URL: "postgres://{{.POSTGRES_ADMIN_USER}}:{{.POSTGRES_ADMIN_PASSWORD}}\
+    @{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
+  POSTGRES_DATABASE: "{{.POSTGRES_APP_DB}}"
+
+  NATS_HOST: "localhost"
+  NATS_CLIENT_PORT: 4222
+  NATS_AUTH_TOKEN: "$(cat {{.NATS_AUTH_TOKEN_FILE}})"
 
   COMPOSE_SOURCES: >-
-    -f {{.DEPLOY_DIR}}/docker-compose.yaml
-    -f {{.DEPLOY_DIR}}/docker-compose.dev.yaml
-    -f {{.DEPLOY_DIR}}/docker-compose.obs.yaml
-    -f {{.DEPLOY_DIR}}/docker-compose.ai.yaml
+    -f {{.DEPLOY_DIR}}/docker-compose.yaml -f
+    {{.DEPLOY_DIR}}/docker-compose.dev.yaml -f
+    {{.DEPLOY_DIR}}/docker-compose.obs.yaml -f
+    {{.DEPLOY_DIR}}/docker-compose.ai.yaml
   COMPOSE_MERGED: .docker-compose.merged.yaml
 
   # Stack mode and project namespacing.
@@ -27,10 +39,10 @@ vars:
   # compose:down/clean can target the right project even after the user
   # leaves the terminal that did compose:up.
   NAME: prism
-  MODE: '{{.MODE | default "dev"}}'
-  PROJECT: '{{.NAME}}-{{.MODE}}'
+  MODE: "{{.MODE | default \"dev\"}}"
+  PROJECT: "{{.NAME}}-{{.MODE}}"
   TASK_DIR: .task
-  MODE_FILE: '{{.TASK_DIR}}/mode'
+  MODE_FILE: "{{.TASK_DIR}}/mode"
 
 tasks:
   default:
@@ -49,12 +61,14 @@ tasks:
       - claude --resume {{.CLAUDE_SESSION_ID}}
   gemini:
     cmds:
-      - gemini --resume {{.GEMINI_SESSION_ID}}
+      - gemini
 
   # ----------------------------------------------------------------------------
   # Service Management (Docker Compose)
   # ----------------------------------------------------------------------------
   compose:bake:
+    env:
+      COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
     desc: combine all docker-compose files into one
     cmds:
       - docker compose {{.COMPOSE_SOURCES}} config > {{.COMPOSE_MERGED}}
@@ -66,7 +80,7 @@ tasks:
 
   compose:up:
     desc: start all services (project = {NAME}-{MODE}; refuses if .task/mode exists)
-    deps: [compose:bake]
+    deps: [ compose:bake ]
     preconditions:
       - sh: |
           if [ -f {{.MODE_FILE}} ]; then
@@ -74,20 +88,43 @@ tasks:
             exit 1
           fi
     env:
-      COMPOSE_PROJECT_NAME: '{{.PROJECT}}'
+      COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
     cmds:
       - mkdir -p {{.TASK_DIR}}
       - docker compose -f {{.COMPOSE_MERGED}} up -d
-      - 'echo {{.MODE}} > {{.MODE_FILE}}'
+      - "echo {{.MODE}} > {{.MODE_FILE}}"
+      - task: compose:wait
+
+  compose:wait:
+    desc: wait for core services to become healthy
+    deps: [ compose:bake ]
+    vars:
+      TIMEOUT: "{{.TIMEOUT | default 30}}"
+      EFFECTIVE_MODE:
+        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
+    env:
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+    cmds:
+      - |
+        for svc in postgres nats valkey seaweedfs; do
+          CID=$(docker compose -f {{.COMPOSE_MERGED}} ps -q $svc)
+          if [ -n "$CID" ]; then
+            bash ./script/wait_for_healthy.sh "$CID" {{.TIMEOUT}}
+          else
+            echo "Service $svc is not running (or not defined)."
+            exit 1
+          fi
+        done
 
   compose:down:
     desc: stop and remove all services (honors .task/mode if present)
     vars:
       EFFECTIVE_MODE:
-        sh: 'cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}'
-      EFFECTIVE_PROJECT: '{{.NAME}}-{{.EFFECTIVE_MODE}}'
+        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
-      COMPOSE_PROJECT_NAME: '{{.EFFECTIVE_PROJECT}}'
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down
       - rm -f {{.MODE_FILE}}
@@ -96,23 +133,23 @@ tasks:
     desc: stop and remove all services + volumes (honors .task/mode if present)
     vars:
       EFFECTIVE_MODE:
-        sh: 'cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}'
-      EFFECTIVE_PROJECT: '{{.NAME}}-{{.EFFECTIVE_MODE}}'
+        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
-      COMPOSE_PROJECT_NAME: '{{.EFFECTIVE_PROJECT}}'
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down -v --remove-orphans
       - rm -f {{.MODE_FILE}}
 
   compose:logs:
     desc: list all service logs
-    deps: [compose:bake]
+    deps: [ compose:bake ]
     vars:
       EFFECTIVE_MODE:
-        sh: 'cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}'
-      EFFECTIVE_PROJECT: '{{.NAME}}-{{.EFFECTIVE_MODE}}'
+        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
-      COMPOSE_PROJECT_NAME: '{{.EFFECTIVE_PROJECT}}'
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f
 
@@ -121,7 +158,7 @@ tasks:
   # ----------------------------------------------------------------------------
   init:
     desc: initialize development environment
-    deps: [tidy, gen]
+    deps: [ tidy, gen ]
     cmds:
       - echo "Development environment initialized"
 
@@ -129,7 +166,9 @@ tasks:
     desc: Dump the database to a file
     cmds:
       - pg_dump "{{.POSTGRES_URL}}" -f {{.DB_DIR}}/schema.sql --schema-only
-      - grep -v '\\unrestrict ' {{.DB_DIR}}/schema.sql | grep -v '\\restrict' > {{.DB_DIR}}/schema.sql.tmp && mv {{.DB_DIR}}/schema.sql.tmp {{.DB_DIR}}/schema.sql
+      - grep -v '\\unrestrict ' {{.DB_DIR}}/schema.sql | grep -v '\\restrict' >
+        {{.DB_DIR}}/schema.sql.tmp && mv {{.DB_DIR}}/schema.sql.tmp
+        {{.DB_DIR}}/schema.sql
 
   gen:
     desc: generate code
@@ -183,15 +222,17 @@ tasks:
     vars:
       VERSION: "{{.VERSION}}"
     cmds:
-      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" force {{.VERSION}}
+      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" force
+        {{.VERSION}}
 
   migrate:create:
     desc: create new migration file (NAME=xxx)
     cmds:
       - migrate create -ext sql -dir {{.DB_DIR}}/migrations -seq {{.NAME}}
     preconditions:
-      - sh: 'test -n "{{.NAME}}"'
-        msg: "Please provide a name for the migration file, e.g. task migrate:create NAME=add_users_table"
+      - sh: "test -n \"{{.NAME}}\""
+        msg: "Please provide a name for the migration file, e.g. task migrate:create
+          NAME=add_users_table"
 
   # ----------------------------------------------------------------------------
   # Build & Test
@@ -204,43 +245,42 @@ tasks:
   test:scheduler:
     desc: run scheduler in test mode (gochannel)
     cmds:
-      - go run ./cmd/scheduler --messenger-type gochannel --interval 1m --host {{.POSTGRES_HOST}} --port {{.POSTGRES_PORT}} --user {{.POSTGRES_APP_USER}} --password "{{.POSTGRES_APP_PASSWORD}}" --db {{.POSTGRES_APP_DB}}
+      - go run ./cmd/scheduler --messenger-type gochannel --interval 1m --host
+        {{.POSTGRES_HOST}} --port {{.POSTGRES_PORT}} --user
+        {{.POSTGRES_APP_USER}} --password "{{.POSTGRES_APP_PASSWORD}}" --db
+        {{.POSTGRES_APP_DB}}
 
   test:scheduler-fast:
     desc: run scheduler-fast in test mode (PAGE_FETCH, 3s interval, MEDIA priority)
     cmds:
-      - go run ./cmd/scheduler
-        --messenger-type gochannel
-        --kinds PAGE_FETCH
-        --lock-key prism:scheduler:PAGE_FETCH:lock
-        --interval 3s
-        --media-quota 30
-        --buffer 10
-        --rate-limit-config assets/ratelimits/scheduler.yaml
-        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}}
-        --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
-        --pg-db {{.POSTGRES_APP_DB}}
-        --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}"
+      - go run ./cmd/scheduler --messenger-type gochannel --kinds PAGE_FETCH
+        --lock-key prism:scheduler:PAGE_FETCH:lock --interval 3s --media-quota
+        30 --buffer 10 --rate-limit-config assets/ratelimits/scheduler.yaml
+        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
+        {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
+        --pg-db {{.POSTGRES_APP_DB}} --valkey-username {{.VALKEY_APP_USER}}
+        --valkey-password "{{.VALKEY_APP_PASSWORD}}"
 
   test:scheduler-slow:
-    desc: run scheduler-slow in test mode (DIRECTORY_FETCH+KEYWORD_SEARCH, 60s interval)
+    desc: run scheduler-slow in test mode (DIRECTORY_FETCH+KEYWORD_SEARCH, 60s
+      interval)
     cmds:
-      - go run ./cmd/scheduler
-        --messenger-type gochannel
-        --kinds DIRECTORY_FETCH,KEYWORD_SEARCH
-        --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock
-        --interval 60s
-        --buffer 10
-        --rate-limit-config assets/ratelimits/scheduler.yaml
-        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}}
-        --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
-        --pg-db {{.POSTGRES_APP_DB}}
-        --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}"
+      - go run ./cmd/scheduler --messenger-type gochannel --kinds
+        DIRECTORY_FETCH,KEYWORD_SEARCH --lock-key
+        prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock --interval 60s
+        --buffer 10 --rate-limit-config assets/ratelimits/scheduler.yaml
+        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
+        {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
+        --pg-db {{.POSTGRES_APP_DB}} --valkey-username {{.VALKEY_APP_USER}}
+        --valkey-password "{{.VALKEY_APP_PASSWORD}}"
 
   test:discovery:
     desc: run discovery worker in test mode (gochannel)
     cmds:
-      - go run ./cmd/worker/discovery --messenger-type gochannel --host {{.POSTGRES_HOST}} --port {{.POSTGRES_PORT}} --user {{.POSTGRES_APP_USER}} --password "{{.POSTGRES_APP_PASSWORD}}" --db {{.POSTGRES_APP_DB}}
+      - go run ./cmd/worker/discovery --messenger-type gochannel --host
+        {{.POSTGRES_HOST}} --port {{.POSTGRES_PORT}} --user
+        {{.POSTGRES_APP_USER}} --password "{{.POSTGRES_APP_PASSWORD}}" --db
+        {{.POSTGRES_APP_DB}}
 
   build:all:
     desc: build all microservice binaries
@@ -252,11 +292,11 @@ tasks:
       - task: build:batch-publisher
 
   build:scheduler:
-    cmds: ["go build -o {{.BUILD_DIR}}/scheduler ./{{.CMD_DIR}}/scheduler/*.go"]
+    cmds: [ "go build -o {{.BUILD_DIR}}/scheduler ./{{.CMD_DIR}}/scheduler/*.go" ]
 
   build:discovery:
     cmds:
-      - go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/main.go
+      - go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/*.go
 
   build:collector:
     cmds:
@@ -264,15 +304,18 @@ tasks:
 
   build:pipeline:
     cmds:
-      - go build -o {{.BUILD_DIR}}/pipeline ./{{.CMD_DIR}}/pipeline-worker/main.go
+      - go build -o {{.BUILD_DIR}}/pipeline
+        ./{{.CMD_DIR}}/pipeline-worker/main.go
 
   build:batch-detector:
     cmds:
-      - go build -o {{.BUILD_DIR}}/batch/detector ./{{.CMD_DIR}}/batch/detector/*.go
+      - go build -o {{.BUILD_DIR}}/batch/detector
+        ./{{.CMD_DIR}}/batch/detector/*.go
 
   build:batch-publisher:
     cmds:
-      - go build -o {{.BUILD_DIR}}/batch/publisher ./{{.CMD_DIR}}/batch/publisher/*.go
+      - go build -o {{.BUILD_DIR}}/batch/publisher
+        ./{{.CMD_DIR}}/batch/publisher/*.go
 
   # ----------------------------------------------------------------------------
   # E2E Integration Test (localhost only — see preconditions)
@@ -284,20 +327,25 @@ tasks:
     desc: bring up a fresh e2e stack and seed DIRECTORY_FETCH tasks
     vars:
       MODE: e2e
-      PROJECT: '{{.NAME}}-{{.MODE}}'
+      PROJECT: "{{.NAME}}-{{.MODE}}"
     preconditions:
-      - sh: 'test "{{.POSTGRES_HOST}}" = "localhost" -o "{{.POSTGRES_HOST}}" = "127.0.0.1"'
-        msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}; e2e never targets production"
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" =
+          \"127.0.0.1\""
+        msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}; e2e never targets
+          production"
     cmds:
+      - task: compose:bake
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
       - task: compose:up
-        vars: { MODE: '{{.MODE}}', PROJECT: '{{.PROJECT}}' }
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
       - task: migrate:up
       - task: test:e2e:seed
 
   test:e2e:seed:
     desc: insert DIRECTORY_FETCH tasks for dpp / tpp / kmt (testdata/seed-tasks.sql)
     preconditions:
-      - sh: 'test "{{.POSTGRES_HOST}}" = "localhost" -o "{{.POSTGRES_HOST}}" = "127.0.0.1"'
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" =
+          \"127.0.0.1\""
         msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}"
     cmds:
       - psql "{{.POSTGRES_URL}}" -f testdata/seed-tasks.sql
@@ -306,79 +354,191 @@ tasks:
     desc: tear down e2e stack including volumes (drops the seeded data)
     vars:
       MODE: e2e
-      PROJECT: '{{.NAME}}-{{.MODE}}'
+      PROJECT: "{{.NAME}}-{{.MODE}}"
     preconditions:
-      - sh: 'test "{{.POSTGRES_HOST}}" = "localhost" -o "{{.POSTGRES_HOST}}" = "127.0.0.1"'
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" =
+          \"127.0.0.1\""
         msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}"
     cmds:
       - task: compose:clean
-        vars: { MODE: '{{.MODE}}', PROJECT: '{{.PROJECT}}' }
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
 
   # ----------------------------------------------------------------------------
-  # Worker Lifecycle (background processes; PIDs in .task/<name>.pid,
-  # logs in logs/<name>.log). Replaces "open three terminals manually"
-  # for the integration test plan Phase 1 — the workers run detached so
-  # one terminal can drive the whole flow and `tail logs/*.log` for
-  # observation.
+  # Worker Lifecycle (background processes; logs in logs/<name>.log).
+  # Replaces "open three+ terminals manually" for the integration test plan
+  # Phase 1 — workers run detached so one terminal can drive the whole flow.
+  # Process tracking is via pgrep/pkill against argv patterns; no PID files.
+  # task's mvdan-sh interpreter does not return real OS PIDs from $!, so any
+  # pid-file scheme breaks; pgrep also auto-recovers from crashes (no stale
+  # state to clean up).
+  # The pattern `^\./bin/<name> ` is anchored to argv start to avoid matching
+  # wrapper shells whose argv contains the pattern as text (would self-foot-gun).
   # ----------------------------------------------------------------------------
   worker:start:
-    desc: start scheduler + discovery + collector in background
+    desc: start scheduler-slow + scheduler-fast + discovery + collector in background
     preconditions:
-      - sh: 'test "{{.POSTGRES_HOST}}" = "localhost" -o "{{.POSTGRES_HOST}}" = "127.0.0.1"'
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" =
+          \"127.0.0.1\""
         msg: "refusing non-localhost POSTGRES_HOST"
-      - sh: 'ls {{.TASK_DIR}}/*.pid >/dev/null 2>&1 && exit 1 || exit 0'
-        msg: "workers already running ({{.TASK_DIR}}/*.pid). Run 'task worker:stop' first."
-    deps: [build:scheduler, build:discovery, build:collector]
+      - sh: '! pgrep -f ''^\./bin/(scheduler|discovery|collector) '' >/dev/null'
+        msg: "workers already running. Run 'task worker:stop' first."
+    deps: [ build:scheduler, build:discovery, build:collector ]
     cmds:
-      - mkdir -p {{.TASK_DIR}} logs tmp/archives testdata/fixtures
+      - mkdir -p logs tmp/archives testdata/fixtures
       - |
         ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --kinds DIRECTORY_FETCH,KEYWORD_SEARCH \
+          --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock \
+          --interval 1m \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
           --pg-db {{.POSTGRES_APP_DB}} \
           --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}" \
-          > logs/scheduler.log 2>&1 &
-        echo $! > {{.TASK_DIR}}/scheduler.pid
+          > logs/scheduler-slow.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --kinds PAGE_FETCH \
+          --lock-key prism:scheduler:PAGE_FETCH:lock \
+          --health-port 8091 \
+          --interval 1m \
+          --media-quota 30 --buffer 10 \
+          --rate-limit-config assets/ratelimits/scheduler.yaml \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}" \
+          > logs/scheduler-fast.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/discovery --messenger-type nats \
+          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
           --capture-dir testdata/fixtures \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
           --pg-db {{.POSTGRES_APP_DB}} \
           > logs/discovery.log 2>&1 &
-        echo $! > {{.TASK_DIR}}/discovery.pid
       - |
         ./{{.BUILD_DIR}}/collector --messenger-type nats \
+          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
           --capture-dir testdata/fixtures \
           --archive "file://$(pwd)/tmp/archives" \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
           --pg-db {{.POSTGRES_APP_DB}} \
           > logs/collector.log 2>&1 &
-        echo $! > {{.TASK_DIR}}/collector.pid
       - |
         sleep 1
-        for f in {{.TASK_DIR}}/*.pid; do
-          name=$(basename "$f" .pid)
-          echo "started $name (pid=$(cat "$f"))"
-        done
+        pgrep -af '^\./bin/(scheduler|discovery|collector) ' || true
         echo "tail logs with: tail -f logs/*.log"
 
   worker:stop:
-    desc: stop background workers started by worker:start
+    desc: stop background workers started by worker:start (does not touch
+      fixture-server)
     cmds:
       - |
-        for f in {{.TASK_DIR}}/*.pid; do
-          [ -f "$f" ] || continue
-          pid=$(cat "$f")
-          name=$(basename "$f" .pid)
-          if kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" && echo "stopped $name (pid=$pid)"
-          else
-            echo "$name (pid=$pid) already gone"
-          fi
-          rm -f "$f"
-        done
+        if pkill -f '^\./bin/(scheduler|discovery|collector) '; then
+          echo "stopped workers"
+        else
+          echo "no workers running"
+        fi
+
+  worker:start:replay:
+    desc: start workers wired to fixture-server (no real-site traffic)
+    preconditions:
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" =
+          \"127.0.0.1\""
+        msg: "refusing non-localhost POSTGRES_HOST"
+      - sh: 'pgrep -f ''^\./bin/dev/fixture-server '' >/dev/null'
+        msg: "fixture-server is not running. Run 'task fixture-server:start' first."
+      - sh: '! pgrep -f ''^\./bin/(scheduler|discovery|collector) '' >/dev/null'
+        msg: "workers already running. Run 'task worker:stop' first."
+    deps: [ build:scheduler, build:discovery, build:collector ]
+    vars:
+      FIXTURE_BASE: "{{.FIXTURE_BASE | default \"http://localhost:9999\"}}"
+    cmds:
+      - mkdir -p logs tmp/archives
+      - |
+        ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --kinds DIRECTORY_FETCH,KEYWORD_SEARCH \
+          --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock \
+          --interval 1m \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}" \
+          > logs/scheduler-slow.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --kinds PAGE_FETCH \
+          --lock-key prism:scheduler:PAGE_FETCH:lock \
+          --health-port 8091 \
+          --interval 1m \
+          --media-quota 30 --buffer 10 \
+          --rate-limit-config assets/ratelimits/scheduler.yaml \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}" \
+          > logs/scheduler-fast.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/discovery --messenger-type nats \
+          --fixture-base {{.FIXTURE_BASE}} \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          > logs/discovery.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/collector --messenger-type nats \
+          --fixture-base {{.FIXTURE_BASE}} \
+          --archive "file://$(pwd)/tmp/archives" \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          > logs/collector.log 2>&1 &
+      - |
+        sleep 1
+        pgrep -af '^\./bin/(scheduler|discovery|collector) ' || true
+        echo "replay mode: fixture-base={{.FIXTURE_BASE}}"
+        echo "tail logs with: tail -f logs/*.log"
+
+  # ----------------------------------------------------------------------------
+  # Fixture Server (cmd/dev/fixture-server) — serves testdata/fixtures over
+  # HTTP so workers can run with --fixture-base=http://localhost:9999
+  # without touching real sites. Used by worker:start:replay.
+  # ----------------------------------------------------------------------------
+  build:fixture-server:
+    cmds:
+      - go build -o {{.BUILD_DIR}}/dev/fixture-server
+        ./{{.CMD_DIR}}/dev/fixture-server
+
+  fixture-server:start:
+    desc: start fixture-server in background on :9999 serving testdata/fixtures
+    deps: [ build:fixture-server ]
+    vars:
+      FIXTURE_ADDR: "{{.FIXTURE_ADDR | default \":9999\"}}"
+      FIXTURE_ROOT: "{{.FIXTURE_ROOT | default \"testdata/fixtures\"}}"
+    preconditions:
+      - sh: '! pgrep -f ''^\./bin/dev/fixture-server '' >/dev/null'
+        msg: "fixture-server already running. Run 'task fixture-server:stop' first."
+    cmds:
+      - mkdir -p logs {{.FIXTURE_ROOT}}
+      - |
+        ./{{.BUILD_DIR}}/dev/fixture-server --addr {{.FIXTURE_ADDR}} --root {{.FIXTURE_ROOT}} \
+          > logs/fixture-server.log 2>&1 &
+        sleep 1
+        pgrep -af '^\./bin/dev/fixture-server ' || echo "fixture-server failed to start"
+        echo "addr={{.FIXTURE_ADDR}} root={{.FIXTURE_ROOT}}"
+
+  fixture-server:stop:
+    desc: stop fixture-server started by fixture-server:start
+    cmds:
+      - |
+        if pkill -f '^\./bin/dev/fixture-server '; then
+          echo "stopped fixture-server"
+        else
+          echo "fixture-server not running"
+        fi
 
   # ----------------------------------------------------------------------------
   # Run Services (Local Development)
