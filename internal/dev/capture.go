@@ -11,9 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
-	"strings"
 )
 
 // CaptureTransport wraps an http.RoundTripper and tees successful response
@@ -50,13 +48,14 @@ func (t *CaptureTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return resp, nil
 	}
+
 	body, readErr := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
 	if readErr != nil {
 		return nil, readErr
 	}
-	resp.Body = io.NopCloser(bytes.NewReader(body))
+	_ = resp.Body.Close()
 
+	resp.Body = io.NopCloser(bytes.NewReader(body))
 	if writeErr := t.writeFixture(req.URL, body); writeErr != nil {
 		t.logger.Warn("capture: write fixture failed",
 			"url", req.URL.String(), "error", writeErr)
@@ -65,35 +64,11 @@ func (t *CaptureTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func (t *CaptureTransport) writeFixture(u *url.URL, body []byte) error {
-	full := filepath.Join(t.dir, u.Host, fixturePath(u))
+	full := filepath.Join(t.dir, u.Host, FixturePath(u))
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return err
 	}
 	return os.WriteFile(full, body, 0o644)
-}
-
-// fixturePath maps a URL into a deterministic on-disk filename rooted at
-// <host>. Rules: trailing slash or empty path → index.html; non-.html
-// paths get .html appended (so /foo.aspx becomes /foo.aspx.html); query
-// strings become __<sanitized> before the extension so paginated URLs
-// don't collide.
-func fixturePath(u *url.URL) string {
-	p := u.Path
-	if p == "" || strings.HasSuffix(p, "/") {
-		p = path.Join(p, "index.html")
-	} else if !strings.EqualFold(filepath.Ext(p), ".html") {
-		p += ".html"
-	}
-	if u.RawQuery != "" {
-		ext := filepath.Ext(p)
-		base := strings.TrimSuffix(p, ext)
-		p = base + "__" + sanitizeQuery(u.RawQuery) + ext
-	}
-	return p
-}
-
-func sanitizeQuery(q string) string {
-	return strings.NewReplacer("&", "_", "=", "-", "/", "_", "?", "_").Replace(q)
 }
 
 // WrapClient installs a CaptureTransport on c when dir is non-empty.

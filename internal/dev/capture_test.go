@@ -13,32 +13,39 @@ import (
 )
 
 func TestCaptureTransport_TeesSuccessfulBodyToDisk(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte("<html><body>hello</body></html>"))
-	}))
+	const FixtureResponseText = "<html><body>hello</body></html>"
+
+	srv := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte(FixtureResponseText))
+		}))
 	t.Cleanup(srv.Close)
 
 	dir := t.TempDir()
-	client := &http.Client{Transport: dev.NewCaptureTransport(http.DefaultTransport, dir, nil)}
+	client := &http.Client{
+		Transport: dev.NewCaptureTransport(http.DefaultTransport, dir, nil),
+	}
 
 	resp, err := client.Get(srv.URL + "/news/123")
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	_ = resp.Body.Close()
-	require.Equal(t, "<html><body>hello</body></html>", string(body))
+	require.Equal(t, FixtureResponseText, string(body))
 
 	host := srv.Listener.Addr().String()
-	saved, err := os.ReadFile(filepath.Join(dir, host, "news", "123.html"))
+	saved, err := os.ReadFile(filepath.Join(dir, host, "news", "123"))
 	require.NoError(t, err)
 	require.Equal(t, body, saved)
 }
 
 func TestCaptureTransport_SkipsNon2xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "nope", http.StatusNotFound)
-	}))
+	srv := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "nope", http.StatusNotFound)
+		}))
 	t.Cleanup(srv.Close)
 
 	dir := t.TempDir()
@@ -61,21 +68,23 @@ func TestCaptureTransport_FixturePathRules(t *testing.T) {
 	}{
 		{"trailing slash", "/news/", "news/index.html"},
 		{"empty path", "", "index.html"},
-		{"no extension", "/news/123", "news/123.html"},
+		{"no extension", "/news/123", "news/123"},
 		{"already .html", "/news/123.html", "news/123.html"},
-		{"non-html ext", "/news/123.aspx", "news/123.aspx.html"},
-		{"with query", "/list?page=2&size=10", "list__page-2_size-10.html"},
+		{"non-html ext", "/news/123.aspx", "news/123.aspx"},
+		{"with query", "/list?page=2&size=10", "list__page-2_size-10"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				_, _ = w.Write([]byte("body"))
-			}))
+			srv := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					_, _ = w.Write([]byte("body"))
+				}))
 			t.Cleanup(srv.Close)
 
 			dir := t.TempDir()
-			client := &http.Client{Transport: dev.NewCaptureTransport(http.DefaultTransport, dir, nil)}
+			client := &http.Client{
+				Transport: dev.NewCaptureTransport(http.DefaultTransport, dir, nil)}
 
 			resp, err := client.Get(srv.URL + tc.url)
 			require.NoError(t, err)
