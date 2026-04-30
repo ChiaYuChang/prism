@@ -35,7 +35,7 @@ INSERT INTO tasks (
     sqlc.arg(source_type),
     sqlc.arg(source_abbr),
     sqlc.arg(url),
-    sqlc.narg(payload),
+    COALESCE(sqlc.narg(payload), '{}'::jsonb),
     sqlc.narg(payload_hash),
     sqlc.narg(meta),
     sqlc.arg(trace_id),

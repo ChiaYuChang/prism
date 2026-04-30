@@ -136,7 +136,7 @@ INSERT INTO tasks (
     $3,
     $4,
     $5,
-    $6,
+    COALESCE($6, '{}'::jsonb),
     $7,
     $8,
     $9,
@@ -153,7 +153,7 @@ type CreateTaskParams struct {
 	SourceType  SourceType         `db:"source_type" json:"source_type"`
 	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
 	Url         string             `db:"url" json:"url"`
-	Payload     []byte             `db:"payload" json:"payload"`
+	Payload     interface{}        `db:"payload" json:"payload"`
 	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
 	Meta        []byte             `db:"meta" json:"meta"`
 	TraceID     string             `db:"trace_id" json:"trace_id"`
