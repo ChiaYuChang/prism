@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	ArchiveTopic     = "prism.archive"
-	ArchiveDeadTopic = "prism.archive.dead"
+	ArchiveTopic     = "prism_archive"
+	ArchiveDeadTopic = "prism_archive_dead"
 )
 
 // ArchiveSignal is published by the Collector Worker after a content row is created.

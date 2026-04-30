@@ -56,6 +56,11 @@ CLAUDE.md
 .codex
 .task/*
 build/ok*
+.mcp.json
+.venv/*
+.python-version
+pyproject.toml
+uv.lock
 
 build/infra/nats/nats.conf
 build/infra/otel/otel.yaml

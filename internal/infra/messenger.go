@@ -80,7 +80,8 @@ func NewNatsMessenger(url string, logger *slog.Logger, opts ...Option[NatsConfig
 			URL:       url,
 			Marshaler: nats.JSONMarshaler{},
 			JetStream: nats.JetStreamConfig{
-				Disabled: false,
+				Disabled:      false,
+				AutoProvision: true,
 			},
 		},
 		Sub: nats.SubscriberConfig{
@@ -90,7 +91,8 @@ func NewNatsMessenger(url string, logger *slog.Logger, opts ...Option[NatsConfig
 			CloseTimeout:     time.Minute,
 			AckWaitTimeout:   time.Second * 30,
 			JetStream: nats.JetStreamConfig{
-				Disabled: false,
+				Disabled:      false,
+				AutoProvision: true,
 			},
 		},
 	}

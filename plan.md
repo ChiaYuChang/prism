@@ -181,32 +181,27 @@ User queries candidates table by keyword/date/source
 
 ## 4. Actionable Checklist
 
-### Phase 1: Foundation and Data Contracts
+### Phase 0: Infrastructure and Seeding (Completed)
+* [x] 0.1 Database schema migration to v3.
+* [x] 0.2 Initial seed data for sources (Parties and Media).
+* [x] 0.3 Initial PENDING tasks for directory fetching.
 
-* [x] 1.1 Infrastructure Deployment: Docker Compose with Postgres 18, NATS, and Valkey.
-* [x] 1.2 Interface Definitions: Fetcher, Minifier, Transformer, Saver, and Parser in `internal/collector`. (`Saver` is a narrow write-only interface; full archive operations live in `internal/collector/archiver`.)
-* [x] 1.3 Utility Implementation: URL fingerprinting and Gzip/Base64 helpers.
-* [x] 1.4 Database Management: Repository abstraction (`internal/repo`) and Postgres adapter (`internal/repo/pg`).
-* [x] 1.5 Database Management: Initial migration with **uuidv7** support.
-* [x] 1.6 Utilities Refinement & Traceability:
-  * [x] OpenTelemetry context propagation helpers.
-  * [x] Basic health-check endpoints with Level/Message monitor.
-* [x] 1.7 Generic Logging System:
-  * [x] `pkg/logger` with `slog` hook mechanism.
-  * [x] `internal/obs` integration for TraceID propagation.
-  * [x] Dynamic logger enrichment via hooks.
-* [x] 1.8 Pluggable Messenger Infrastructure:
-  * [x] In-memory messenger backend for testing.
-  * [x] Scheduler messenger abstraction for polymorphic backends.
-* [x] 1.9 Test Tooling:
-  * [x] `mockery v3` tool dependency and repository config.
-  * [x] Package-local `mocks/` generation.
-  * [x] `Taskfile.yml` integration.
-* [x] 1.10 Schema Contract Utilities:
-  * [x] Move structured output schema helpers into `pkg/schema`.
-  * [x] Support schema contract metadata via `name` and `version`.
+### Phase 1: Discovery Loop Execution & Pipeline Validation (Core)
+* [ ] 1.1 Start Scheduler and Workers to process PENDING tasks.
+* [ ] 1.2 Verify `DIRECTORY_FETCH` execution and `candidates` persistence.
+* [ ] 1.3 Verify automatic `PAGE_FETCH` (PARTY) task creation and execution.
+* [ ] 1.4 Validate full content extraction and archiving for party press releases.
 
-### Phase 2: Discovery Loop
+### Phase 2: User-Triggered Actions & Batch Progress
+* [ ] 2.1 Refactor `POST /page_fetch` to use Batch ID.
+* [ ] 2.2 Implement `GET /batches/{batch_id}` with progress tracking.
+* [ ] 2.3 Implement Operator TUI for candidate selection and monitoring.
+
+### Phase 3: Controlled LLM & Search Verification
+* [ ] 3.1 Verify LLM Provider logic (`internal/llm`) using local Ollama instance.
+* [ ] 3.2 Capture and store search (Brave/Google) and LLM response fixtures for controlled testing.
+* [ ] 3.3 Implement `KEYWORD_SEARCH` (MEDIA) discovery path with fixtures.
+* [ ] 3.4 Verify `candidate_embeddings` generation.
 
 * [x] 2.1 Scheduler:
   * [x] `cmd/scheduler` with structured configuration.

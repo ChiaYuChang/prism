@@ -10,7 +10,7 @@ import (
 
 const (
 	// TaskTopic is the NATS/Watermill topic for triggering runnable tasks.
-	TaskTopic = "prism.task"
+	TaskTopic = "prism_task"
 )
 
 var ErrNilPublisher = errors.New("publisher is nil")
