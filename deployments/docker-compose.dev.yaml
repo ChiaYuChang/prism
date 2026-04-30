@@ -4,7 +4,6 @@ services:
   # -------------------------------------------------------------------------
   pgadmin:
     image: dpage/pgadmin4:9
-    container_name: prism-pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@prism.local}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
@@ -37,7 +36,6 @@ services:
   # -------------------------------------------------------------------------
   nats-nui:
     image: ghcr.io/nats-nui/nui:0.8.1
-    container_name: prism-nats-nui
     ports:
       - "127.0.0.1:${NATS_UI_PORT:-3000}:31311"
     volumes:
@@ -66,7 +64,6 @@ services:
   # -------------------------------------------------------------------------
   redisinsight:
     image: redis/redisinsight:3.2
-    container_name: prism-redisinsight
     restart: always
     ports:
       - "127.0.0.1:${REDISINSIGHT_PORT:-5540}:5540"

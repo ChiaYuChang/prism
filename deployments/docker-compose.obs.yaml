@@ -4,14 +4,15 @@ services:
   # -------------------------------------------------------------------------
   victoria-logs:
     image: victoriametrics/victoria-logs:v1.43.1
-    container_name: prism-victoria-logs
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:${VICTORIALOGS_PORT:-9428}:9428"
     volumes:
       - vl-data:/victoria-logs-data
     command:
       - "--retentionPeriod=14d"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9428/health"]
+      test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:9428/health" ]
       start_period: 20s
     networks:
       - prism-net
@@ -21,7 +22,6 @@ services:
   # -------------------------------------------------------------------------
   grafana:
     image: grafana/grafana:12.3
-    container_name: prism-grafana
     depends_on:
       victoria-logs:
         condition: service_healthy
@@ -32,7 +32,7 @@ services:
     environment:
       - GF_PLUGINS_PREINSTALL=victoriametrics-logs-datasource
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:3000" ]
       start_period: 10s
       interval: 15s
       retries: 5

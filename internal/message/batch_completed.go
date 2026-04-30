@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	BatchCompletedTopic = "prism.batch.completed"
+	BatchCompletedTopic = "prism_batch_completed"
 )
 
 type BatchCompletedSignal struct {

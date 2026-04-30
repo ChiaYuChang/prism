@@ -24,7 +24,8 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	// Messenger polymorphism: default nats type populated.
 	natsCfg, ok := cfg.Messenger.(*app.NatsConfig)
 	require.True(t, ok, "default messenger should be *NatsConfig")
-	assert.Equal(t, "nats://localhost:4222", natsCfg.URL)
+	assert.Equal(t, "localhost", natsCfg.Host)
+	assert.Equal(t, 4222, natsCfg.Port)
 }
 
 func TestLoadConfig_FromFlags_Gochannel(t *testing.T) {
@@ -55,7 +56,8 @@ func TestLoadConfig_FromFlags_Gochannel(t *testing.T) {
 func TestLoadConfig_FromFlags_Nats(t *testing.T) {
 	args := []string{
 		"--messenger-type=nats",
-		"--nats-url=nats://nats.local:4222",
+		"--nats-host=nats.local",
+		"--nats-port=4222",
 		"--pg-username=u",
 		"--pg-password=p",
 	}
@@ -66,7 +68,8 @@ func TestLoadConfig_FromFlags_Nats(t *testing.T) {
 	assert.Equal(t, "nats", cfg.MessengerType)
 	natsCfg, ok := cfg.Messenger.(*app.NatsConfig)
 	require.True(t, ok)
-	assert.Equal(t, "nats://nats.local:4222", natsCfg.URL)
+	assert.Equal(t, "nats.local", natsCfg.Host)
+	assert.Equal(t, 4222, natsCfg.Port)
 }
 
 func TestLoadConfig_EnvironmentVariables(t *testing.T) {

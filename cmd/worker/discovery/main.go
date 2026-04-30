@@ -89,11 +89,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	scoutRegistry, err := scoutconfig.BuildRegistry(
-		scoutRepo,
-		logger,
-		tracer,
-		dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger))
+	httpClient, err := dev.WrapClientReplay(
+		dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger),
+		config.FixtureBase,
+	)
+	if err != nil {
+		logger.Error("failed to wrap http client for replay", "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to wrap http client for replay")
+		os.Exit(1)
+	}
+
+	scoutRegistry, err := scoutconfig.BuildRegistry(scoutRepo, logger, tracer, httpClient)
 	if err != nil {
 		logger.Error("failed to build scout registry", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to build scout registry")
@@ -107,7 +113,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	searchClients := buildSearchClients(config, dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger), logger)
+	searchClients := buildSearchClients(config, httpClient, logger)
 
 	handler, err := NewHandler(
 		logger,

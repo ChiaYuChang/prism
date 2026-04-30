@@ -4,7 +4,6 @@ services:
   # -------------------------------------------------------------------------
   ollama:
     image: ollama/ollama:0.13.5
-    container_name: prism-ollama
     ports:
       - "127.0.0.1:11435:11434"
     volumes:

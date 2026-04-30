@@ -4,7 +4,6 @@ services:
   # -------------------------------------------------------------------------
   postgres:
     image: pgvector/pgvector:pg18
-    container_name: prism-postgres
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
@@ -13,7 +12,7 @@ services:
       POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
       POSTGRES_APP_PASSWORD_FILE: /run/secrets/postgres_app
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     secrets:
       - postgres_admin
       - postgres_app
@@ -23,7 +22,7 @@ services:
     networks:
       - prism-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -33,11 +32,12 @@ services:
   # -------------------------------------------------------------------------
   nats:
     image: nats:2-alpine
-    container_name: prism-nats
     command: >
-      sh -c "export NATS_AUTH_TOKEN=$$(cat /run/secrets/nats_token) && nats-server -c /etc/nats/nats.conf"
+      sh -c "export NATS_AUTH_TOKEN=$$(cat /run/secrets/nats_token) &&
+      nats-server -c /etc/nats/nats.conf"
     ports:
       - "127.0.0.1:${NATS_HTTP_MONITORING_PORT:-8222}:8222"
+      - "127.0.0.1:${NATS_CLIENT_PORT:-4222}:4222"
     environment:
       NATS_SERVER_NAME: ${NATS_SERVER_NAME:-prism-nats}
       NATS_CLIENT_PORT: ${NATS_CLIENT_PORT:-4222}
@@ -69,7 +69,6 @@ services:
   # -------------------------------------------------------------------------
   seaweedfs:
     image: chrislusf/seaweedfs:4.05
-    container_name: prism-seaweedfs
     entrypoint: /bin/sh
     ports:
       - "127.0.0.1:${SEAWEEDFS_MASTER_PORT:-9333}:9333"
@@ -101,7 +100,6 @@ services:
   # -------------------------------------------------------------------------
   valkey:
     image: valkey/valkey:9
-    container_name: prism-valkey
     restart: always
     secrets:
       - valkey_acl
@@ -110,11 +108,11 @@ services:
     volumes:
       - valkey_data:/data
       - ../build/infra/valkey/valkey.conf:/etc/valkey/valkey.conf
-    command: ["valkey-server", "/etc/valkey/valkey.conf"]
+    command: [ "valkey-server", "/etc/valkey/valkey.conf" ]
     networks:
       - prism-net
     healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
+      test: [ "CMD", "valkey-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5

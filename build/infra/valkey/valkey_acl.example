@@ -7,4 +7,4 @@ user default off
 # user admin on #<hashed-password> ~* &* +@all
 
 # Example: Application user with restricted access to 'prism:' namespace
-# user prism-app on #<hashed-password> ~prism:* &* +@read +@write +ping -@dangerous -@admin
+# user prism-app on #<hashed-password> ~prism:* &* +@read +@write +ping +@scripting -@dangerous -@admin

@@ -46,7 +46,9 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("pg-sslmode", "disable", "Postgres SSL mode")
 
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
-	fs.String("nats-url", "nats://localhost:4222", "The URL for the NATS server")
+	fs.String("nats-host", "localhost", "The NATS server host")
+	fs.Int("nats-port", 4222, "The NATS server port")
+	fs.String("nats-token", "", "The NATS server auth token")
 	fs.String("queue-group", "", "Queue group for NATS subscribers")
 	fs.Int("subscribers-count", 1, "How many subscriber goroutines to run")
 	fs.Duration("ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscriber")

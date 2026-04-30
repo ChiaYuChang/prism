@@ -78,7 +78,15 @@ func main() {
 		}
 	}()
 
-	httpClient := dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger)
+	httpClient, err := dev.WrapClientReplay(
+		dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger),
+		config.FixtureBase,
+	)
+	if err != nil {
+		logger.Error("failed to wrap http client for replay", "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to wrap http client for replay")
+		os.Exit(1)
+	}
 	pageFetcher := fetcher.NewRetryFetcher(
 		fetcher.NewHTTPFetcher(httpClient), 3, time.Second,
 	)
