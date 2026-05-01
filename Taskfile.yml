@@ -460,6 +460,7 @@ tasks:
       - mkdir -p logs tmp/archives
       - |
         ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
           --kinds DIRECTORY_FETCH,KEYWORD_SEARCH \
           --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock \
           --interval 1m \
@@ -470,6 +471,7 @@ tasks:
           > logs/scheduler-slow.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
           --kinds PAGE_FETCH \
           --lock-key prism:scheduler:PAGE_FETCH:lock \
           --health-port 8091 \
@@ -483,6 +485,7 @@ tasks:
           > logs/scheduler-fast.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/discovery --messenger-type nats \
+          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
           --fixture-base {{.FIXTURE_BASE}} \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
@@ -490,6 +493,7 @@ tasks:
           > logs/discovery.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/collector --messenger-type nats \
+          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
           --fixture-base {{.FIXTURE_BASE}} \
           --archive "file://$(pwd)/tmp/archives" \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \

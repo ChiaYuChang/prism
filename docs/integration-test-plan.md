@@ -28,26 +28,40 @@ The flow is driven by Taskfile so a single terminal can orchestrate the run.
 `MODE=e2e` namespacing isolates the e2e stack from the daily `dev` stack
 (separate `prism-e2e_*` volumes / networks via `COMPOSE_PROJECT_NAME`), and
 workers run detached so the operator just tails logs instead of juggling
-three terminals.
+multiple terminals. Process tracking is via `pgrep`/`pkill` against argv
+patterns anchored to `^\./bin/<name> ` (no PID files — task's mvdan-sh
+interpreter doesn't return real OS PIDs from `$!`).
 
-- [ ] `task test:e2e:setup` — bring up isolated e2e stack + migrate + seed DIRECTORY_FETCH tasks
-- [ ] `task worker:start` — launch scheduler + discovery + collector in background
-  - PIDs are written to `.task/<name>.pid`, logs to `logs/<name>.log`
+- [x] `task test:e2e:setup` — bring up isolated e2e stack + migrate + seed DIRECTORY_FETCH tasks
+- [x] `task worker:start` — launch **two scheduler instances** (slow=DIRECTORY_FETCH+KEYWORD_SEARCH, fast=PAGE_FETCH) + discovery + collector, all detached
+  - Logs in `logs/<name>.log` (`scheduler-slow.log`, `scheduler-fast.log`, `discovery.log`, `collector.log`)
+  - Health endpoints: scheduler-slow:8090, scheduler-fast:8091, discovery:8092, collector:8093
   - Discovery + collector both start with `--capture-dir=testdata/fixtures`; collector also archives to `file://./tmp/archives`
-- [ ] `tail -f logs/*.log` — watch ~30 articles flow through (3 PARTY sources × ~10 each)
-- [ ] Verify after run:
-  - `candidates` table has ~30 rows across `source_abbr in ('dpp','tpp','kmt')`, `source_type='PARTY'`
-  - `contents` table has ~30 rows with article title/body
-  - `testdata/fixtures/<host>/...` holds the captured HTML files
+- [x] `tail -f logs/*.log` — watch ~26 articles flow through (drained at ~3/min due to rate limiter)
+- [x] Verify after run (run on 2026-04-30):
+  - `candidates`: dpp=10, kmt=10, tpp=6 (total 26)
+  - `contents`: dpp=10, kmt=10, tpp=6 (total 26 — zero loss)
+  - `testdata/fixtures/www.{dpp,tpp,kmt}.org.tw/...` holds the captured HTML
   - `./tmp/archives/` has the minified archives (normal success path)
-- [ ] `task worker:stop` — kill the background workers via the `.task/*.pid` files
-- [ ] `task test:e2e:teardown` — drop the e2e stack including volumes (subsequent runs start clean, so seed SQL stays non-idempotent on purpose)
+- [x] `task worker:stop` — `pkill -f` against argv pattern (no PID files involved)
+- [x] `task test:e2e:teardown` — drop the e2e stack including volumes (subsequent runs start clean, so seed SQL stays non-idempotent on purpose)
+
+**Bugs uncovered and fixed during the run** (commit `f0a7da0`):
+
+1. **pgx custom enum array codec missing** — `factory.go` now registers all 8 enum types (scalar + array) via `AfterConnect` hook. Without it, `ClaimTasks` failed with `unable to encode []pg.TaskKind ... unknown type (OID 16801)`.
+2. **`tasks.payload` NOT NULL violated for PAGE_FETCH** — `sqlc.narg(payload)` emits explicit `INSERT NULL`, bypassing schema's `DEFAULT '{}'::jsonb`. Wrapped with `COALESCE(sqlc.narg(payload), '{}'::jsonb)` so the schema-stated default is preserved regardless of caller.
 
 ## Phase 2 — Local replay mode (fixture server)
 
-- [ ] Add `cmd/tools/fixture-server/main.go` — 5–10 line `http.FileServer` serving `testdata/fixtures`
-- [ ] Add URL rewriter in fetcher: when `--fixture-base` is set, transform `https://<host>/<path>` → `<fixture-base>/<host>/<path>`. Shared helper used by discovery + collector.
-- [ ] Re-run pipeline with `--fixture-base=http://localhost:9999` instead of `--capture-dir`, confirm same output with zero real-site traffic.
+Code committed in `322a012`; end-to-end run not yet verified.
+
+- [x] Add `cmd/dev/fixture-server/main.go` — `http.FileServer` serving `testdata/fixtures`
+- [x] Add URL rewriter in fetcher: `internal/dev/replay.go` — `WrapClientReplay` transforms `https://<host>/<path>` → `<fixture-base>/<host>/<path>`. Shared by discovery + collector via `--fixture-base` flag.
+- [x] Taskfile entries `fixture-server:start/stop` and `worker:start:replay` wired with pgrep-based lifecycle.
+- [x] Re-run pipeline with `task fixture-server:start` + `task worker:start:replay`, confirm same 26/26 output with zero real-site traffic (capture-dir does not grow).
+  - Verified 2026-05-01: tasks DIRECTORY_FETCH=3 / PAGE_FETCH=26 all COMPLETED; candidates+contents dpp=10/kmt=10/tpp=6 each; capture-dir delta=0.
+  - Bug fixed during run: `worker:start:replay` Taskfile entry was missing `--nats-host/--nats-port/--nats-token` flags on all 4 binaries → workers crashed at startup with `nats: Authorization Violation`. Patched.
+  - Noise (not a bug): discovery worker logs `unsupported task kind: kind=PAGE_FETCH source_type=PARTY` — both discovery + collector subscribe to `prism.task` and filter by Kind; collector handles PAGE_FETCH correctly. Discovery's handler-level reject is expected. Consider quiet-loging non-matching kinds at DEBUG.
 
 ## Phase 3 — Error recovery smoke test
 

@@ -69,3 +69,5 @@ build/infra/valkey/valkey_acl
 
 # build binaries
 bin/
+NOTE.md
+.claude/scheduled_tasks.lock
