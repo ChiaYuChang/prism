@@ -258,6 +258,16 @@ func (a *LocalArchiver) PurgeAll(ctx context.Context) (int, error) {
 
 // ----- helpers -----
 
+// dateDir returns archives/<YYYY>/<MM>/<DD> under baseDir.
+//
+// DEPRECATED PATH LAYOUT — see plan.md Future Roadmap "archive metadata
+// catalog separation". Two known issues with the YYYY/MM/DD/<traceID>
+// layout: (1) <traceID>.data filename collides when multiple tasks share
+// a trace_id (Phase 3 fail-minify run wrote 26 archives but only 3
+// survived because seed-tasks.sql uses one trace_id per source); (2) date
+// prefix concentrates writes on "today" → S3 hot-prefix throttle risk at
+// scale. Future layout: archives/<archive_id> with archive_id as UUID v7
+// (date is recoverable from the UUID for debugging).
 func (a *LocalArchiver) dateDir(t time.Time, create bool) (string, error) {
 	dir := filepath.Join(a.baseDir, "archives", t.Format("2006/01/02"))
 	if create {

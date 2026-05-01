@@ -14,6 +14,12 @@ import (
 // Increment this constant whenever a breaking change is made to the meta format.
 //
 //	Version 1: url, trace_id, created_at, payload_sha256, prism_metadata, deleted_at
+//
+// DEPRECATED: do not add new fields to metaFile / Meta. The sidecar meta
+// pattern is being replaced by a PG `archives` catalog table — see plan.md
+// Future Roadmap "Move archive metadata into PG (catalog + storage
+// separation)". New archive-related metadata should be added to the PG
+// `contents` / `tasks` tables (or the future `archives` table) instead.
 const MetaVersion = 1
 
 type metaFile struct {

@@ -1,0 +1,7 @@
+# Replay-mode rate limit config — fixture-server has no real-site pressure.
+# All sources get a generous bucket so 26-task drains complete in seconds, not minutes.
+# Used by Taskfile worker:start:replay (and worker:start:replay:fail-minify).
+
+defaults:
+  rate: 100.0
+  burst: 100

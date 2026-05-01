@@ -19,11 +19,13 @@ import (
 
 func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipeline, prs collector.Parser, logger *slog.Logger, opts cliOptions) error {
 	scanOpts := archiver.ScanOptions{
-		Since:       opts.since,
-		Until:       opts.until,
-		Limit:       opts.limit,
-		TraceID:     opts.traceID,
-		PayloadKind: archiver.PayloadKindRaw,
+		Since:   opts.since,
+		Until:   opts.until,
+		Limit:   opts.limit,
+		TraceID: opts.traceID,
+		// PayloadKind unset = scan all kinds. Per-archive replay path is
+		// chosen below based on m.PayloadKind: raw → M+T+P, minified → T+P,
+		// canonical → P only.
 	}
 	metas, err := arch.Scan(ctx, scanOpts)
 	if err != nil {
@@ -40,7 +42,11 @@ func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipel
 	var succeeded, skipped, failed int
 
 	for _, m := range metas {
-		log := logger.With(slog.String("trace_id", m.TraceID), slog.String("url", m.URL))
+		log := logger.With(
+			slog.String("trace_id", m.TraceID),
+			slog.String("url", m.URL),
+			slog.String("kind", string(m.PayloadKind)),
+		)
 
 		if _, err := pipeline.GetContentByURL(ctx, m.URL); err == nil {
 			log.Info("content already exists, skipping")
@@ -54,7 +60,7 @@ func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipel
 			continue
 		}
 
-		raw, err := arch.Load(ctx, m.TraceID)
+		payload, err := arch.Load(ctx, m.TraceID)
 		if err != nil {
 			log.Error("failed to load archive", "error", err)
 			failed++
@@ -62,21 +68,14 @@ func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipel
 		}
 
 		if opts.dryRun {
-			fmt.Printf("[dry-run] would recover trace_id=%s url=%s source=%s\n", m.TraceID, m.URL, m.SourceAbbr)
+			fmt.Printf("[dry-run] would recover trace_id=%s url=%s kind=%s source=%s\n",
+				m.TraceID, m.URL, m.PayloadKind, m.SourceAbbr)
 			succeeded++
 			continue
 		}
 
-		minified, err := min.Transform(ctx, raw)
-		if err != nil {
-			log.Error("minify still fails", "error", err)
-			failed++
-			continue
-		}
-
-		canonical, err := tfm.Transform(ctx, minified)
-		if err != nil {
-			log.Error("transform failed", "error", err)
+		canonical, ok := buildCanonical(ctx, m.PayloadKind, payload, min, tfm, log)
+		if !ok {
 			failed++
 			continue
 		}
@@ -149,4 +148,45 @@ func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipel
 	fmt.Printf("\nRecovery complete: %d succeeded, %d skipped, %d failed (of %d total)\n",
 		succeeded, skipped, failed, len(metas))
 	return nil
+}
+
+// buildCanonical replays the pipeline subset implied by an archive's PayloadKind:
+//   - raw (or empty for back-compat): Minify → Transform → canonical
+//   - minified:                       Transform → canonical
+//   - canonical:                      identity (already canonical)
+//
+// Returns (canonical, true) on success or ("", false) on stage error (logged).
+func buildCanonical(
+	ctx context.Context,
+	kind archiver.PayloadKind,
+	payload string,
+	min collector.Transformer,
+	tfm collector.Transformer,
+	log *slog.Logger,
+) (string, bool) {
+	canonical := payload
+
+	switch kind {
+	case archiver.PayloadKindRaw, "":
+		minified, err := min.Transform(ctx, canonical)
+		if err != nil {
+			log.Error("minify still fails", "error", err)
+			return "", false
+		}
+		canonical = minified
+		fallthrough
+	case archiver.PayloadKindMinified:
+		out, err := tfm.Transform(ctx, canonical)
+		if err != nil {
+			log.Error("transform failed", "error", err)
+			return "", false
+		}
+		canonical = out
+	case archiver.PayloadKindCanonical:
+		// already canonical; nothing to do
+	default:
+		log.Warn("unknown payload kind, treating as canonical")
+	}
+
+	return canonical, true
 }

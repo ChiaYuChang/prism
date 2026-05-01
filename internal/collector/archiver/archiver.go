@@ -78,6 +78,20 @@ type ScanOptions struct {
 // Archiver is the full read-write interface for archive storage.
 // It embeds collector.Saver so that a single LocalArchiver (or S3Archiver)
 // satisfies the narrow errorSaver field in the collector Handler.
+//
+// DEPRECATED SHAPE — narrowing to bytes-only Save/Load is planned. See
+// plan.md Future Roadmap "Move archive metadata into PG (catalog + storage
+// separation)". Until that cutover lands:
+//   - Do NOT add new callers of Scan or Remove. cmd/recover is the only
+//     legitimate Scan caller and is already known.
+//   - Do NOT add new fields to Meta (or sidecar meta.json). Push new
+//     archive-related metadata into the PG `contents` / `tasks` tables
+//     instead so it lands in the right place when the cutover happens.
+//   - Path key `archives/YYYY/MM/DD/<traceID>` is also deprecated: it
+//     collides when multiple tasks share a trace_id (observed in Phase 3
+//     fail-minify run, 26 writes collapsed to 3 surviving files) and
+//     concentrates writes on "today" (S3 hot-prefix risk). Future catalog
+//     model uses a UUID v7 archive_id as the only path key.
 type Archiver interface {
 	collector.Saver // Save(ctx context.Context, record collector.Archive) error
 
@@ -87,9 +101,18 @@ type Archiver interface {
 
 	// Scan lists stored archives that match opts.
 	// The returned slice is ordered by Timestamp ascending.
+	//
+	// DEPRECATED: O(N) sidecar reads on local; O(N) GETs on S3. Replace
+	// with PG SQL queries against the `archives` catalog table once that
+	// lands. New callers: don't.
 	Scan(ctx context.Context, opts ScanOptions) ([]Meta, error)
 
 	// Remove deletes the archive for the given traceID.
 	// Returns ErrNotFound when no archive matches.
+	//
+	// DEPRECATED: storage-level soft-delete via meta read-modify-write is
+	// not atomic on S3 and reinvents lifecycle policies. Replace with PG
+	// `archives.deleted_at` once the catalog lands; payload removal moves
+	// to S3 lifecycle / local sweeper. New callers: don't.
 	Remove(ctx context.Context, traceID string) error
 }

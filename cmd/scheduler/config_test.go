@@ -87,7 +87,7 @@ func TestLoadConfig_ValidationFailed(t *testing.T) {
 	}{
 		{
 			name: "interval too short",
-			args: []string{"--interval=30s"},
+			args: []string{"--interval=500ms"},
 		},
 		{
 			name: "invalid messenger type",

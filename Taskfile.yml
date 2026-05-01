@@ -464,7 +464,7 @@ tasks:
           --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
           --kinds DIRECTORY_FETCH,KEYWORD_SEARCH \
           --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock \
-          --interval 1m \
+          --interval 5s \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
           --pg-db {{.POSTGRES_APP_DB}} \
@@ -476,9 +476,9 @@ tasks:
           --kinds PAGE_FETCH \
           --lock-key prism:scheduler:PAGE_FETCH:lock \
           --health-port 8091 \
-          --interval 1m \
+          --interval 3s \
           --media-quota 30 --buffer 10 \
-          --rate-limit-config assets/ratelimits/scheduler.yaml \
+          --rate-limit-config assets/ratelimits/replay.yaml \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
           --pg-db {{.POSTGRES_APP_DB}} \
