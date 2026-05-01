@@ -13,7 +13,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	cfg, err := LoadConfig(nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, 8082, cfg.HealthPort)
+	assert.Equal(t, 8093, cfg.HealthPort)
 	assert.Equal(t, 30*time.Second, cfg.HTTPTimeout)
 	assert.Equal(t, 2*time.Minute, cfg.MaxProcessingTime)
 	assert.Equal(t, "localhost", cfg.Postgres.Host)

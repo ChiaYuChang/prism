@@ -36,6 +36,11 @@ type Config struct {
 	// runs against captured fixtures without touching real sites. Mutually
 	// exclusive with CaptureDir; integration test plan Phase 2.
 	FixtureBase string `mapstructure:"fixture-base"`
+
+	// ForceMinifyError, when true, replaces the real minifier with a shim
+	// that always errors. Dev-only; integration test plan Phase 3 — exercises
+	// the errorSaver / cmd/recover replay path.
+	ForceMinifyError bool `mapstructure:"force-minify-error"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -56,6 +61,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("parsers-config", "internal/collector/parser/config/parsers.yaml", "Path to the parsers configuration file (YAML)")
 	fs.String("capture-dir", "", "Dev-only: tee successful response bodies to <dir>/<host>/<path> for fixture capture")
 	fs.String("fixture-base", "", "Dev-only: rewrite outbound requests to this fixture-server URL (mutually exclusive with --capture-dir)")
+	fs.Bool("force-minify-error", false, "Dev-only: replace minifier with always-failing shim to exercise errorSaver / cmd/recover (Phase 3)")
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")

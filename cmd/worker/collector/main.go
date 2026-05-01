@@ -123,9 +123,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	var pageMinifier collector.Transformer = minifier.New()
+	if config.ForceMinifyError {
+		logger.Warn("minify error injection enabled, DEV ONLY — every page will fail Minify and route to errorSaver")
+		pageMinifier = dev.FailingMinifier{}
+	}
+
 	pipelineRegistry := collector.NewPipelineRegistry(collector.Pipeline{
 		Fetcher:      pageFetcher,
-		Minifier:     minifier.New(),
+		Minifier:     pageMinifier,
 		Transformers: []collector.Transformer{transformer.NewNoOpTransformer()},
 		Parser:       registry,
 	})

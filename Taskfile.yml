@@ -456,6 +456,7 @@ tasks:
     deps: [ build:scheduler, build:discovery, build:collector ]
     vars:
       FIXTURE_BASE: "{{.FIXTURE_BASE | default \"http://localhost:9999\"}}"
+      FORCE_MINIFY_FLAG: "{{.FORCE_MINIFY_FLAG | default \"\"}}"
     cmds:
       - mkdir -p logs tmp/archives
       - |
@@ -496,6 +497,7 @@ tasks:
           --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
           --fixture-base {{.FIXTURE_BASE}} \
           --archive "file://$(pwd)/tmp/archives" \
+          {{.FORCE_MINIFY_FLAG}} \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
           --pg-db {{.POSTGRES_APP_DB}} \
@@ -503,8 +505,15 @@ tasks:
       - |
         sleep 1
         pgrep -af '^\./bin/(scheduler|discovery|collector) ' || true
-        echo "replay mode: fixture-base={{.FIXTURE_BASE}}"
+        echo "replay mode: fixture-base={{.FIXTURE_BASE}} force_minify_flag={{.FORCE_MINIFY_FLAG}}"
         echo "tail logs with: tail -f logs/*.log"
+
+  worker:start:replay:fail-minify:
+    desc: replay-mode workers with collector --force-minify-error injected (Phase 3)
+    cmds:
+      - task: worker:start:replay
+        vars:
+          FORCE_MINIFY_FLAG: "--force-minify-error"
 
   # ----------------------------------------------------------------------------
   # Fixture Server (cmd/dev/fixture-server) — serves testdata/fixtures over

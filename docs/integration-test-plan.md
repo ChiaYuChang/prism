@@ -65,18 +65,30 @@ Code committed in `322a012`; end-to-end run not yet verified.
 
 ## Phase 3 — Error recovery smoke test
 
-- [ ] Add `--force-minify-error` dev flag to collector
-  - Wraps minifier in a `FailingMinifier` shim that always errors.
-  - Logs `WARN: minify error injection enabled, DEV ONLY` at startup.
-- [ ] Clear `candidates` / `contents`, re-run pipeline on fixtures with the flag enabled
-- [ ] Verify:
-  - Collector log shows "minify error (injected), archiving raw"
-  - `./tmp/archives/` contains raw HTML entries with `stage=raw` metadata
-  - `contents` table is empty (minify failed, nothing reached DB)
-- [ ] Run `cmd/recover` pointed at `./tmp/archives/`, confirm:
-  - Archived raw items are picked up and replayed through minify → transform → parse → DB
-  - `contents` table now populated
-  - No real-site traffic (replay reads from local archive)
+- [x] Add `--force-minify-error` dev flag to collector
+  - `internal/dev/failing_minifier.go` — `FailingMinifier{}` always returns `ErrInjectedMinifyFailure`.
+  - `cmd/worker/collector/main.go` swaps `minifier.New()` for `dev.FailingMinifier{}` when flag set; warns at startup.
+- [x] `task worker:start:replay:fail-minify` wires the flag through the existing replay task via `FORCE_MINIFY_FLAG` var.
+- [x] Re-run pipeline on fixtures with the flag enabled (2026-05-01)
+- [x] Verify after run:
+  - `tasks`: PAGE_FETCH=26 FAILED, DIRECTORY_FETCH=3 COMPLETED
+  - `contents` table empty (minify failed, nothing reached DB)
+  - `./tmp/archives/` contains raw archive entries with `kind:raw` + `recover_from:minify` metadata
+- [x] Run `cmd/recover run` against archives, confirmed:
+  - `Recovery complete: 3 succeeded, 0 skipped, 0 failed`
+  - `contents` populated (1 per source after recover)
+  - Idempotent: second run returns `0 succeeded, 3 skipped` (URL/candidate-id existence checks)
+  - No real-site traffic (replay loads from local archive)
+
+**Known gap (out of scope for Phase 3):** archive path is keyed `archives/YYYY/MM/DD/<traceID>.{data,meta.json}`
+(`internal/collector/archiver/local.go:54`). Seed data uses one trace_id per source
+(`integ-test-{dpp,kmt,tpp}`), so all 26 PAGE_FETCH archive writes collapsed into 3 files —
+each task overwrote its predecessor at the same path. Only the last raw HTML per trace_id
+survived to be recovered. This is the same anti-pattern flagged in plan.md Future Roadmap
+("archive metadata catalog separation"; "hot prefix concentration"); it is *not* a Phase 3
+regression. Demonstration coverage of the recover path is unaffected — full coverage would
+require keying archive paths by task_id / content_id / random suffix and is bundled with
+the catalog refactor cutover.
 
 ## Phase 4 — Containerize once host flow is stable
 
