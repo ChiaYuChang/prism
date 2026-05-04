@@ -51,12 +51,18 @@ vars:
   NATS_AUTH_TOKEN:
     sh: cat {{.NATS_AUTH_TOKEN_FILE}}
 
+  # Base + test overlay (host-port publishing, restart=no) is the default
+  # for local dev. Tools (pgadmin/nats-nui/redisinsight/grafana/ollama)
+  # live in docker-compose.tools.yaml gated by per-service `profiles:`;
+  # workers live in docker-compose.workers.yaml under `profiles: [workers]`.
+  # The prod overlay (docker-compose.prod.yaml) is wired in by
+  # script/compose-bake.sh behind a PRISM_PROD_OK=1 gate.
   COMPOSE_SOURCES: >-
     -f {{.DEPLOY_DIR}}/docker-compose.yaml -f
-    {{.DEPLOY_DIR}}/docker-compose.dev.yaml -f
-    {{.DEPLOY_DIR}}/docker-compose.obs.yaml -f
-    {{.DEPLOY_DIR}}/docker-compose.ai.yaml -f
+    {{.DEPLOY_DIR}}/docker-compose.test.yaml -f
+    {{.DEPLOY_DIR}}/docker-compose.tools.yaml -f
     {{.DEPLOY_DIR}}/docker-compose.workers.yaml
+  COMPOSE_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}}'
   COMPOSE_MERGED: .docker-compose.merged.yaml
 
   # Stack mode and project namespacing.
@@ -94,14 +100,19 @@ tasks:
   # Service Management (Docker Compose)
   # ----------------------------------------------------------------------------
   compose:bake:
+    # Bake with every profile active so the merged file is a complete
+    # superset; runtime COMPOSE_PROFILES on compose:up then selects which
+    # profile-gated services actually start. Avoids one merged file per
+    # profile combo (script/compose-bake.sh in a follow-up commit will
+    # take that further).
     env:
       COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
+      COMPOSE_PROFILES: "dev,obs,ai,workers"
     desc: combine all docker-compose files into one
     cmds:
       - docker compose {{.COMPOSE_SOURCES}} config > {{.COMPOSE_MERGED}}
     sources:
       - "{{.DEPLOY_DIR}}/docker-compose*.yaml"
-      - .env
     generates:
       - .docker-compose.merged.yaml
 
@@ -116,6 +127,7 @@ tasks:
           fi
     env:
       COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
+      COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
     cmds:
       - mkdir -p {{.TASK_DIR}}
       - docker compose -f {{.COMPOSE_MERGED}} up -d

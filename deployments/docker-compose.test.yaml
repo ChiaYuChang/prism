@@ -1,0 +1,28 @@
+# Test/dev overlay — exposes core infra ports on the host loopback so the
+# host-mode worker tasks (task worker:start, task test:scheduler*, psql, etc.)
+# can reach them at localhost:<port>. Restart policy is `no` because dev
+# infra is brought up and torn down explicitly via task compose:up/down; we
+# do not want a crashed container to silently bounce.
+
+services:
+  postgres:
+    restart: "no"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  nats:
+    restart: "no"
+    ports:
+      - "${NATS_HTTP_MONITORING_PORT:-8222}:8222"
+      - "${NATS_CLIENT_PORT:-4222}:4222"
+
+  seaweedfs:
+    restart: "no"
+    ports:
+      - "127.0.0.1:${SEAWEEDFS_MASTER_PORT:-9333}:9333"
+      - "127.0.0.1:${SEAWEEDFS_S3_PORT:-8333}:8333"
+
+  valkey:
+    restart: "no"
+    ports:
+      - "127.0.0.1:${VALKEY_PORT:-6379}:6379"

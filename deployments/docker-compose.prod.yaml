@@ -1,0 +1,24 @@
+# Prod overlay — no host-port publishing (services reach each other via
+# the prism-net bridge using service-name DNS), and a `restart:
+# unless-stopped` policy so platform-managed crashes recover without
+# manual intervention. Does NOT add any new secrets wiring on top of the
+# base file's docker-secrets stanza; the base already mounts
+# /run/secrets/<name> from files declared in `env/local/<env>.local.env`,
+# which is the prod-style path.
+#
+# This overlay is gated by script/compose-bake.sh behind PRISM_PROD_OK=1
+# until the full prod path (k8s ConfigMap + secret, AWS Param Store +
+# Secrets Manager, etc.) is wired end-to-end.
+
+services:
+  postgres:
+    restart: unless-stopped
+
+  nats:
+    restart: unless-stopped
+
+  seaweedfs:
+    restart: unless-stopped
+
+  valkey:
+    restart: unless-stopped
