@@ -80,7 +80,7 @@ type ScanOptions struct {
 // satisfies the narrow errorSaver field in the collector Handler.
 //
 // DEPRECATED SHAPE — narrowing to bytes-only Save/Load is planned. See
-// plan.md Future Roadmap "Move archive metadata into PG (catalog + storage
+// docs/plan/future.md "Move archive metadata into PG (catalog + storage
 // separation)". Until that cutover lands:
 //   - Do NOT add new callers of Scan or Remove. cmd/recover is the only
 //     legitimate Scan caller and is already known.

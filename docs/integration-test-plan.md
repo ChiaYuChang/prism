@@ -84,7 +84,7 @@ Code committed in `322a012`; end-to-end run not yet verified.
 (`internal/collector/archiver/local.go:54`). Seed data uses one trace_id per source
 (`integ-test-{dpp,kmt,tpp}`), so all 26 PAGE_FETCH archive writes collapsed into 3 files —
 each task overwrote its predecessor at the same path. Only the last raw HTML per trace_id
-survived to be recovered. This is the same anti-pattern flagged in plan.md Future Roadmap
+survived to be recovered. This is the same anti-pattern flagged in docs/plan/future.md
 ("archive metadata catalog separation"; "hot prefix concentration"); it is *not* a Phase 3
 regression. Demonstration coverage of the recover path is unaffected — full coverage would
 require keying archive paths by task_id / content_id / random suffix and is bundled with

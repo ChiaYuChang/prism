@@ -260,7 +260,7 @@ func (a *LocalArchiver) PurgeAll(ctx context.Context) (int, error) {
 
 // dateDir returns archives/<YYYY>/<MM>/<DD> under baseDir.
 //
-// DEPRECATED PATH LAYOUT — see plan.md Future Roadmap "archive metadata
+// DEPRECATED PATH LAYOUT — see docs/plan/future.md "archive metadata
 // catalog separation". Two known issues with the YYYY/MM/DD/<traceID>
 // layout: (1) <traceID>.data filename collides when multiple tasks share
 // a trace_id (Phase 3 fail-minify run wrote 26 archives but only 3

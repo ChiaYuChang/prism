@@ -3,7 +3,7 @@
 This document defines the intended SQL query surface for Prism before final SQL implementation and `sqlc` code generation.
 
 Reference:
-- Table semantics are documented in [database-tables.md](/home/cychang/Documents/prism/docs/database-tables.md).
+- Table semantics live in `COMMENT ON` statements in `db/migrations/000001_init.up.sql` (surfaced via `\d+` and in generated `db/schema.sql`).
 
 ## Goals
 
