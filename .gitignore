@@ -33,14 +33,19 @@ journal
 data/
 _*
 
-# secrets
+# secrets — single broad rule for the env/local/ subtree so any new
+# bake-managed or user-managed file added here is excluded automatically;
+# avoids the per-file blacklist drift that allowed earlier leaks.
 .secrets/
+env/local/
 .env
+.venv
 *.pem
 *.key
 credentials.json
 
 # temporary files
+.*.docker-compose.merged.yaml
 .docker-compose.merged.yaml
 compose-bake
 tmp/

@@ -16,13 +16,17 @@ tmp
 # Local runtime state (taskfile mode lock, baked compose, logs)
 .task
 .docker-compose.merged.yaml
+.*.docker-compose.merged.yaml
 logs
 */logs
 journal
 
 # Secrets — never copied into images. Containers receive credentials via
-# environment variables or compose secrets, not the source tree.
+# environment variables or compose secrets, not the source tree. Mirror
+# the .gitignore rule for env/local/ so any file under that subtree
+# (bake-managed or user-managed) is excluded from the build context.
 .secrets
+env/local
 .env
 *.pem
 *.key
