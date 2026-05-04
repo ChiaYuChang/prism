@@ -266,4 +266,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_tasks_active_page_fetch
 
 ALTER TABLE tasks SET (fillfactor = 80);
 
+COMMENT ON TABLE candidates IS 'Article briefs (title/url/desc) before full-page fetch. Discovery terminal asset.';
+COMMENT ON COLUMN candidates.fingerprint IS 'Dedup key (URL-derived, MD5 hex). Not a separate table.';
+COMMENT ON TABLE contents IS 'Full fetched article. 1:1 with candidates via UNIQUE candidate_id.';
+COMMENT ON TABLE batches IS 'Groups one cron/trigger run so planner can detect completion. id used in tasks.batch_id and copied into candidates/contents.';
+COMMENT ON TABLE tasks IS 'Runnable request-oriented work unit. Scheduler claims with FOR UPDATE SKIP LOCKED.';
+COMMENT ON COLUMN tasks.payload_hash IS 'SHA-256(canonical JSON payload), hex. KEYWORD_SEARCH dedup via uq_tasks_active_payload. PAGE_FETCH dedups on url instead.';
+COMMENT ON COLUMN tasks.payload IS 'Request details (e.g. {query, site} for KEYWORD_SEARCH). Search keywords belong here, not as columns.';
+COMMENT ON TABLE prompts IS 'Prompt asset registry. hash = SHA-256(body), used to pin extraction provenance.';
+COMMENT ON TABLE content_extractions IS 'One structured extraction per (content, model, prompt, schema_version). Append-only snapshot.';
+
 COMMIT;
