@@ -43,6 +43,25 @@ func TestLoadConfigFromFlags(t *testing.T) {
 	assert.Equal(t, "file:///tmp/archives", cfg.Archive)
 }
 
+func TestLoadConfigS3FromFlags(t *testing.T) {
+	cfg, err := LoadConfig([]string{
+		"--archive=s3://mybucket/errors",
+		"--s3-endpoint=http://localhost:9000",
+		"--s3-region=us-west-2",
+		"--s3-access-key=AKIA",
+		"--s3-secret-key=SECRET",
+		"--s3-use-path-style=false",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "s3://mybucket/errors", cfg.Archive)
+	assert.Equal(t, "http://localhost:9000", cfg.S3.Endpoint)
+	assert.Equal(t, "us-west-2", cfg.S3.Region)
+	assert.Equal(t, "AKIA", cfg.S3.AccessKey)
+	assert.Equal(t, "SECRET", cfg.S3.SecretKey)
+	assert.Equal(t, false, cfg.S3.UsePathStyle)
+}
+
 func TestLoadConfigFromEnvironment(t *testing.T) {
 	require.NoError(t, os.Setenv("PRISM_COLLECTOR_WORKER_MAX_PROCESSING_TIME", "75s"))
 	require.NoError(t, os.Setenv("PRISM_COLLECTOR_WORKER_POSTGRES_USERNAME", "tester"))

@@ -27,6 +27,7 @@ go.work.sum
 # logs
 */logs/
 logs
+journal
 
 # data
 data/

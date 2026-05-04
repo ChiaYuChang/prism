@@ -70,6 +70,12 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("pg-db", "prism", "Postgres database name")
 	fs.String("pg-sslmode", "disable", "Postgres SSL mode")
 
+	fs.String("s3-endpoint", "", "S3 endpoint URL (leave empty for AWS; set for SeaweedFS/MinIO e.g. http://localhost:8333)")
+	fs.String("s3-region", "us-east-1", "S3 region")
+	fs.String("s3-access-key", "", "S3 access key (empty uses AWS SDK default credential chain)")
+	fs.String("s3-secret-key", "", "S3 secret key (empty uses AWS SDK default credential chain)")
+	fs.Bool("s3-use-path-style", true, "Use path style addressing (required for SeaweedFS/MinIO)")
+
 	fs.String("nats-host", "localhost", "The NATS server host")
 	fs.Int("nats-port", 4222, "The NATS server port")
 	fs.String("nats-token", "", "The NATS server auth token")

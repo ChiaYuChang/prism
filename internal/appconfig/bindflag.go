@@ -36,6 +36,13 @@ func (LLMConfig) BindFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 		strings.NewReplacer("llm-", "llm.", "-", "."))
 }
 
+// BindFlags binds all pflags prefixed with "s3-" to nested viper keys under "s3.".
+// e.g. s3-endpoint → s3.endpoint, s3-use-path-style → s3.use-path-style
+func (S3Config) BindFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	return bindWithReplacer(v, fs, "s3-",
+		strings.NewReplacer("s3-", "s3."))
+}
+
 // bindWithReplacer iterates over all flags whose name starts with prefix,
 // applies r to derive the viper key, and calls v.BindPFlag for each match.
 func bindWithReplacer(v *viper.Viper, fs *pflag.FlagSet, prefix string, r *strings.Replacer) error {

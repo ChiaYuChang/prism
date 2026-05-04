@@ -1,3 +1,7 @@
+// Package batch provides functionality for managing and monitoring the lifecycle of
+// asynchronous data collection batches. It includes components for detecting
+// when a batch has completed all its constituent tasks and for tracking
+// the progress of active batches.
 package batch
 
 import (
