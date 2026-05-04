@@ -13,6 +13,21 @@ type ValkeyConfig struct {
 	Username string `mapstructure:"username"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"       validate:"min=0"`
+
+	// PasswordFile: see PostgresConfig.PasswordFile.
+	PasswordFile string `mapstructure:"password-file"`
+}
+
+// ResolveSecrets loads PasswordFile if set, replacing Password.
+func (v *ValkeyConfig) ResolveSecrets() error {
+	val, err := LoadFromFile(v.PasswordFile)
+	if err != nil {
+		return err
+	}
+	if val != "" {
+		v.Password = val
+	}
+	return nil
 }
 
 func (v ValkeyConfig) Addr() string {

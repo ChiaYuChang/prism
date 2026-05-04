@@ -22,6 +22,25 @@ type NatsConfig struct {
 	QueueGroup       string        `mapstructure:"queue-group"       validate:"omitempty"`
 	SubscribersCount int           `mapstructure:"subscribers-count" validate:"omitempty,min=1,max=64"`
 	AckWaitTimeout   time.Duration `mapstructure:"ack-wait-timeout"  validate:"omitempty,min=1s"`
+
+	// File-based overrides for prod secret mounts. See PostgresConfig.PasswordFile.
+	PasswordFile string `mapstructure:"nats-password-file"`
+	TokenFile    string `mapstructure:"nats-token-file"`
+}
+
+// ResolveSecrets loads PasswordFile / TokenFile if set, overriding Password / Token.
+func (n *NatsConfig) ResolveSecrets() error {
+	if v, err := LoadFromFile(n.PasswordFile); err != nil {
+		return err
+	} else if v != "" {
+		n.Password = v
+	}
+	if v, err := LoadFromFile(n.TokenFile); err != nil {
+		return err
+	} else if v != "" {
+		n.Token = v
+	}
+	return nil
 }
 
 // String renders a human-readable summary with secrets redacted. The default

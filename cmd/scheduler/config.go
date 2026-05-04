@@ -60,6 +60,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("valkey-port", 6379, "The port of the Valkey/Redis instance")
 	fs.String("valkey-username", "", "The username for the Valkey/Redis instance")
 	fs.String("valkey-password", "", "The password for the Valkey/Redis instance")
+	fs.String("valkey-password-file", "", "Path to file containing the Valkey password (overrides --valkey-password and the env var)")
 	fs.Int("valkey-db", 0, "The database index for the Valkey/Redis instance")
 
 	// Postgres individual flags
@@ -67,12 +68,16 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("pg-port", 5432, "Postgres port")
 	fs.String("pg-username", "postgres", "Postgres username")
 	fs.String("pg-password", "postgres", "Postgres password")
+	fs.String("pg-password-file", "", "Path to file containing the Postgres password (overrides --pg-password and the env var)")
 	fs.String("pg-db", "prism", "Postgres database name")
 	fs.String("pg-sslmode", "disable", "Postgres SSL mode (disable, require, etc.)")
 
 	fs.String("nats-host", "localhost", "The NATS server host")
 	fs.Int("nats-port", 4222, "The NATS server port")
 	fs.String("nats-token", "", "The NATS server auth token")
+	fs.String("nats-token-file", "", "Path to file containing the NATS auth token (overrides --nats-token and the env var)")
+	fs.String("nats-password", "", "The NATS server password")
+	fs.String("nats-password-file", "", "Path to file containing the NATS password (overrides --nats-password and the env var)")
 	fs.String("queue-group", "", "Queue group for NATS subscribers (unused by scheduler publisher)")
 	fs.Int("subscribers-count", 1, "Subscriber count for NATS consumers (unused by scheduler publisher)")
 	fs.Duration("ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscribers (unused by scheduler publisher)")
@@ -120,6 +125,15 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	// Resolve file-based secrets before validation so the required-Password
+	// check sees the file-derived value when running under prod overlay.
+	if err := config.Postgres.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("postgres secrets: %w", err)
+	}
+	if err := config.Valkey.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("valkey secrets: %w", err)
+	}
+
 	// Polymorphic initialization based on MessengerType
 	switch config.MessengerType {
 	case "nats":
@@ -129,6 +143,9 @@ func LoadConfig(args []string) (*Config, error) {
 		}
 		natsCfg.SubscribersCount = 1
 		natsCfg.AckWaitTimeout = 30 * time.Second
+		if err := natsCfg.ResolveSecrets(); err != nil {
+			return nil, fmt.Errorf("nats secrets: %w", err)
+		}
 		config.Messenger = &natsCfg
 	case "gochannel":
 		var goChannelCfg app.GoChannelConfig

@@ -60,12 +60,16 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("pg-port", 5432, "Postgres port")
 	fs.String("pg-username", "postgres", "Postgres username")
 	fs.String("pg-password", "postgres", "Postgres password")
+	fs.String("pg-password-file", "", "Path to file containing the Postgres password (overrides --pg-password and the env var)")
 	fs.String("pg-db", "prism", "Postgres database name")
 	fs.String("pg-sslmode", "disable", "Postgres SSL mode")
 
 	fs.String("nats-host", "localhost", "The NATS server host")
 	fs.Int("nats-port", 4222, "The NATS server port")
 	fs.String("nats-token", "", "The NATS server auth token")
+	fs.String("nats-token-file", "", "Path to file containing the NATS auth token (overrides --nats-token and the env var)")
+	fs.String("nats-password", "", "The NATS server password")
+	fs.String("nats-password-file", "", "Path to file containing the NATS password (overrides --nats-password and the env var)")
 	fs.String("queue-group", "discovery-worker", "Queue group for worker subscriptions")
 	fs.Int("subscribers-count", 1, "How many subscriber goroutines to run")
 	fs.Duration("ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscriber")
@@ -98,6 +102,10 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	if err := config.Postgres.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("postgres secrets: %w", err)
+	}
+
 	switch config.MessengerType {
 	case "nats":
 		var natsCfg appconfig.NatsConfig
@@ -109,6 +117,9 @@ func LoadConfig(args []string) (*Config, error) {
 		}
 		if natsCfg.AckWaitTimeout == 0 {
 			natsCfg.AckWaitTimeout = 30 * time.Second
+		}
+		if err := natsCfg.ResolveSecrets(); err != nil {
+			return nil, fmt.Errorf("nats secrets: %w", err)
 		}
 		config.Messenger = &natsCfg
 	case "gochannel":
