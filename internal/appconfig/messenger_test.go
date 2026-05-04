@@ -2,7 +2,9 @@ package appconfig
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -99,4 +101,36 @@ func TestNatsConfig_NewMessenger_Warnings(t *testing.T) {
 			assert.NotEqual(t, slog.LevelWarn, r.Level)
 		}
 	})
+}
+
+// TestNatsConfig_NoSecretLeak guards every fmt path that logging code might
+// hit (Stringer-aware verbs %v / %+v, plus slog.Any via LogValue).
+// New code must not regress this; an additional plaintext occurrence here is
+// the single fastest way to leak a credential into log shipping.
+func TestNatsConfig_NoSecretLeak(t *testing.T) {
+	const (
+		token    = "tok-abcdef-0123456789"
+		password = "pwd-abcdef-0123456789"
+	)
+	cfg := NatsConfig{
+		Host:     "localhost",
+		Port:     4222,
+		Username: "user",
+		Password: password,
+		Token:    token,
+	}
+
+	for _, verb := range []string{"%v", "%+v", "%s"} {
+		out := fmt.Sprintf(verb, cfg)
+		assert.NotContains(t, out, token, "verb %q leaked token", verb)
+		assert.NotContains(t, out, password, "verb %q leaked password", verb)
+	}
+
+	// slog.Any path: emit a record and inspect the formatted attribute.
+	var buf strings.Builder
+	h := slog.NewTextHandler(&buf, nil)
+	slog.New(h).Info("nats", slog.Any("config", cfg))
+	logged := buf.String()
+	assert.NotContains(t, logged, token, "slog.Any leaked token: %s", logged)
+	assert.NotContains(t, logged, password, "slog.Any leaked password: %s", logged)
 }

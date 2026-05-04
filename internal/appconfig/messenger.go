@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/infra"
+	prismlogger "github.com/ChiaYuChang/prism/pkg/logger"
 )
 
 type MessengerConfig interface {
@@ -21,6 +22,33 @@ type NatsConfig struct {
 	QueueGroup       string        `mapstructure:"queue-group"       validate:"omitempty"`
 	SubscribersCount int           `mapstructure:"subscribers-count" validate:"omitempty,min=1,max=64"`
 	AckWaitTimeout   time.Duration `mapstructure:"ack-wait-timeout"  validate:"omitempty,min=1s"`
+}
+
+// String renders a human-readable summary with secrets redacted. The default
+// fmt formatting paths (%v, %+v) call this, so logging a NatsConfig value will
+// not leak the token or password.
+func (n NatsConfig) String() string {
+	return fmt.Sprintf(
+		"host=%s port=%d username=%s password=%s token=%s queue_group=%s subscribers=%d ack_wait=%s",
+		n.Host, n.Port, n.Username,
+		prismlogger.SecretMask(n.Password),
+		prismlogger.SecretMask(n.Token),
+		n.QueueGroup, n.SubscribersCount, n.AckWaitTimeout,
+	)
+}
+
+// LogValue redacts secrets when the config is logged via slog.Any.
+func (n NatsConfig) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("host", n.Host),
+		slog.Int("port", n.Port),
+		slog.String("username", n.Username),
+		slog.String("password", prismlogger.SecretMask(n.Password)),
+		slog.String("token", prismlogger.SecretMask(n.Token)),
+		slog.String("queue_group", n.QueueGroup),
+		slog.Int("subscribers", n.SubscribersCount),
+		slog.Duration("ack_wait", n.AckWaitTimeout),
+	)
 }
 
 func (n *NatsConfig) NewMessenger(logger *slog.Logger) (*infra.Messenger, error) {

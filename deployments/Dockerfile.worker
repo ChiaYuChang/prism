@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1.7
+
+# Multi-stage build for Prism worker binaries.
+#
+# Build args:
+#   CMD_PATH       — package path under repo root, e.g. cmd/scheduler,
+#                    cmd/worker/discovery, cmd/worker/collector.
+#   RUNTIME_IMAGE  — runtime base. Default is distroless static-debian12:nonroot
+#                    (production). For test/debug, override to alpine:3.20.
+#                    Never use golang:alpine as the runtime.
+#
+# Usage:
+#   docker build \
+#     --build-arg CMD_PATH=cmd/scheduler \
+#     -f deployments/Dockerfile.worker \
+#     -t prism/scheduler:latest .
+
+ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot
+
+# ---- build stage -----------------------------------------------------------
+FROM golang:1.26-alpine AS build
+
+WORKDIR /src
+
+# Cache module downloads in a separate layer.
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+COPY . .
+
+ARG CMD_PATH=cmd/scheduler
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -ldflags="-s -w" \
+        -o /out/worker \
+        ./${CMD_PATH}
+
+# ---- runtime stage ---------------------------------------------------------
+FROM ${RUNTIME_IMAGE}
+
+WORKDIR /app
+
+# Binary.
+COPY --from=build /out/worker /app/worker
+
+# Runtime config files referenced by --rate-limit-config / --scout-config
+# / --parsers-config. Baked into the image so containers don't need volume
+# mounts for static assets that ship with the source tree.
+COPY --from=build /src/assets /app/assets
+COPY --from=build /src/internal/discovery/scout/config/scouts.yaml /app/configs/scouts.yaml
+COPY --from=build /src/internal/collector/parser/config/parsers.yaml /app/configs/parsers.yaml
+
+# distroless/static:nonroot already runs as nonroot:nonroot. For alpine
+# overrides, callers can `--user` at run time; we don't switch USER here so
+# RUNTIME_IMAGE swaps stay drop-in.
+
+ENTRYPOINT ["/app/worker"]

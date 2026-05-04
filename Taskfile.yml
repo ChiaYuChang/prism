@@ -1,12 +1,12 @@
 version: "3"
 
-# 自動載入環境變數
+# read .env file
 dotenv: [ ".env" ]
 
 env:
   POSTGRES_DATABASE: "{{.POSTGRES_APP_DB}}"
   POSTGRES_USER: "{{.POSTGRES_APP_USER}}"
-  POSTGRES_PASSWORD: "$(cat {{.POSTGRES_APP_PASSWORD_FILE}})"
+  POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
 
 vars:
   DEPLOY_DIR: deployments
@@ -14,8 +14,14 @@ vars:
   CMD_DIR: cmd
   DB_DIR: db
 
-  POSTGRES_APP_PASSWORD: "$(cat {{.POSTGRES_APP_PASSWORD_FILE}})"
-  POSTGRES_ADMIN_PASSWORD: "$(cat {{.POSTGRES_ADMIN_PASSWORD_FILE}})"
+  # Eagerly read secret files via `sh:` so {{.VAR}} expansions yield the
+  # actual content. Older form `"$(cat …)"` produced a literal string that
+  # only worked inside cmd: lines (where a shell expanded it) and silently
+  # broke when the same var was placed in an env: block (no shell).
+  POSTGRES_APP_PASSWORD:
+    sh: cat {{.POSTGRES_APP_PASSWORD_FILE}}
+  POSTGRES_ADMIN_PASSWORD:
+    sh: cat {{.POSTGRES_ADMIN_PASSWORD_FILE}}
   POSTGRES_HOST: "localhost"
   POSTGRES_URL: "postgres://{{.POSTGRES_ADMIN_USER}}:{{.POSTGRES_ADMIN_PASSWORD}}\
     @{{.POSTGRES_HOST}}:{{.POSTGRES_PORT}}/{{.POSTGRES_APP_DB}}?sslmode=disable"
@@ -23,13 +29,15 @@ vars:
 
   NATS_HOST: "localhost"
   NATS_CLIENT_PORT: 4222
-  NATS_AUTH_TOKEN: "$(cat {{.NATS_AUTH_TOKEN_FILE}})"
+  NATS_AUTH_TOKEN:
+    sh: cat {{.NATS_AUTH_TOKEN_FILE}}
 
   COMPOSE_SOURCES: >-
     -f {{.DEPLOY_DIR}}/docker-compose.yaml -f
     {{.DEPLOY_DIR}}/docker-compose.dev.yaml -f
     {{.DEPLOY_DIR}}/docker-compose.obs.yaml -f
-    {{.DEPLOY_DIR}}/docker-compose.ai.yaml
+    {{.DEPLOY_DIR}}/docker-compose.ai.yaml -f
+    {{.DEPLOY_DIR}}/docker-compose.workers.yaml
   COMPOSE_MERGED: .docker-compose.merged.yaml
 
   # Stack mode and project namespacing.
@@ -154,6 +162,69 @@ tasks:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f
 
   # ----------------------------------------------------------------------------
+  # Containerized workers (integration-test-plan.md Phase 4)
+  # Workers live behind the `workers` profile in docker-compose.workers.yaml,
+  # so the daily infra-only `compose:up` is unaffected. compose:workers builds
+  # and brings them up alongside the running infra stack, reusing prism-net so
+  # service-name DNS (postgres / nats / valkey) just works.
+  # WORKER_RUNTIME_IMAGE override: pass alpine:3.20 for debug shells; the
+  # default is distroless/static-debian12:nonroot.
+  # ----------------------------------------------------------------------------
+  compose:workers:
+    desc: build and start containerized workers (requires infra stack to be up)
+    vars:
+      EFFECTIVE_MODE:
+        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
+    preconditions:
+      - sh: "test -f {{.MODE_FILE}}"
+        msg: "infra stack is not up. Run 'task compose:up' first."
+    env:
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: workers
+      NATS_AUTH_TOKEN:
+        sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
+      POSTGRES_APP_PASSWORD:
+        sh: "cat {{.POSTGRES_APP_PASSWORD_FILE}}"
+      VALKEY_APP_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
+      POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
+      VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
+    cmds:
+      - docker compose {{.COMPOSE_SOURCES}} build scheduler-slow discovery
+        collector
+      - docker compose {{.COMPOSE_SOURCES}} up -d scheduler-slow scheduler-fast
+        discovery collector
+
+  compose:workers:down:
+    desc: stop containerized workers (leaves infra stack running)
+    vars:
+      EFFECTIVE_MODE:
+        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
+    env:
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: workers
+    cmds:
+      - docker compose {{.COMPOSE_SOURCES}} stop scheduler-slow scheduler-fast
+        discovery collector
+      - docker compose {{.COMPOSE_SOURCES}} rm -f scheduler-slow scheduler-fast
+        discovery collector
+
+  compose:workers:logs:
+    desc: tail logs from containerized workers
+    vars:
+      EFFECTIVE_MODE:
+        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
+    env:
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: workers
+    cmds:
+      - docker compose {{.COMPOSE_SOURCES}} logs -f scheduler-slow
+        scheduler-fast discovery collector
+
+  # ----------------------------------------------------------------------------
   # Development & Code Generation
   # ----------------------------------------------------------------------------
   init:
@@ -242,45 +313,56 @@ tasks:
     cmds:
       - go test -v -short -cover ./...
 
+  # NOTE: secrets flow via env vars (PRISM_<APP>_POSTGRES_PASSWORD etc.) so
+  # they never appear on argv where `ps -ef` would expose them to any user on
+  # the host. Viper's AutomaticEnv + the per-cmd prefix picks them up; the
+  # dotted viper keys (postgres.password, valkey.password) translate to
+  # POSTGRES_PASSWORD / VALKEY_PASSWORD via the SetEnvKeyReplacer rule.
   test:scheduler:
     desc: run scheduler in test mode (gochannel)
+    env:
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
     cmds:
-      - go run ./cmd/scheduler --messenger-type gochannel --interval 1m --host
-        {{.POSTGRES_HOST}} --port {{.POSTGRES_PORT}} --user
-        {{.POSTGRES_APP_USER}} --password "{{.POSTGRES_APP_PASSWORD}}" --db
-        {{.POSTGRES_APP_DB}}
+      - go run ./cmd/scheduler --messenger-type gochannel --interval 1m
+        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
+        {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}}
 
   test:scheduler-fast:
     desc: run scheduler-fast in test mode (PAGE_FETCH, 3s interval, MEDIA priority)
+    env:
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_SCHEDULER_VALKEY_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
     cmds:
       - go run ./cmd/scheduler --messenger-type gochannel --kinds PAGE_FETCH
         --lock-key prism:scheduler:PAGE_FETCH:lock --interval 3s --media-quota
         30 --buffer 10 --rate-limit-config assets/ratelimits/scheduler.yaml
         --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
-        {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
-        --pg-db {{.POSTGRES_APP_DB}} --valkey-username {{.VALKEY_APP_USER}}
-        --valkey-password "{{.VALKEY_APP_PASSWORD}}"
+        {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}} --valkey-username
+        {{.VALKEY_APP_USER}}
 
   test:scheduler-slow:
     desc: run scheduler-slow in test mode (DIRECTORY_FETCH+KEYWORD_SEARCH, 60s
       interval)
+    env:
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_SCHEDULER_VALKEY_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
     cmds:
       - go run ./cmd/scheduler --messenger-type gochannel --kinds
         DIRECTORY_FETCH,KEYWORD_SEARCH --lock-key
         prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock --interval 60s
         --buffer 10 --rate-limit-config assets/ratelimits/scheduler.yaml
         --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
-        {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}"
-        --pg-db {{.POSTGRES_APP_DB}} --valkey-username {{.VALKEY_APP_USER}}
-        --valkey-password "{{.VALKEY_APP_PASSWORD}}"
+        {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}} --valkey-username
+        {{.VALKEY_APP_USER}}
 
   test:discovery:
     desc: run discovery worker in test mode (gochannel)
+    env:
+      PRISM_DISCOVERY_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
     cmds:
-      - go run ./cmd/worker/discovery --messenger-type gochannel --host
-        {{.POSTGRES_HOST}} --port {{.POSTGRES_PORT}} --user
-        {{.POSTGRES_APP_USER}} --password "{{.POSTGRES_APP_PASSWORD}}" --db
-        {{.POSTGRES_APP_DB}}
+      - go run ./cmd/worker/discovery --messenger-type gochannel --pg-host
+        {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
+        {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}}
 
   build:all:
     desc: build all microservice binaries
@@ -380,25 +462,36 @@ tasks:
       - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" =
           \"127.0.0.1\""
         msg: "refusing non-localhost POSTGRES_HOST"
-      - sh: '! pgrep -f ''^\./bin/(scheduler|discovery|collector) '' >/dev/null'
+      - sh: "! pgrep -f '^\\./bin/(scheduler|discovery|collector) ' >/dev/null"
         msg: "workers already running. Run 'task worker:stop' first."
     deps: [ build:scheduler, build:discovery, build:collector ]
+    # Secrets flow via env vars (per-cmd PRISM_* prefixes) so they never
+    # land on argv where `ps -ef` / /proc/<pid>/cmdline would expose them
+    # to any user on the host. Viper picks them up via AutomaticEnv.
+    env:
+      PRISM_SCHEDULER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_SCHEDULER_VALKEY_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      PRISM_DISCOVERY_WORKER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_DISCOVERY_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_COLLECTOR_WORKER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_COLLECTOR_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
     cmds:
       - mkdir -p logs tmp/archives testdata/fixtures
       - |
         ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
-          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --nats-host localhost --nats-port 4222 \
           --kinds DIRECTORY_FETCH,KEYWORD_SEARCH \
           --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock \
           --interval 1m \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
-          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}" \
+          --valkey-username {{.VALKEY_APP_USER}} \
           > logs/scheduler-slow.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
-          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --nats-host localhost --nats-port 4222 \
           --kinds PAGE_FETCH \
           --lock-key prism:scheduler:PAGE_FETCH:lock \
           --health-port 8091 \
@@ -406,25 +499,25 @@ tasks:
           --media-quota 30 --buffer 10 \
           --rate-limit-config assets/ratelimits/scheduler.yaml \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
-          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}" \
+          --valkey-username {{.VALKEY_APP_USER}} \
           > logs/scheduler-fast.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/discovery --messenger-type nats \
-          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --nats-host localhost --nats-port 4222 \
           --capture-dir testdata/fixtures \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
           > logs/discovery.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/collector --messenger-type nats \
-          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --nats-host localhost --nats-port 4222 \
           --capture-dir testdata/fixtures \
           --archive "file://$(pwd)/tmp/archives" \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
           > logs/collector.log 2>&1 &
       - |
@@ -449,30 +542,39 @@ tasks:
       - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" =
           \"127.0.0.1\""
         msg: "refusing non-localhost POSTGRES_HOST"
-      - sh: 'pgrep -f ''^\./bin/dev/fixture-server '' >/dev/null'
+      - sh: "pgrep -f '^\\./bin/dev/fixture-server ' >/dev/null"
         msg: "fixture-server is not running. Run 'task fixture-server:start' first."
-      - sh: '! pgrep -f ''^\./bin/(scheduler|discovery|collector) '' >/dev/null'
+      - sh: "! pgrep -f '^\\./bin/(scheduler|discovery|collector) ' >/dev/null"
         msg: "workers already running. Run 'task worker:stop' first."
     deps: [ build:scheduler, build:discovery, build:collector ]
     vars:
       FIXTURE_BASE: "{{.FIXTURE_BASE | default \"http://localhost:9999\"}}"
       FORCE_MINIFY_FLAG: "{{.FORCE_MINIFY_FLAG | default \"\"}}"
+    # Secrets via env (see worker:start above for rationale).
+    env:
+      PRISM_SCHEDULER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_SCHEDULER_VALKEY_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      PRISM_DISCOVERY_WORKER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_DISCOVERY_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_COLLECTOR_WORKER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_COLLECTOR_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
     cmds:
       - mkdir -p logs tmp/archives
       - |
         ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
-          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --nats-host localhost --nats-port 4222 \
           --kinds DIRECTORY_FETCH,KEYWORD_SEARCH \
           --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock \
           --interval 5s \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
-          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}" \
+          --valkey-username {{.VALKEY_APP_USER}} \
           > logs/scheduler-slow.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
-          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --nats-host localhost --nats-port 4222 \
           --kinds PAGE_FETCH \
           --lock-key prism:scheduler:PAGE_FETCH:lock \
           --health-port 8091 \
@@ -480,26 +582,26 @@ tasks:
           --media-quota 30 --buffer 10 \
           --rate-limit-config assets/ratelimits/replay.yaml \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
-          --valkey-username {{.VALKEY_APP_USER}} --valkey-password "{{.VALKEY_APP_PASSWORD}}" \
+          --valkey-username {{.VALKEY_APP_USER}} \
           > logs/scheduler-fast.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/discovery --messenger-type nats \
-          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --nats-host localhost --nats-port 4222 \
           --fixture-base {{.FIXTURE_BASE}} \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
           > logs/discovery.log 2>&1 &
       - |
         ./{{.BUILD_DIR}}/collector --messenger-type nats \
-          --nats-host localhost --nats-port 4222 --nats-token "$(cat .secrets/nats-auth-token)" \
+          --nats-host localhost --nats-port 4222 \
           --fixture-base {{.FIXTURE_BASE}} \
           --archive "file://$(pwd)/tmp/archives" \
           {{.FORCE_MINIFY_FLAG}} \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
-          --pg-username {{.POSTGRES_APP_USER}} --pg-password "{{.POSTGRES_APP_PASSWORD}}" \
+          --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
           > logs/collector.log 2>&1 &
       - |
@@ -532,7 +634,7 @@ tasks:
       FIXTURE_ADDR: "{{.FIXTURE_ADDR | default \":9999\"}}"
       FIXTURE_ROOT: "{{.FIXTURE_ROOT | default \"testdata/fixtures\"}}"
     preconditions:
-      - sh: '! pgrep -f ''^\./bin/dev/fixture-server '' >/dev/null'
+      - sh: "! pgrep -f '^\\./bin/dev/fixture-server ' >/dev/null"
         msg: "fixture-server already running. Run 'task fixture-server:stop' first."
     cmds:
       - mkdir -p logs {{.FIXTURE_ROOT}}

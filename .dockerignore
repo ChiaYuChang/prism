@@ -1,0 +1,34 @@
+# VCS / IDE
+.git
+.gitignore
+.idea
+.vscode
+
+# Build / test artifacts
+bin
+*.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+tmp
+
+# Local runtime state (taskfile mode lock, baked compose, logs)
+.task
+.docker-compose.merged.yaml
+logs
+*/logs
+journal
+
+# Secrets — never copied into images. Containers receive credentials via
+# environment variables or compose secrets, not the source tree.
+.secrets
+.env
+*.pem
+*.key
+
+# Compose / docs / dev-only fixtures (not needed for binary builds)
+deployments/docker-compose*.yaml
+docs
+testdata/fixtures
+data

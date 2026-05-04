@@ -1,0 +1,149 @@
+# Worker stack — gated behind the `workers` profile so the daily infra-only
+# `task compose:up` is unaffected. Activate with `task compose:workers`
+# (sets COMPOSE_PROFILES=workers) or `docker compose --profile workers up`.
+#
+# Workers join the same `prism-net` network defined in docker-compose.yaml,
+# so service-name DNS (`postgres`, `nats`, `valkey`) resolves automatically
+# without exposing any of those on the host.
+#
+# Credentials flow in via env vars resolved at compose time from .env or
+# the parent shell. The `compose:workers` task reads them out of `.secrets/`
+# before invoking docker compose.
+
+services:
+  scheduler-slow:
+    profiles: [ workers ]
+    image: prism/scheduler:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        CMD_PATH: cmd/scheduler
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --messenger-type=nats
+      - --nats-host=nats
+      - --nats-port=4222
+      - --kinds=DIRECTORY_FETCH,KEYWORD_SEARCH
+      - --lock-key=prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock
+      - --interval=1m
+      - --rate-limit-config=/app/assets/ratelimits/scheduler.yaml
+      - --pg-host=postgres
+      - --pg-port=5432
+      - --pg-username=${POSTGRES_APP_USER:-prism}
+      - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --valkey-host=valkey
+      - --valkey-port=6379
+      - --valkey-username=${VALKEY_APP_USER:-prism}
+    environment:
+      PRISM_SCHEDULER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_SCHEDULER_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
+    networks:
+      - prism-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+
+  scheduler-fast:
+    profiles: [ workers ]
+    image: prism/scheduler:latest
+    command:
+      - --messenger-type=nats
+      - --nats-host=nats
+      - --nats-port=4222
+      - --kinds=PAGE_FETCH
+      - --lock-key=prism:scheduler:PAGE_FETCH:lock
+      - --interval=3s
+      - --health-port=8091
+      - --media-quota=30
+      - --buffer=10
+      - --rate-limit-config=/app/assets/ratelimits/scheduler.yaml
+      - --pg-host=postgres
+      - --pg-port=5432
+      - --pg-username=${POSTGRES_APP_USER:-prism}
+      - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --valkey-host=valkey
+      - --valkey-port=6379
+      - --valkey-username=${VALKEY_APP_USER:-prism}
+    environment:
+      PRISM_SCHEDULER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_SCHEDULER_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
+    networks:
+      - prism-net
+    depends_on:
+      scheduler-slow:
+        condition: service_started
+    restart: unless-stopped
+
+  discovery:
+    profiles: [ workers ]
+    image: prism/discovery:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        CMD_PATH: cmd/worker/discovery
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --messenger-type=nats
+      - --nats-host=nats
+      - --nats-port=4222
+      - --scout-config=/app/configs/scouts.yaml
+      - --pg-host=postgres
+      - --pg-port=5432
+      - --pg-username=${POSTGRES_APP_USER:-prism}
+      - --pg-db=${POSTGRES_APP_DB:-prism}
+    environment:
+      PRISM_DISCOVERY_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_DISCOVERY_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+    networks:
+      - prism-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  collector:
+    profiles: [ workers ]
+    image: prism/collector:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        CMD_PATH: cmd/worker/collector
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --messenger-type=nats
+      - --nats-host=nats
+      - --nats-port=4222
+      - --parsers-config=/app/configs/parsers.yaml
+      - --archive=file:///app/archives
+      - --pg-host=postgres
+      - --pg-port=5432
+      - --pg-username=${POSTGRES_APP_USER:-prism}
+      - --pg-db=${POSTGRES_APP_DB:-prism}
+    environment:
+      PRISM_COLLECTOR_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_COLLECTOR_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+    volumes:
+      - worker_archives:/app/archives
+    networks:
+      - prism-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  worker_archives:
