@@ -130,6 +130,18 @@ Commits:
 - `6837a3e` feat(collector): add --force-minify-error for Phase 3 recovery test
 - `22ad358` feat(recover): support multi-stage replay and deprecate sidecar archiver
 
+## Plan restructure + item A verification (2026-05-04)
+
+* [x] Split `plan.md` (576 lines) into `docs/plan/{spec,todo,done,future}.md`; `plan.md` rewritten as ~15-line index.
+* [x] Cross-refs updated in `internal/collector/archiver/{archiver,meta,local}.go`, `docs/integration-test-plan.md`, `SESSION_SUMMARY.md`.
+* [x] Deleted `docs/database-tables.md`; per-table semantics live in `COMMENT ON` statements in `db/migrations/000001_init.up.sql`.
+* [x] **Item A verified** — replay tick speedup (`22ad358`): 26/26 PAGE_FETCH + 3/3 DIRECTORY_FETCH COMPLETED, 0 failures, drained well under 30s target.
+* [x] Stale todo items reconciled — old §7 #12 (archive publisher wired in `fbbb82c`), #13 (cmd/recover dual-path, in `22ad358`), #14 (deprecation annotations, in `22ad358`) all already shipped; removed from todo.md, remaining items renumbered.
+
+Commits:
+- `192d709` docs: restructure project plan and add schema comments
+- `2aa742f` docs: update cross-references to new plan structure and schema comments
+
 ## Phase 3.2 — Vectorization (partial, 2026-03)
 
 * [x] Schema for 768-dimensional pgvector embeddings.

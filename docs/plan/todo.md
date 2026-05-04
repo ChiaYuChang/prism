@@ -66,7 +66,7 @@ Current sprint and pending checklist. Items move to `done.md` as they complete. 
   * [ ] Replay failed tasks.
   * [ ] Inspect candidate and content ingestion state.
 
-## Immediate Next Steps (items 11–17)
+## Immediate Next Steps (items 11–15)
 
 11. **Fill layer 1 unit test gaps (2.9), Phase B — config-opt-in LLM fallback parser** (Phase A done; see `done.md`):
     * [ ] Design fallback config schema: per-host empty config entry + `fallback: llm` flag (NOT a global "fallback all unmatched hosts" — too expensive, accidental coverage). Mechanism: to enable LLM extraction for a new host, operator adds an empty entry to `parsers.yaml` with `fallback: llm`. This makes LLM activation explicit, host-by-host, and reviewable.
@@ -77,17 +77,13 @@ Current sprint and pending checklist. Items move to `done.md` as they complete. 
     * [ ] Update todo.md / done.md after each item completes.
     * Fix `s3_test.go` flake separately. Defer layer 2 (`internal/repo/pg` testcontainers) until layer 1 lands.
 
-12. **Wire archive publisher end-to-end:** flip `archivePublisher` from `nil` to the real `msgr` instance in `cmd/worker/collector/main.go`; bring up `cmd/worker/archiver` to consume `prism.archive`; verify a PARTY page fetch produces a stored archive object.
+12. **Containerize workers (integration-test-plan.md Phase 4):** `deployments/Dockerfile.worker` (multi-stage, `CMD_PATH` arg, distroless/static-debian12:nonroot runtime), `deployments/docker-compose.workers.yaml`, `.dockerignore`, `task compose:workers`. Never `golang:alpine` as runtime.
 
-13. **Extend `cmd/recover` to dual-path replay:** support both `recover_from=Minify` (raw → M+T+P) and `recover_from=Transform/Parse` (minified/canonical → T+P or P only). Required to unblock the deferred Transform/Parse archive cases in `handler.go` (currently TODO).
+13. **End-to-end smoke run incl. recover:** drive scheduler → discovery → collector → archiver → recover via `cmd/dev/fixture-server`; broad assertions only (`len(contents) > 0 && title != ""`). Replay-only path verified 2026-05-04 (item A); recover invocation not yet covered.
 
-14. **Annotate deprecated archiver APIs in code:** add doc comments on `Archiver.Scan`, `Archiver.Remove`, `meta.go`, and the `YYYY/MM/DD/<traceID>` path layout pointing to the relevant Future Roadmap items. Goal: any new contributor reading the code sees the direction without needing plan.md context.
+14. **Promote `S3Archiver` for production:** only after #11–#13 land. Deploy SeaweedFS or AWS S3, wire `--archive=s3://…`, configure lifecycle policy on `archives/` prefix per the retention plan in `future.md`.
 
-15. **End-to-end smoke run:** drive a full happy path through scheduler → discovery → collector → archiver → recover via `cmd/dev/fixture-server`; broad assertions only (`len(contents) > 0 && title != ""`). Do not add per-source matrices.
-
-16. **Promote `S3Archiver` for production:** only after #11–#15 land. Deploy SeaweedFS or AWS S3, wire `--archive=s3://…`, configure lifecycle policy on `archives/` prefix per the retention plan in `future.md`.
-
-17. After collector intake is stable: candidate/content embedding workers; planner KEYWORD_SEARCH wiring.
+15. After collector intake is stable: candidate/content embedding workers; planner KEYWORD_SEARCH wiring.
 
 ## Deferred until pipeline prototype is end-to-end working
 
