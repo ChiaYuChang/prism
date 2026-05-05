@@ -95,13 +95,15 @@ SET status = CASE
     END,
     last_run_at = NOW(),
     updated_at = NOW()
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id)
+  AND status = 'RUNNING';
 
 -- name: FailTask :exec
 UPDATE tasks
 SET status = 'FAILED',
     updated_at = NOW()
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id)
+  AND status = 'RUNNING';
 
 -- name: ExtendActiveTaskExpiry :exec
 -- Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.

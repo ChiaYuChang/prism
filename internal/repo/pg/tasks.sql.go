@@ -109,6 +109,7 @@ SET status = CASE
     last_run_at = NOW(),
     updated_at = NOW()
 WHERE id = $1
+  AND status = 'RUNNING'
 `
 
 func (q *Queries) CompleteTask(ctx context.Context, id uuid.UUID) error {
@@ -252,6 +253,7 @@ UPDATE tasks
 SET status = 'FAILED',
     updated_at = NOW()
 WHERE id = $1
+  AND status = 'RUNNING'
 `
 
 func (q *Queries) FailTask(ctx context.Context, id uuid.UUID) error {

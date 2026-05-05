@@ -92,13 +92,15 @@ the catalog refactor cutover.
 
 ## Phase 4 — Containerize once host flow is stable
 
-- [ ] Write `deployments/Dockerfile.worker` (multi-stage, `CMD_PATH` build arg, `RUNTIME_IMAGE` build arg)
+- [x] Write `deployments/Dockerfile.worker` (multi-stage, `CMD_PATH` build arg, `RUNTIME_IMAGE` build arg)
   - Production runtime: `gcr.io/distroless/static-debian12:nonroot`
   - Test/debug runtime: `alpine:3.20`
-- [ ] Write `deployments/docker-compose.workers.yaml` with scheduler / discovery / collector entries
-- [ ] Env-var audit: confirm all workers read postgres host / nats url from env cleanly (service names, not localhost)
-- [ ] Add `.dockerignore`
-- [ ] Add `task compose:workers` to build and bring up the worker stack
+- [x] Write `deployments/docker-compose.worker.yaml` with scheduler / discovery / collector entries
+- [x] Env-var audit: confirm all workers read postgres host / nats url from env cleanly (service names, not localhost)
+  - Verified 2026-05-05 via containerized e2e drain: `DIRECTORY_FETCH=3 COMPLETED`, `PAGE_FETCH=26 COMPLETED`, contents `dpp=10 / kmt=10 / tpp=6`.
+- [x] Add `.dockerignore`
+- [x] Add `task compose:worker` to build and bring up the worker stack
+  - `task test:e2e:teardown` now explicitly tears down worker and tool-profile containers before `compose:clean`, so the e2e stack exits cleanly with no leftover `prism-e2e-*` containers.
 
 ## Phase 5 — testcontainers-go + GitHub Actions CI
 
