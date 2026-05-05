@@ -92,6 +92,9 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	if sig.TaskID == uuid.Nil {
 		return true, fmt.Errorf("%w: task_id is empty", ErrInvalidTaskSignal)
 	}
+	if !ownsTask(sig) {
+		return true, nil
+	}
 
 	ctx = obs.WithTraceID(ctx, sig.TraceID)
 	ctx, span := h.tracer.Start(ctx, SpanNameHandleMessage)
@@ -209,6 +212,11 @@ func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSigna
 	}
 
 	return nil
+}
+
+func ownsTask(sig message.TaskSignal) bool {
+	return (sig.Kind == repo.TaskKindDirectoryFetch && sig.SourceType == repo.SourceTypeParty) ||
+		(sig.Kind == repo.TaskKindKeywordSearch && sig.SourceType == repo.SourceTypeMedia)
 }
 
 func validateTaskURL(baseURL, rawURL string) error {

@@ -67,7 +67,7 @@ func TestHandlerHandleMessageCompletesTask(t *testing.T) {
 	require.Equal(t, batchID, sink.last.BatchID)
 }
 
-func TestHandlerHandleMessageFailsUnsupportedTask(t *testing.T) {
+func TestHandlerHandleMessageIgnoresUnsupportedTask(t *testing.T) {
 	taskID := uuid.Must(uuid.NewV7())
 
 	scout := discoverymocks.NewMockScout(t)
@@ -89,12 +89,10 @@ func TestHandlerHandleMessageFailsUnsupportedTask(t *testing.T) {
 	}).Marshal()
 	require.NoError(t, err)
 
-	scheduler.EXPECT().FailTask(mock.Anything, taskID).Return(nil)
-
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", payload))
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.True(t, ack)
-	require.ErrorIs(t, err, ErrUnsupportedTaskKind)
+	require.Nil(t, sink.last)
 }
 
 func TestHandlerHandleMessageNacksWhenCompleteFails(t *testing.T) {
