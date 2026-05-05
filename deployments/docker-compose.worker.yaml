@@ -1,18 +1,18 @@
-# Worker stack — gated behind the `workers` profile so the daily infra-only
-# `task compose:up` is unaffected. Activate with `task compose:workers`
-# (sets COMPOSE_PROFILES=workers) or `docker compose --profile workers up`.
+# Worker stack — gated behind the `worker` profile so the daily infra-only
+# `task compose:up` is unaffected. Activate with `task compose:worker`
+# (sets COMPOSE_PROFILES=worker) or `docker compose --profile worker up`.
 #
 # Workers join the same `prism-net` network defined in docker-compose.yaml,
 # so service-name DNS (`postgres`, `nats`, `valkey`) resolves automatically
 # without exposing any of those on the host.
 #
 # Credentials flow in via env vars resolved at compose time from .env or
-# the parent shell. The `compose:workers` task reads them out of `.secrets/`
+# the parent shell. The `compose:worker` task reads them out of `.secrets/`
 # before invoking docker compose.
 
 services:
   scheduler-slow:
-    profiles: [ workers ]
+    profiles: [ worker ]
     image: prism/scheduler:latest
     build:
       context: ..
@@ -51,7 +51,7 @@ services:
     restart: unless-stopped
 
   scheduler-fast:
-    profiles: [ workers ]
+    profiles: [ worker ]
     image: prism/scheduler:latest
     command:
       - --messenger-type=nats
@@ -83,7 +83,7 @@ services:
     restart: unless-stopped
 
   discovery:
-    profiles: [ workers ]
+    profiles: [ worker ]
     image: prism/discovery:latest
     build:
       context: ..
@@ -113,7 +113,7 @@ services:
     restart: unless-stopped
 
   collector:
-    profiles: [ workers ]
+    profiles: [ worker ]
     image: prism/collector:latest
     build:
       context: ..

@@ -60,6 +60,7 @@ testdata/fixtures/
 SESSION_SUMMARY.md
 CLAUDE.md
 .codex
+.claude
 .task/*
 build/ok*
 .mcp.json

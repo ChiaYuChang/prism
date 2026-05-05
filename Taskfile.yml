@@ -27,7 +27,7 @@ env:
   POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
 
 vars:
-  ENV: '{{.ENV | default "test"}}'
+  ENV: "{{.ENV | default \"test\"}}"
   DEPLOY_DIR: deployments
   BUILD_DIR: bin
   CMD_DIR: cmd
@@ -53,16 +53,16 @@ vars:
 
   # Base + test overlay (host-port publishing, restart=no) is the default
   # for local dev. Tools (pgadmin/nats-nui/redisinsight/grafana/ollama)
-  # live in docker-compose.tools.yaml gated by per-service `profiles:`;
-  # workers live in docker-compose.workers.yaml under `profiles: [workers]`.
+  # live in docker-compose.tool.yaml gated by per-service `profiles:`;
+  # workers live in docker-compose.worker.yaml under `profiles: [worker]`.
   # The prod overlay (docker-compose.prod.yaml) is wired in by
   # script/compose-bake.sh behind a PRISM_PROD_OK=1 gate.
   COMPOSE_SOURCES: >-
     -f {{.DEPLOY_DIR}}/docker-compose.yaml -f
     {{.DEPLOY_DIR}}/docker-compose.test.yaml -f
-    {{.DEPLOY_DIR}}/docker-compose.tools.yaml -f
-    {{.DEPLOY_DIR}}/docker-compose.workers.yaml
-  COMPOSE_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}}'
+    {{.DEPLOY_DIR}}/docker-compose.tool.yaml -f
+    {{.DEPLOY_DIR}}/docker-compose.worker.yaml
+  COMPOSE_PROFILES: "{{.COMPOSE_PROFILES | default \"dev,obs\"}}"
   COMPOSE_MERGED: .docker-compose.merged.yaml
 
   # Stack mode and project namespacing.
@@ -107,7 +107,7 @@ tasks:
     # take that further).
     env:
       COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
-      COMPOSE_PROFILES: "dev,obs,ai,workers"
+      COMPOSE_PROFILES: "dev,obs,ai,worker"
     desc: combine all docker-compose files into one
     cmds:
       - docker compose {{.COMPOSE_SOURCES}} config > {{.COMPOSE_MERGED}}
@@ -194,15 +194,16 @@ tasks:
 
   # ----------------------------------------------------------------------------
   # Containerized workers (integration-test-plan.md Phase 4)
-  # Workers live behind the `workers` profile in docker-compose.workers.yaml,
-  # so the daily infra-only `compose:up` is unaffected. compose:workers builds
+  # Workers live behind the `worker` profile in docker-compose.worker.yaml,
+  # so the daily infra-only `compose:up` is unaffected. compose:worker builds
   # and brings them up alongside the running infra stack, reusing prism-net so
   # service-name DNS (postgres / nats / valkey) just works.
   # WORKER_RUNTIME_IMAGE override: pass alpine:3.20 for debug shells; the
   # default is distroless/static-debian12:nonroot.
   # ----------------------------------------------------------------------------
-  compose:workers:
+  compose:worker:
     desc: build and start containerized workers (requires infra stack to be up)
+    deps: [ compose:bake ]
     vars:
       EFFECTIVE_MODE:
         sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
@@ -212,7 +213,7 @@ tasks:
         msg: "infra stack is not up. Run 'task compose:up' first."
     env:
       COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
-      COMPOSE_PROFILES: workers
+      COMPOSE_PROFILES: worker
       NATS_AUTH_TOKEN:
         sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
       POSTGRES_APP_PASSWORD:
@@ -222,12 +223,12 @@ tasks:
       POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
       VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
     cmds:
-      - docker compose {{.COMPOSE_SOURCES}} build scheduler-slow discovery
+      - docker compose -f {{.COMPOSE_MERGED}} build scheduler-slow discovery
         collector
-      - docker compose {{.COMPOSE_SOURCES}} up -d scheduler-slow scheduler-fast
+      - docker compose -f {{.COMPOSE_MERGED}} up -d scheduler-slow scheduler-fast
         discovery collector
 
-  compose:workers:down:
+  compose:worker:down:
     desc: stop containerized workers (leaves infra stack running)
     vars:
       EFFECTIVE_MODE:
@@ -235,24 +236,25 @@ tasks:
       EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
       COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
-      COMPOSE_PROFILES: workers
+      COMPOSE_PROFILES: worker
     cmds:
-      - docker compose {{.COMPOSE_SOURCES}} stop scheduler-slow scheduler-fast
+      - docker compose -f {{.COMPOSE_MERGED}} stop scheduler-slow scheduler-fast
         discovery collector
-      - docker compose {{.COMPOSE_SOURCES}} rm -f scheduler-slow scheduler-fast
+      - docker compose -f {{.COMPOSE_MERGED}} rm -f scheduler-slow scheduler-fast
         discovery collector
 
-  compose:workers:logs:
+  compose:worker:logs:
     desc: tail logs from containerized workers
+    deps: [ compose:bake ]
     vars:
       EFFECTIVE_MODE:
         sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
       EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
       COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
-      COMPOSE_PROFILES: workers
+      COMPOSE_PROFILES: worker
     cmds:
-      - docker compose {{.COMPOSE_SOURCES}} logs -f scheduler-slow
+      - docker compose -f {{.COMPOSE_MERGED}} logs -f scheduler-slow
         scheduler-fast discovery collector
 
   # ----------------------------------------------------------------------------
