@@ -73,13 +73,12 @@ services:
     image: chrislusf/seaweedfs:4.05
     entrypoint: /bin/sh
     command: >
-      -c "export AWS_ACCESS_KEY_ID=$$(cat /run/secrets/sw_access_key) &&
+      -c "export AWS_ACCESS_KEY_ID=${SEAWEEDFS_ACCESS_KEY} &&
              export AWS_SECRET_ACCESS_KEY=$$(cat /run/secrets/sw_secret_key) &&
              /usr/bin/weed server -dir=/data -s3 -s3.port=${SEAWEEDFS_S3_PORT} -ip.bind=0.0.0.0"
     volumes:
       - seaweedfs_data:/data
     secrets:
-      - sw_access_key
       - sw_secret_key
     networks:
       - prism-net
@@ -127,8 +126,6 @@ secrets:
     file: ../${POSTGRES_APP_PASSWORD_FILE}
   nats_token:
     file: ../${NATS_AUTH_TOKEN_FILE}
-  sw_access_key:
-    file: ../${SEAWEEDFS_ACCESS_KEY_FILE}
   sw_secret_key:
     file: ../${SEAWEEDFS_SECRET_KEY_FILE}
   valkey_acl:

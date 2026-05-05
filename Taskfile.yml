@@ -57,13 +57,13 @@ vars:
   # workers live in docker-compose.worker.yaml under `profiles: [worker]`.
   # The prod overlay (docker-compose.prod.yaml) is wired in by
   # script/compose-bake.sh behind a PRISM_PROD_OK=1 gate.
-  COMPOSE_SOURCES: >-
-    -f {{.DEPLOY_DIR}}/docker-compose.yaml -f
-    {{.DEPLOY_DIR}}/docker-compose.test.yaml -f
-    {{.DEPLOY_DIR}}/docker-compose.tool.yaml -f
-    {{.DEPLOY_DIR}}/docker-compose.worker.yaml
+  #
+  # script/compose-bake.sh owns the -f file list. Per-(ENV,PROFILES)
+  # merged file path keeps separate combos from clobbering each other.
   COMPOSE_PROFILES: "{{.COMPOSE_PROFILES | default \"dev,obs\"}}"
-  COMPOSE_MERGED: .docker-compose.merged.yaml
+  PROFILES_SLUG:
+    sh: 'echo "{{.COMPOSE_PROFILES}}" | tr "," "_"'
+  COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
 
   # Stack mode and project namespacing.
   # NAME-MODE drives docker compose's COMPOSE_PROJECT_NAME so dev / e2e / prod
@@ -100,21 +100,18 @@ tasks:
   # Service Management (Docker Compose)
   # ----------------------------------------------------------------------------
   compose:bake:
-    # Bake with every profile active so the merged file is a complete
-    # superset; runtime COMPOSE_PROFILES on compose:up then selects which
-    # profile-gated services actually start. Avoids one merged file per
-    # profile combo (script/compose-bake.sh in a follow-up commit will
-    # take that further).
-    env:
-      COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
-      COMPOSE_PROFILES: "dev,obs,ai,worker"
-    desc: combine all docker-compose files into one
+    # Delegates to script/compose-bake.sh, which owns the -f file list,
+    # enforces ENV in {test,prod}, gates ENV=prod behind PRISM_PROD_OK=1,
+    # and writes the merged file with mode 0600. Per-(ENV,PROFILES) output
+    # path means swapping profiles does not clobber an existing bake.
+    desc: bake per-(ENV,PROFILES) merged compose file via script
     cmds:
-      - docker compose {{.COMPOSE_SOURCES}} config > {{.COMPOSE_MERGED}}
-    sources:
-      - "{{.DEPLOY_DIR}}/docker-compose*.yaml"
-    generates:
-      - .docker-compose.merged.yaml
+      - ENV={{.ENV}} PROFILES={{.COMPOSE_PROFILES}} ./script/compose-bake.sh
+
+  compose:bake:clean:
+    desc: remove all per-(ENV,PROFILES) merged compose files
+    cmds:
+      - rm -f .*-*.docker-compose.merged.yaml
 
   compose:up:
     desc: start all services (project = {NAME}-{MODE}; refuses if .task/mode exists)
@@ -203,8 +200,15 @@ tasks:
   # ----------------------------------------------------------------------------
   compose:worker:
     desc: build and start containerized workers (requires infra stack to be up)
-    deps: [ compose:bake ]
+    deps:
+      - task: compose:bake
+        vars:
+          COMPOSE_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
     vars:
+      WORKER_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+      PROFILES_SLUG:
+        sh: 'echo "{{.WORKER_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
       EFFECTIVE_MODE:
         sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
       EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
@@ -213,7 +217,7 @@ tasks:
         msg: "infra stack is not up. Run 'task compose:up' first."
     env:
       COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
-      COMPOSE_PROFILES: worker
+      COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
       NATS_AUTH_TOKEN:
         sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
       POSTGRES_APP_PASSWORD:
@@ -230,13 +234,21 @@ tasks:
 
   compose:worker:down:
     desc: stop containerized workers (leaves infra stack running)
+    deps:
+      - task: compose:bake
+        vars:
+          COMPOSE_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
     vars:
+      WORKER_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+      PROFILES_SLUG:
+        sh: 'echo "{{.WORKER_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
       EFFECTIVE_MODE:
         sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
       EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
       COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
-      COMPOSE_PROFILES: worker
+      COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} stop scheduler-slow scheduler-fast
         discovery collector
@@ -245,6 +257,27 @@ tasks:
 
   compose:worker:logs:
     desc: tail logs from containerized workers
+    deps:
+      - task: compose:bake
+        vars:
+          COMPOSE_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+    vars:
+      WORKER_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+      PROFILES_SLUG:
+        sh: 'echo "{{.WORKER_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
+      EFFECTIVE_MODE:
+        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
+    env:
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} logs -f scheduler-slow
+        scheduler-fast discovery collector
+
+  compose:tools:down:
+    desc: stop profile-gated tool containers (dev/obs) while leaving core infra running
     deps: [ compose:bake ]
     vars:
       EFFECTIVE_MODE:
@@ -252,10 +285,12 @@ tasks:
       EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
       COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
-      COMPOSE_PROFILES: worker
+      COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} logs -f scheduler-slow
-        scheduler-fast discovery collector
+      - docker compose -f {{.COMPOSE_MERGED}} stop pgadmin nats-nui redisinsight
+        victoria-logs grafana
+      - docker compose -f {{.COMPOSE_MERGED}} rm -f pgadmin nats-nui redisinsight
+        victoria-logs grafana
 
   # ----------------------------------------------------------------------------
   # Development & Code Generation
@@ -475,6 +510,10 @@ tasks:
           \"127.0.0.1\""
         msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}"
     cmds:
+      - task: compose:worker:down
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+      - task: compose:tools:down
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
       - task: compose:clean
         vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
 
