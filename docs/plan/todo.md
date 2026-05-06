@@ -9,24 +9,54 @@ Current sprint and pending checklist. Items move to `done.md` as they complete. 
 * [ ] 1.3 Verify automatic `PAGE_FETCH` (PARTY) task creation and execution.
 * [ ] 1.4 Validate full content extraction and archiving for party press releases.
 
-## Phase 2.7 — Async Batch Model for User-Triggered Fetches
+## Phase 2.7 — User-Fetch Request Model (replaces "Async Batch Model")
 
-* **Why:** `POST /page_fetch` is inherently async (collector may take seconds–minutes per article, rate-limited per source). A synchronous per-candidate response invites users to wait on the HTTP call and treats each candidate as independent. Grouping user-selected candidates into one `batch_id` matches the existing batch primitive, gives one thing to monitor / notify on, and lets the UI (TUI or future web) track progress without iterating individual task IDs.
-* [ ] **Revise `POST /page_fetch` response:** accept `candidate_ids`, create one fresh `batch_id` for the user request (distinct from each candidate's original discovery batch), insert MEDIA + PAGE_FETCH tasks under that batch, return `{batch_id, task_count, skipped_count}` — no per-candidate results.
-* [ ] **New endpoint `GET /batches/{batch_id}`:** returns progress — `{batch_id, total, pending, running, completed, failed, contents_ready, terminal}`. Plain request/response, no long-polling — client-pull model:
-  * Client drives the cadence (hardcoded in TUI, e.g. 5s fixed, or `2s → 5s → 10s` backoff). Avoid high-frequency polling on the client side.
-  * Server-side **Valkey cache** on `batch:progress:{batch_id}` with ~1–2s TTL; N concurrent watchers of the same batch collapse to one DB hit per TTL window. Terminal batches cache for 60s+ (they won't change).
-  * Server-side **rate limit** on this endpoint (reuse existing Valkey token bucket infra) — per-IP or per-batch_id — to cap runaway clients. Same `infra.RateLimiter` interface used by the scheduler.
-  * Rationale: long-polling is hostile to short-lived / serverless deployments (it holds connections) and adds fragility; client-pull + short TTL cache is simpler, cheaper, and deploy-agnostic.
-* [ ] **Batch completion signal:** reuse existing `BatchTrigger` / `batch.completed` infra; user-triggered MEDIA batches participate in the same lifecycle as PARTY batches.
-* [ ] **Optional completion notification (future):** email / webhook fired when a user-triggered batch reaches completion. Not in v1; design the batch progress endpoint so notification is an add-on, not a rewrite.
+* **Why:** `POST /page_fetch` is inherently async. The current per-candidate response is hostile to UI work (must iterate every task_id) and, for multi-user / multi-query scenarios, risks side-channel leakage (telling user B "1 of your 5 is `already_active`" reveals that user A is fetching the same URL). Discovery `batches` cannot serve as the user-facing observation unit because their completion semantics (`count(candidates) <= count(contents)`) do not apply, and overloading them couples user privacy to system internals. See `spec.md` §6 for the design clarification.
+* **Design (per `spec.md` §6):** introduce a parallel `user_fetch_requests` + `user_fetch_request_items` pair as a user-facing observation layer; keep `batches` and `tasks.batch_id` semantics unchanged. Items reference the underlying active task by `task_id` (nullable for `ALREADY_COMPLETE` snapshots). Multiple requests can share the same task without seeing each other.
+* [ ] **Schema migration:** new tables.
+  * `user_fetch_requests (id UUID PK, user_id UUID NULL, created_at TIMESTAMPTZ NOT NULL, completed_at TIMESTAMPTZ NULL)`. `user_id` nullable for v1 (single-user); reserved for multi-user RBAC.
+  * `user_fetch_request_items (request_id UUID FK, candidate_id UUID FK, task_id UUID FK NULL, snapshot_status TEXT NULL, PRIMARY KEY (request_id, candidate_id))`. Index `idx_request_items_task_id ON (task_id) WHERE task_id IS NOT NULL` for reverse lookup.
+  * Edit `db/migrations/000001_init.up.sql` directly per memory `feedback_migration_style.md` (DB is empty during pre-prod prototype).
+  * `task sqlc` to regenerate.
+* [ ] **Repo:** new SQLC queries + repo interface methods.
+  * `CreateUserFetchRequest(user_id) → UserFetchRequest`.
+  * `CreateUserFetchRequestItem(request_id, candidate_id, task_id, snapshot_status) → Item`.
+  * `GetUserFetchRequest(id) → UserFetchRequest`.
+  * `GetUserFetchRequestProgress(id) → {total, pending, running, completed, failed, already_complete, terminal}` — single SQL aggregating `COALESCE(snapshot_status, tasks.status)` over items.
+  * Add interface `repo.UserFetches` to `internal/repo/repo.go` + `pg` impl + mock regen via `task mocks`.
+* [ ] **`CreateTask` returns existing active task on conflict.** Modify `db/queries/tasks.sql` `CreateTask` to use `INSERT … ON CONFLICT (kind, url) WHERE status IN ('PENDING','RUNNING') DO NOTHING RETURNING id, …`; add a follow-up `SELECT … WHERE kind='PAGE_FETCH' AND url=$ AND status IN ('PENDING','RUNNING')` for the conflict path (single-statement ON CONFLICT DO NOTHING does not return existing rows). Wrap both in a CTE so callers get one round-trip and a populated `task` row regardless of insert vs conflict; preserve `ErrTaskAlreadyActive` sentinel for callers that still want it.
+* [ ] **Revise `POST /page_fetch` handler** (`internal/http/api/page_fetch.go`):
+  * Accept `{candidate_ids: []uuid}`; cap at 100 (existing).
+  * Create one `user_fetch_request` (user_id from authn context, NULL for v1).
+  * For each candidate:
+    * not in DB → record nothing on the request, count into `not_found_count` in response.
+    * try `CreateTask` → on success, insert item with `task_id=new_task.id`, `snapshot_status=NULL`.
+    * on `ErrTaskAlreadyActive` → fetch existing active task by URL (from CTE return); insert item with `task_id=existing.id`, `snapshot_status=NULL`.
+    * if conflict + lookup both miss (task terminated between conflict and lookup): query `contents` by URL; if present, insert item with `task_id=NULL`, `snapshot_status='ALREADY_COMPLETE'`. If absent, retry CreateTask once (the active row drained, a new one is creatable).
+  * Return `202 Accepted` with `{request_id, item_count, not_found_count}`. **No per-candidate result array.** Skipped/dup is internal.
+* [ ] **New endpoint `GET /api/v1/fetches/{request_id}`:** returns `{request_id, total, pending, running, completed, failed, already_complete, terminal}`. URL named `/fetches/` rather than `/batches/` so user-facing language does not leak the internal `batches` term.
+  * Server-side Valkey cache on `fetch:progress:{request_id}` with ~1–2s TTL for live; 60s+ for terminal.
+  * Server-side rate limit (per-IP or per-request_id) reusing `infra.RateLimiter`.
+  * Client-pull model (5s fixed or `2→5→10s` backoff). No long-polling.
+  * Future: filter by `user_id` from authn context (v1: no filter, single-user).
+* [ ] **Drop `PageFetchTaskResult` / `PageFetchResponse.Results` from API** + regenerate Swagger (`task swag`).
+* [ ] **Tests:**
+  * `api_test.go`: same URL submitted by two requests → both items reference same task_id, both reach terminal when task COMPLETED, neither response leaks the other's existence.
+  * `api_test.go`: candidate already in `contents` → item snapshot_status=`ALREADY_COMPLETE`, task_id=NULL, GET /fetches/{id} reports `already_complete:1` and `terminal:true`.
+  * `api_test.go`: not_found candidate not stored as item; only counted in `not_found_count`.
+  * `api_test.go`: aggregator status is `COALESCE(snapshot_status, tasks.status)` — verify a mix.
+  * Repo: `CreateTask` ON CONFLICT path returns existing task_id without raising error to caller (or raises sentinel, depending on chosen contract).
+* [ ] **Notification deferred:** `user_fetch_requests.completed_at` column persisted but unused in v1; v2 will set it via sweeper or compute-on-write transition and fire webhook/email. Document in commit message that the column is reserved.
+* [ ] **Update done.md / spec.md cross-refs after merge.**
+
+This unblocks Phase 2.8 (Operator TUI), which consumes `GET /fetches/{request_id}` for the batch monitor view.
 
 ## Phase 2.8 — Operator TUI (`cmd/tui`)
 
 * [ ] Bubble Tea app with four views — candidates list / submit-confirmation modal / batch monitor / content viewer.
-* [ ] **List view:** filter bar (`q`, `source_abbr`, `since/until`), paginated table, multi-select (`space`), `f` to submit `POST /page_fetch`, `Enter` to view content, `b` to open batch monitor by ID.
-* [ ] **Submit modal:** minimal — show returned `batch_id`, `task_count`, `skipped_count`, offer `[m] monitor` (jump to batch view) / `[c] copy id` / `[↵] dismiss`. No per-candidate status enumeration.
-* [ ] **Batch monitor view:** input batch_id (or arrive from modal), client-pull `GET /batches/{batch_id}` on a fixed interval (default 5s; configurable via `--batch-poll-interval`). Render progress bar + counters (pending / running / completed / failed). Stop polling when `terminal=true`; `r` forces immediate refresh; `esc` back.
+* [ ] **List view:** filter bar (`q`, `source_abbr`, `since/until`), paginated table, multi-select (`space`), `f` to submit `POST /page_fetch`, `Enter` to view content, `b` to open fetch-request monitor by ID.
+* [ ] **Submit modal:** minimal — show returned `request_id`, `item_count`, `not_found_count`, offer `[m] monitor` (jump to fetch view) / `[c] copy id` / `[↵] dismiss`. No per-candidate status enumeration.
+* [ ] **Fetch monitor view:** input request_id (or arrive from modal), client-pull `GET /fetches/{request_id}` on a fixed interval (default 5s; configurable via `--fetch-poll-interval`). Render progress bar + counters (pending / running / completed / failed / already_complete). Stop polling when `terminal=true`; `r` forces immediate refresh; `esc` back.
 * [ ] **Content view:** render fetched content; if `GET /contents/{id}` returns 404, poll with backoff and show "waiting for collector" state; `y` copy URL, `o` open in browser.
 * [ ] HTTP client reuses DTOs from `internal/http/api/` (no schema drift).
 * [ ] `--api-url` flag (default `http://localhost:8090`), `--page-size` flag.
