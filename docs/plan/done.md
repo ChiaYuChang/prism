@@ -142,6 +142,59 @@ Commits:
 - `192d709` docs: restructure project plan and add schema comments
 - `2aa742f` docs: update cross-references to new plan structure and schema comments
 
+## Phase 4 — Containerize Workers + Security Refactor (2026-05)
+
+Closes integration-test-plan.md Phase 4. Compose layout reorganized
+into base + per-env overlays + profile-gated tools + worker file;
+secret handling formalized via `script/secrets-bake.sh` +
+`script/compose-bake.sh`; threat model and runbooks documented in
+`docs/security.md`.
+
+* [x] `security(workers): keep secrets off argv + redact in logs` —
+      worker binaries read secrets from `PRISM_<APP>_*` env / `*_FILE`,
+      no flag carries a secret; DSN structs implement `LogValue()`.
+* [x] `security(workers): file-based secret loading for prod overlay`
+      — `*_FILE` indirection so prod can mount docker secrets.
+* [x] `feat(env): layered dotenv loading and secrets bake script` —
+      Taskfile dotenv layering (`env/local/<env>.user.env` →
+      `<env>.local.env` → `env/<env>.env` → `env/base.env`);
+      `script/secrets-bake.sh` writes `env/local/<env>.local.env`
+      from `.secrets/*` with `umask 077` + `chmod 0600` + atomic
+      `mktemp` + `mv`; refuses `ENV=prod`.
+* [x] `refactor(compose): split base/test/prod overlays + consolidate
+      tools under profiles` — base file unbootable on its own (no
+      ports / restart); `docker-compose.test.yaml` + `prod.yaml`
+      overlays; `docker-compose.tool.yaml` for pgadmin / nats-nui /
+      redisinsight / victoria-logs / grafana / ollama gated by
+      per-service profiles.
+* [x] `refactor(compose): rename workers profile/file to singular
+      worker` — `docker-compose.worker.yaml`, profile `[ worker ]`,
+      `compose:worker*` Taskfile tasks driven via merged file.
+* [x] `test(e2e): complete teardown and implement compose bake script`
+      — `script/compose-bake.sh` runs `docker compose config
+      --no-interpolate` (keeps `${VAR}` literal in merged output);
+      per-`(ENV, PROFILES)` output path; `PRISM_PROD_OK=1` gate;
+      `umask 077` + `chmod 0600`; `test:e2e:teardown` explicitly
+      stops worker + tool profiles before `compose:clean`.
+* [x] `fix(discovery): ignore unsupported task kinds to prevent
+      erroneous failures` — discovery worker ignores PAGE_FETCH it
+      does not own; regression test in
+      `cmd/worker/discovery/handler_test.go`.
+* [x] `fix(db): restrict task status updates to prevent late status
+      clobbering` — `CompleteTask` / `FailTask` only flip rows still
+      in `RUNNING`.
+* [x] `docs(security): add threat model and secret-handling runbook`
+      — `docs/security.md` covers actors / trust boundaries / assets /
+      mitigations / dev vs prod / runbooks (bring-up, rotation,
+      rotation-procedure validation via isolated `.secrets-test/`,
+      audit checklist).
+* [x] **Phase 4 acceptance gate verified 2026-05-05**: e2e drain
+      through containers — DIRECTORY_FETCH=3 COMPLETED,
+      PAGE_FETCH=26 COMPLETED, contents dpp=10 / kmt=10 / tpp=6.
+      `rtk go test ./cmd/worker/discovery` green. e2e stack fully
+      torn down post-verification (no leaked `prism-e2e-*`
+      containers).
+
 ## Phase 3.2 — Vectorization (partial, 2026-03)
 
 * [x] Schema for 768-dimensional pgvector embeddings.

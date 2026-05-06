@@ -77,13 +77,13 @@ Current sprint and pending checklist. Items move to `done.md` as they complete. 
     * [ ] Update todo.md / done.md after each item completes.
     * Fix `s3_test.go` flake separately. Defer layer 2 (`internal/repo/pg` testcontainers) until layer 1 lands.
 
-12. **Containerize workers (integration-test-plan.md Phase 4):** `deployments/Dockerfile.worker` (multi-stage, `CMD_PATH` arg, distroless/static-debian12:nonroot runtime), `deployments/docker-compose.workers.yaml`, `.dockerignore`, `task compose:workers`. Never `golang:alpine` as runtime.
+12. **End-to-end smoke run incl. recover:** drive scheduler → discovery → collector → archiver → recover via `cmd/dev/fixture-server`; broad assertions only (`len(contents) > 0 && title != ""`). Replay-only path verified 2026-05-04 (item A); recover invocation not yet covered. (Containerize workers — formerly #12 — closed in Phase 4 / `done.md`.)
 
-13. **End-to-end smoke run incl. recover:** drive scheduler → discovery → collector → archiver → recover via `cmd/dev/fixture-server`; broad assertions only (`len(contents) > 0 && title != ""`). Replay-only path verified 2026-05-04 (item A); recover invocation not yet covered.
+13. **Promote `S3Archiver` for production:** only after #11–#12 land. Deploy SeaweedFS or AWS S3, wire `--archive=s3://…`, configure lifecycle policy on `archives/` prefix per the retention plan in `future.md`.
 
-14. **Promote `S3Archiver` for production:** only after #11–#13 land. Deploy SeaweedFS or AWS S3, wire `--archive=s3://…`, configure lifecycle policy on `archives/` prefix per the retention plan in `future.md`.
+14. After collector intake is stable: candidate/content embedding workers; planner KEYWORD_SEARCH wiring.
 
-15. After collector intake is stable: candidate/content embedding workers; planner KEYWORD_SEARCH wiring.
+15. **Secret-handling tail (per `docs/security.md` §5):** move `BRAVE_SEARCH_API` + `PGADMIN_PASSWORD` from env vars into `.secrets/`; resolve `migrate` / `psql` argv leak (dev-only, low priority); patch `secrets-bake.sh` to accept `SECRETS_DIR` env override (lets rotation-procedure validation use `.secrets-test/` without editing the script).
 
 ## Deferred until pipeline prototype is end-to-end working
 
