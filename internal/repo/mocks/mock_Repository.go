@@ -357,3 +357,49 @@ func (_c *MockRepository_Tasks_Call) RunAndReturn(run func() repo.Tasks) *MockRe
 	_c.Call.Return(run)
 	return _c
 }
+
+// UserFetches provides a mock function for the type MockRepository
+func (_mock *MockRepository) UserFetches() repo.UserFetches {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for UserFetches")
+	}
+
+	var r0 repo.UserFetches
+	if returnFunc, ok := ret.Get(0).(func() repo.UserFetches); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.UserFetches)
+		}
+	}
+	return r0
+}
+
+// MockRepository_UserFetches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UserFetches'
+type MockRepository_UserFetches_Call struct {
+	*mock.Call
+}
+
+// UserFetches is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) UserFetches() *MockRepository_UserFetches_Call {
+	return &MockRepository_UserFetches_Call{Call: _e.mock.On("UserFetches")}
+}
+
+func (_c *MockRepository_UserFetches_Call) Run(run func()) *MockRepository_UserFetches_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_UserFetches_Call) Return(userFetches repo.UserFetches) *MockRepository_UserFetches_Call {
+	_c.Call.Return(userFetches)
+	return _c
+}
+
+func (_c *MockRepository_UserFetches_Call) RunAndReturn(run func() repo.UserFetches) *MockRepository_UserFetches_Call {
+	_c.Call.Return(run)
+	return _c
+}

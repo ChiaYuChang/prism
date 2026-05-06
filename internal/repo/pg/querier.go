@@ -22,6 +22,8 @@ type Querier interface {
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	CreateUserFetchRequest(ctx context.Context, userID pgtype.UUID) (UserFetchRequest, error)
+	CreateUserFetchRequestItem(ctx context.Context, arg CreateUserFetchRequestItemParams) (UserFetchRequestItem, error)
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
@@ -29,6 +31,11 @@ type Querier interface {
 	FailTask(ctx context.Context, id uuid.UUID) error
 	// Finds batches where all tasks are completed and all candidates are promoted to contents.
 	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
+	// Companion to CreateTask's ON CONFLICT path. When CreateTask reports the
+	// duplicate-active conflict, callers use this to recover the existing task's
+	// id without an extra round-trip. Returns the row that owns the
+	// uq_tasks_active_page_fetch index slot.
+	GetActivePageFetchTaskByURL(ctx context.Context, url string) (Task, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
 	GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]Candidate, error)
@@ -44,6 +51,11 @@ type Querier interface {
 	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
+	GetUserFetchRequest(ctx context.Context, id uuid.UUID) (UserFetchRequest, error)
+	// Aggregates item status using COALESCE(snapshot_status, tasks.status).
+	// Returns counters plus a derived `terminal` flag (all items in COMPLETED /
+	// FAILED / ALREADY_COMPLETE).
+	GetUserFetchRequestProgress(ctx context.Context, requestID uuid.UUID) (GetUserFetchRequestProgressRow, error)
 	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
 	ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error)
 	ListCandidatesForAnalysis(ctx context.Context, arg ListCandidatesForAnalysisParams) ([]Candidate, error)
@@ -55,8 +67,13 @@ type Querier interface {
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
 	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	ListUserFetchRequestItems(ctx context.Context, requestID uuid.UUID) ([]ListUserFetchRequestItemsRow, error)
 	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) error
 	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
+	// Sets completed_at on transition to terminal. Idempotent (WHERE clause
+	// guards against double-set). v1 callers may skip this — progress endpoint
+	// computes terminal on-the-fly. Reserved for v2 notification dispatcher.
+	MarkUserFetchRequestCompleted(ctx context.Context, id uuid.UUID) error
 	RecordBatchPublishFailure(ctx context.Context, arg RecordBatchPublishFailureParams) error
 	// Resets RUNNING tasks back to PENDING in bulk, undoing the ClaimTasks
 	// retry_count increment. Used when dispatch is skipped (e.g. rate-limited)

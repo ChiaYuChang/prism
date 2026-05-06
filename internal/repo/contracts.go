@@ -141,3 +141,35 @@ type Entity struct {
 	Type      string
 	CreatedAt time.Time
 }
+
+type UserFetchRequest struct {
+	ID          uuid.UUID
+	UserID      *uuid.UUID
+	CreatedAt   time.Time
+	CompletedAt *time.Time
+}
+
+type UserFetchRequestItem struct {
+	RequestID      uuid.UUID
+	CandidateID    uuid.UUID
+	TaskID         *uuid.UUID
+	SnapshotStatus *string
+	CreatedAt      time.Time
+}
+
+// UserFetchProgress is the aggregator output for GET /api/v1/fetches/{id}.
+// Counts use COALESCE(snapshot_status, tasks.status) over items.
+type UserFetchProgress struct {
+	Total           int64
+	Pending         int64
+	Running         int64
+	Completed       int64
+	Failed          int64
+	AlreadyComplete int64
+	Terminal        bool
+}
+
+// UserFetchItemSnapshotAlreadyComplete is the only snapshot value used in v1.
+// Items in this state were promoted to contents before the request was
+// created, so they do not reference an active task.
+const UserFetchItemSnapshotAlreadyComplete = "ALREADY_COMPLETE"

@@ -53,6 +53,10 @@ type PGBatchTrigger struct {
 	q *Queries
 }
 
+type PGUserFetches struct {
+	q *Queries
+}
+
 // Repository root getters.
 func (r *PGRepository) Scheduler() repo.Scheduler {
 	return &PGScheduler{q: r.q}
@@ -80,6 +84,10 @@ func (r *PGRepository) Analysis() repo.Analysis {
 
 func (r *PGRepository) BatchTrigger() repo.BatchTrigger {
 	return &PGBatchTrigger{q: r.q}
+}
+
+func (r *PGRepository) UserFetches() repo.UserFetches {
+	return &PGUserFetches{q: r.q}
 }
 
 // Scheduler repository.
@@ -295,9 +303,18 @@ func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (re
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) &&
 			pgErr.Code == pgerrcode.UniqueViolation &&
-			pgErr.ConstraintName == "uq_tasks_active_payload" {
+			(pgErr.ConstraintName == "uq_tasks_active_payload" ||
+				pgErr.ConstraintName == "uq_tasks_active_page_fetch") {
 			return repo.Task{}, repo.ErrTaskAlreadyActive
 		}
+		return repo.Task{}, err
+	}
+	return dbTaskToRepoTask(row), nil
+}
+
+func (r *PGTasks) GetActivePageFetchTaskByURL(ctx context.Context, url string) (repo.Task, error) {
+	row, err := r.q.GetActivePageFetchTaskByURL(ctx, url)
+	if err != nil {
 		return repo.Task{}, err
 	}
 	return dbTaskToRepoTask(row), nil
@@ -673,4 +690,75 @@ func (r *PGAnalysis) ReplaceContentExtractionPhrases(ctx context.Context, extrac
 		ExtractionID: extractionID,
 		Column2:      phrases,
 	})
+}
+
+// User-fetch request repository. Parallel to BatchTrigger; serves the
+// user-facing observation layer for POST /page_fetch. See
+// docs/plan/spec.md §6.
+func (r *PGUserFetches) CreateRequest(ctx context.Context, arg repo.CreateUserFetchRequestParams) (repo.UserFetchRequest, error) {
+	row, err := r.q.CreateUserFetchRequest(ctx, pgconv.UUIDPtrToPgUUID(arg.UserID))
+	if err != nil {
+		return repo.UserFetchRequest{}, err
+	}
+	return dbUserFetchRequestToRepo(row), nil
+}
+
+func (r *PGUserFetches) GetRequest(ctx context.Context, id uuid.UUID) (repo.UserFetchRequest, error) {
+	row, err := r.q.GetUserFetchRequest(ctx, id)
+	if err != nil {
+		return repo.UserFetchRequest{}, err
+	}
+	return dbUserFetchRequestToRepo(row), nil
+}
+
+func (r *PGUserFetches) CreateRequestItem(ctx context.Context, arg repo.CreateUserFetchRequestItemParams) (repo.UserFetchRequestItem, error) {
+	row, err := r.q.CreateUserFetchRequestItem(ctx, CreateUserFetchRequestItemParams{
+		RequestID:      arg.RequestID,
+		CandidateID:    arg.CandidateID,
+		TaskID:         pgconv.UUIDPtrToPgUUID(arg.TaskID),
+		SnapshotStatus: pgconv.StringPtrToPgText(arg.SnapshotStatus),
+	})
+	if err != nil {
+		return repo.UserFetchRequestItem{}, err
+	}
+	return dbUserFetchRequestItemToRepo(row), nil
+}
+
+func (r *PGUserFetches) GetRequestProgress(ctx context.Context, requestID uuid.UUID) (repo.UserFetchProgress, error) {
+	row, err := r.q.GetUserFetchRequestProgress(ctx, requestID)
+	if err != nil {
+		return repo.UserFetchProgress{}, err
+	}
+	return repo.UserFetchProgress{
+		Total:           row.Total,
+		Pending:         row.Pending,
+		Running:         row.Running,
+		Completed:       row.Completed,
+		Failed:          row.Failed,
+		AlreadyComplete: row.AlreadyComplete,
+		Terminal:        row.Terminal.Bool,
+	}, nil
+}
+
+func (r *PGUserFetches) MarkRequestCompleted(ctx context.Context, requestID uuid.UUID) error {
+	return r.q.MarkUserFetchRequestCompleted(ctx, requestID)
+}
+
+func dbUserFetchRequestToRepo(row UserFetchRequest) repo.UserFetchRequest {
+	return repo.UserFetchRequest{
+		ID:          row.ID,
+		UserID:      pgconv.PgUUIDToUUIDPtr(row.UserID),
+		CreatedAt:   *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+		CompletedAt: pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
+	}
+}
+
+func dbUserFetchRequestItemToRepo(row UserFetchRequestItem) repo.UserFetchRequestItem {
+	return repo.UserFetchRequestItem{
+		RequestID:      row.RequestID,
+		CandidateID:    row.CandidateID,
+		TaskID:         pgconv.PgUUIDToUUIDPtr(row.TaskID),
+		SnapshotStatus: pgconv.PgTextToStringPtr(row.SnapshotStatus),
+		CreatedAt:      *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+	}
 }

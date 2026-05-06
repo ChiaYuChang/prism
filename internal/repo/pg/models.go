@@ -531,6 +531,7 @@ func AllTaskStatusValues() []TaskStatus {
 	}
 }
 
+// Groups one cron/trigger run so planner can detect completion. id used in tasks.batch_id and copied into candidates/contents.
 type Batch struct {
 	ID                   uuid.UUID          `db:"id" json:"id"`
 	SourceType           SourceType         `db:"source_type" json:"source_type"`
@@ -545,11 +546,13 @@ type Batch struct {
 	StalledAt            pgtype.Timestamptz `db:"stalled_at" json:"stalled_at"`
 }
 
+// Article briefs (title/url/desc) before full-page fetch. Discovery terminal asset.
 type Candidate struct {
-	ID              uuid.UUID                `db:"id" json:"id"`
-	BatchID         pgtype.UUID              `db:"batch_id" json:"batch_id"`
-	SourceAbbr      string                   `db:"source_abbr" json:"source_abbr"`
-	TraceID         string                   `db:"trace_id" json:"trace_id"`
+	ID         uuid.UUID   `db:"id" json:"id"`
+	BatchID    pgtype.UUID `db:"batch_id" json:"batch_id"`
+	SourceAbbr string      `db:"source_abbr" json:"source_abbr"`
+	TraceID    string      `db:"trace_id" json:"trace_id"`
+	// Dedup key (URL-derived, MD5 hex). Not a separate table.
 	Fingerprint     string                   `db:"fingerprint" json:"fingerprint"`
 	Url             string                   `db:"url" json:"url"`
 	Title           string                   `db:"title" json:"title"`
@@ -571,6 +574,7 @@ type CandidateEmbeddingsGemma2025 struct {
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+// Full fetched article. 1:1 with candidates via UNIQUE candidate_id.
 type Content struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	BatchID     pgtype.UUID        `db:"batch_id" json:"batch_id"`
@@ -599,6 +603,7 @@ type ContentEmbeddingsGemma2025 struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+// One structured extraction per (content, model, prompt, schema_version). Append-only snapshot.
 type ContentExtraction struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	ContentID     uuid.UUID          `db:"content_id" json:"content_id"`
@@ -653,6 +658,7 @@ type Model struct {
 	DeletedAt   pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 }
 
+// Prompt asset registry. hash = SHA-256(body), used to pin extraction provenance.
 type Prompt struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
 	Hash      string             `db:"hash" json:"hash"`
@@ -674,14 +680,17 @@ type Source struct {
 	DeletedAt pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 }
 
+// Runnable request-oriented work unit. Scheduler claims with FOR UPDATE SKIP LOCKED.
 type Task struct {
-	ID          uuid.UUID          `db:"id" json:"id"`
-	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
-	Kind        TaskKind           `db:"kind" json:"kind"`
-	SourceType  SourceType         `db:"source_type" json:"source_type"`
-	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
-	Url         string             `db:"url" json:"url"`
-	Payload     []byte             `db:"payload" json:"payload"`
+	ID         uuid.UUID  `db:"id" json:"id"`
+	BatchID    uuid.UUID  `db:"batch_id" json:"batch_id"`
+	Kind       TaskKind   `db:"kind" json:"kind"`
+	SourceType SourceType `db:"source_type" json:"source_type"`
+	SourceAbbr string     `db:"source_abbr" json:"source_abbr"`
+	Url        string     `db:"url" json:"url"`
+	// Request details (e.g. {query, site} for KEYWORD_SEARCH). Search keywords belong here, not as columns.
+	Payload []byte `db:"payload" json:"payload"`
+	// SHA-256(canonical JSON payload), hex. KEYWORD_SEARCH dedup via uq_tasks_active_payload. PAGE_FETCH dedups on url instead.
 	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
 	Meta        []byte             `db:"meta" json:"meta"`
 	TraceID     string             `db:"trace_id" json:"trace_id"`
@@ -693,4 +702,24 @@ type Task struct {
 	LastRunAt   pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+// User-facing observation layer for POST /page_fetch. Groups one user submission. Parallel to batches; see docs/plan/spec.md §6.
+type UserFetchRequest struct {
+	ID uuid.UUID `db:"id" json:"id"`
+	// Nullable in v1 (single-user dev). Filter target for multi-user RBAC.
+	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	// Persisted in v1 but unused; v2 notification dispatcher will set on transition.
+	CompletedAt pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+}
+
+// One row per (request, candidate). task_id may point at a shared active task created by another request — task fan-out is internal and never user-visible.
+type UserFetchRequestItem struct {
+	RequestID   uuid.UUID   `db:"request_id" json:"request_id"`
+	CandidateID uuid.UUID   `db:"candidate_id" json:"candidate_id"`
+	TaskID      pgtype.UUID `db:"task_id" json:"task_id"`
+	// NULL for live items (status comes from tasks.status). Set to ALREADY_COMPLETE when the candidate already had contents at submit time.
+	SnapshotStatus pgtype.Text        `db:"snapshot_status" json:"snapshot_status"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }

@@ -14,6 +14,7 @@ type Repository interface {
 	Embedding() Embeddings
 	Analysis() Analysis
 	BatchTrigger() BatchTrigger
+	UserFetches() UserFetches
 }
 
 // TaskReporter is the push side of the task lifecycle: workers use it to
@@ -52,6 +53,10 @@ type Tasks interface {
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
+	// GetActivePageFetchTaskByURL recovers the existing active PAGE_FETCH task
+	// after CreateTask returns ErrTaskAlreadyActive. Used by the user-fetch
+	// handler to record the shared task_id on the request item.
+	GetActivePageFetchTaskByURL(ctx context.Context, url string) (Task, error)
 }
 
 type Pipeline interface {
@@ -81,6 +86,20 @@ type Embeddings interface {
 	GetModelByNameAndType(ctx context.Context, name string, modelType string) (Model, error)
 	CreateCandidateEmbedding(ctx context.Context, arg CreateCandidateEmbeddingParams) (CandidateEmbedding, error)
 	CreateContentEmbedding(ctx context.Context, arg CreateContentEmbeddingParams) (ContentEmbedding, error)
+}
+
+// UserFetches is the user-facing observation layer for POST /page_fetch.
+// See docs/plan/spec.md §6 for why this is parallel to BatchTrigger and not
+// merged into it.
+type UserFetches interface {
+	CreateRequest(ctx context.Context, arg CreateUserFetchRequestParams) (UserFetchRequest, error)
+	GetRequest(ctx context.Context, id uuid.UUID) (UserFetchRequest, error)
+	CreateRequestItem(ctx context.Context, arg CreateUserFetchRequestItemParams) (UserFetchRequestItem, error)
+	GetRequestProgress(ctx context.Context, requestID uuid.UUID) (UserFetchProgress, error)
+	// MarkRequestCompleted is reserved for the v2 notification dispatcher.
+	// v1 callers compute terminal on-the-fly from GetRequestProgress and may
+	// skip this entirely.
+	MarkRequestCompleted(ctx context.Context, requestID uuid.UUID) error
 }
 
 type Analysis interface {

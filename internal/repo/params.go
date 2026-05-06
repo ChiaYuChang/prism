@@ -125,3 +125,14 @@ type CreateContentExtractionEntityParams struct {
 	Surface      string    `validate:"required"`
 	Ordinal      *int16    `validate:"omitempty"`
 }
+
+type CreateUserFetchRequestParams struct {
+	UserID *uuid.UUID `validate:"omitempty"`
+}
+
+type CreateUserFetchRequestItemParams struct {
+	RequestID      uuid.UUID  `validate:"required"`
+	CandidateID    uuid.UUID  `validate:"required"`
+	TaskID         *uuid.UUID `validate:"omitempty"`
+	SnapshotStatus *string    `validate:"omitempty"`
+}
