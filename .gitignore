@@ -57,6 +57,7 @@ testdata/fixtures/
 # .idea/
 # .vscode/
 
+# support files
 SESSION_SUMMARY.md
 CLAUDE.md
 .codex
@@ -68,6 +69,7 @@ build/ok*
 .python-version
 pyproject.toml
 uv.lock
+docs/why
 
 build/infra/nats/nats.conf
 build/infra/otel/otel.yaml

@@ -28,12 +28,12 @@ Current sprint and pending checklist. Items move to `done.md` as they complete. 
 * [ ] **Revise `POST /page_fetch` handler** (`internal/http/api/page_fetch.go`):
   * Accept `{candidate_ids: []uuid}`; cap at 100 (existing).
   * Create one `user_fetch_request` (user_id from authn context, NULL for v1).
-  * For each candidate:
-    * not in DB → record nothing on the request, count into `not_found_count` in response.
-    * try `CreateTask` → on success, insert item with `task_id=new_task.id`, `snapshot_status=NULL`.
-    * on `ErrTaskAlreadyActive` → fetch existing active task by URL (from CTE return); insert item with `task_id=existing.id`, `snapshot_status=NULL`.
-    * if conflict + lookup both miss (task terminated between conflict and lookup): query `contents` by URL; if present, insert item with `task_id=NULL`, `snapshot_status='ALREADY_COMPLETE'`. If absent, retry CreateTask once (the active row drained, a new one is creatable).
-  * Return `202 Accepted` with `{request_id, item_count, not_found_count}`. **No per-candidate result array.** Skipped/dup is internal.
+  * For each candidate (preserve input order in response `items[]`):
+    * not in DB → echo `{candidate_id, status:"not_found"}`; do **not** insert a `user_fetch_request_items` row.
+    * try `CreateTask` → on success, insert item with `task_id=new_task.id`, `snapshot_status=NULL`; echo `{candidate_id, status:"created"}`.
+    * on `ErrTaskAlreadyActive` → fetch existing active task by URL via `Tasks.GetActivePageFetchTaskByURL`; insert item with `task_id=existing.id`, `snapshot_status=NULL`; echo `{candidate_id, status:"created"}`. **`created` collapses fresh-insert and shared-active-task** — never expose `already_active` (cross-user / cross-request side-channel).
+    * if `ErrTaskAlreadyActive` + lookup miss (task terminated between conflict and lookup): query `contents` by URL. If present, insert item with `task_id=NULL`, `snapshot_status='ALREADY_COMPLETE'`; echo `{candidate_id, status:"already_complete"}`. If absent, return `500` for the whole request — collector ordering (`CreateContent` → `CompleteTask`) makes this race window non-existent, so a miss here is a design-invariant violation.
+  * Return `202 Accepted` with `{request_id, items: [{candidate_id, status}]}`, `status ∈ {created, already_complete, not_found}`. **Never** expose `task_id` or `already_active`. `not_found` items are response-only (no row in `user_fetch_request_items`), so `GET /fetches/{request_id}` progress counts only reflect stored items.
 * [ ] **New endpoint `GET /api/v1/fetches/{request_id}`:** returns `{request_id, total, pending, running, completed, failed, already_complete, terminal}`. URL named `/fetches/` rather than `/batches/` so user-facing language does not leak the internal `batches` term.
   * Server-side Valkey cache on `fetch:progress:{request_id}` with ~1–2s TTL for live; 60s+ for terminal.
   * Server-side rate limit (per-IP or per-request_id) reusing `infra.RateLimiter`.
@@ -43,7 +43,8 @@ Current sprint and pending checklist. Items move to `done.md` as they complete. 
 * [ ] **Tests:**
   * `api_test.go`: same URL submitted by two requests → both items reference same task_id, both reach terminal when task COMPLETED, neither response leaks the other's existence.
   * `api_test.go`: candidate already in `contents` → item snapshot_status=`ALREADY_COMPLETE`, task_id=NULL, GET /fetches/{id} reports `already_complete:1` and `terminal:true`.
-  * `api_test.go`: not_found candidate not stored as item; only counted in `not_found_count`.
+  * `api_test.go`: not_found candidate echoed as `{candidate_id, status:"not_found"}` in `items[]`, not stored as `user_fetch_request_items` row, `GET /fetches/{request_id}` progress counts unaffected.
+  * `api_test.go`: response items preserve input candidate_id order; no `task_id` field is ever present in the response.
   * `api_test.go`: aggregator status is `COALESCE(snapshot_status, tasks.status)` — verify a mix.
   * Repo: `CreateTask` ON CONFLICT path returns existing task_id without raising error to caller (or raises sentinel, depending on chosen contract).
 * [ ] **Notification deferred:** `user_fetch_requests.completed_at` column persisted but unused in v1; v2 will set it via sweeper or compute-on-write transition and fire webhook/email. Document in commit message that the column is reserved.
@@ -55,7 +56,7 @@ This unblocks Phase 2.8 (Operator TUI), which consumes `GET /fetches/{request_id
 
 * [ ] Bubble Tea app with four views — candidates list / submit-confirmation modal / batch monitor / content viewer.
 * [ ] **List view:** filter bar (`q`, `source_abbr`, `since/until`), paginated table, multi-select (`space`), `f` to submit `POST /page_fetch`, `Enter` to view content, `b` to open fetch-request monitor by ID.
-* [ ] **Submit modal:** minimal — show returned `request_id`, `item_count`, `not_found_count`, offer `[m] monitor` (jump to fetch view) / `[c] copy id` / `[↵] dismiss`. No per-candidate status enumeration.
+* [ ] **Submit modal:** show returned `request_id` and a per-candidate status table from `items[]` (`created` / `already_complete` / `not_found`); each row is keyed by `candidate_id` so the underlying list view can mark rows accordingly. Offer `[m] monitor` (jump to fetch view) / `[c] copy id` / `[↵] dismiss`. No `task_id` is ever displayed.
 * [ ] **Fetch monitor view:** input request_id (or arrive from modal), client-pull `GET /fetches/{request_id}` on a fixed interval (default 5s; configurable via `--fetch-poll-interval`). Render progress bar + counters (pending / running / completed / failed / already_complete). Stop polling when `terminal=true`; `r` forces immediate refresh; `esc` back.
 * [ ] **Content view:** render fetched content; if `GET /contents/{id}` returns 404, poll with backoff and show "waiting for collector" state; `y` copy URL, `o` open in browser.
 * [ ] HTTP client reuses DTOs from `internal/http/api/` (no schema drift).
