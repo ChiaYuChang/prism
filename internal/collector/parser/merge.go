@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"maps"
+
 	"github.com/ChiaYuChang/prism/internal/collector"
 	"github.com/ChiaYuChang/prism/pkg/utils"
 )
@@ -33,14 +35,14 @@ func MergeArticleContent(base, priority *collector.Article) *collector.Article {
 		merged.FetchedAt = priority.FetchedAt
 	}
 
-	// Merge metadata maps
 	if len(priority.Metadata) > 0 {
-		if merged.Metadata == nil {
-			merged.Metadata = make(map[string]any)
-		}
-		for k, v := range priority.Metadata {
-			merged.Metadata[k] = v
-		}
+		// Clone before writing: `merged := *base` is a shallow copy and
+		// merged.Metadata still aliases base.Metadata. Writing into it
+		// would mutate the caller's input.
+		out := make(map[string]any, len(base.Metadata)+len(priority.Metadata))
+		maps.Copy(out, base.Metadata)
+		maps.Copy(out, priority.Metadata)
+		merged.Metadata = out
 	}
 
 	// Ensure fields are normalized
