@@ -20,16 +20,19 @@ type ParserConfig struct {
 	HTML        html.RuleConfig `yaml:"html"         json:"html,omitempty"`
 }
 
-func LoadConfig(path string) (Config, error) {
+func LoadConfig(path string) (cfg Config, err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("open parser config: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close parser config: %w", cerr)
+		}
+	}()
 
-	var cfg Config
-	if err := yaml.NewDecoder(f).Decode(&cfg); err != nil {
-		return Config{}, fmt.Errorf("decode parser config: %w", err)
+	if derr := yaml.NewDecoder(f).Decode(&cfg); derr != nil {
+		return Config{}, fmt.Errorf("decode parser config: %w", derr)
 	}
 
 	return cfg, nil

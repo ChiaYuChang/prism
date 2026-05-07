@@ -34,6 +34,8 @@ func New() *HTMLMinifier {
 	return &HTMLMinifier{}
 }
 
+func (*HTMLMinifier) String() string { return "HTMLMinifier" }
+
 func (m *HTMLMinifier) Transform(_ context.Context, raw string) (string, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(raw))
 	if err != nil {
@@ -57,7 +59,7 @@ func (m *HTMLMinifier) Transform(_ context.Context, raw string) (string, error) 
 	}
 
 	var buf bytes.Buffer
-	for _, line := range strings.Split(html, "\n") {
+	for line := range strings.SplitSeq(html, "\n") {
 		if trimmed := strings.TrimSpace(line); trimmed != "" {
 			buf.WriteString(trimmed)
 			buf.WriteByte('\n')
