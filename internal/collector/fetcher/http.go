@@ -21,6 +21,8 @@ func NewHTTPFetcher(client *http.Client) *HTTPFetcher {
 	return &HTTPFetcher{client: client}
 }
 
+func (*HTTPFetcher) String() string { return "HTTPFetcher" }
+
 // Fetch fetches a URL and returns the body, failing on non-2xx status codes.
 // Use RetryFetcher for retry logic with per-status-code handling.
 func (f *HTTPFetcher) Fetch(ctx context.Context, url string) (string, error) {

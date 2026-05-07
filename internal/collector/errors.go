@@ -1,6 +1,21 @@
 package collector
 
-import "fmt"
+import (
+	"fmt"
+)
+
+// stageName returns a human-readable identifier for a pipeline component.
+// It prefers fmt.Stringer when the value implements it (stable, hand-picked
+// label) and falls back to the Go type name (which still survives across
+// refactors better than nothing).
+func stageName(v any) string {
+	if s, ok := v.(fmt.Stringer); ok {
+		if name := s.String(); name != "" {
+			return name
+		}
+	}
+	return fmt.Sprintf("%T", v)
+}
 
 // PipelineStage identifies a stage in the F-M-T-P collector pipeline.
 type PipelineStage string
@@ -39,13 +54,22 @@ func (s PipelineStage) String() string {
 // that was flowing between stages when the failure occurred.
 // Intermediate is the output of the previous stage = input to the failing stage.
 // Empty for PipelineStageFetch (no upstream output exists).
+//
+// SubStage names the specific implementation that failed. For Transform it
+// also carries the chain index (e.g. "[1] HTMLMinifier") so a failure in a
+// chain of identically-typed transformers is still locatable. Empty when no
+// stable identifier is available.
 type StageError struct {
 	Stage        PipelineStage
+	SubStage     string
 	Err          error
 	Intermediate string
 }
 
 func (e *StageError) Error() string {
+	if e.SubStage != "" {
+		return string(e.Stage) + "[" + e.SubStage + "]: " + e.Err.Error()
+	}
 	return string(e.Stage) + ": " + e.Err.Error()
 }
 

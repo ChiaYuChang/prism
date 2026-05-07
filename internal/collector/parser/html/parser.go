@@ -33,6 +33,8 @@ func New(cfg RuleConfig, dateLayouts []string) *Parser {
 	return &Parser{cfg: cfg, dateLayouts: dateLayouts}
 }
 
+func (*Parser) String() string { return "HTMLParser" }
+
 func (p *Parser) Parse(_ context.Context, url string, data string) (*collector.Article, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(data))
 	if err != nil {

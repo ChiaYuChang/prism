@@ -31,6 +31,8 @@ func NewCompositeParser(logger *slog.Logger, parsers ...collector.Parser) (*Comp
 	}, nil
 }
 
+func (*CompositeParser) String() string { return "CompositeParser" }
+
 func (p *CompositeParser) Parse(ctx context.Context, url string, data string) (*collector.Article, error) {
 	var final *collector.Article
 

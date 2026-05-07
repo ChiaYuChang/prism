@@ -71,26 +71,31 @@ func (d *Dispatcher) Dispatch(ctx context.Context, sourceID, url string) (*Dispa
 
 	raw, err := p.Fetcher.Fetch(ctx, url)
 	if err != nil {
-		return nil, &StageError{Stage: PipelineStageFetch, Err: err}
+		return nil, &StageError{Stage: PipelineStageFetch, SubStage: stageName(p.Fetcher), Err: err}
 	}
 
 	minified, err := p.Minifier.Transform(ctx, raw)
 	if err != nil {
-		return nil, &StageError{Stage: PipelineStageMinify, Err: err, Intermediate: raw}
+		return nil, &StageError{Stage: PipelineStageMinify, SubStage: stageName(p.Minifier), Err: err, Intermediate: raw}
 	}
 
 	canonical := minified
-	for _, t := range p.Transformers {
+	for i, t := range p.Transformers {
 		out, err := t.Transform(ctx, canonical)
 		if err != nil {
-			return nil, &StageError{Stage: PipelineStageTransform, Err: err, Intermediate: canonical}
+			return nil, &StageError{
+				Stage:        PipelineStageTransform,
+				SubStage:     fmt.Sprintf("[%d] %s", i, stageName(t)),
+				Err:          err,
+				Intermediate: canonical,
+			}
 		}
 		canonical = out
 	}
 
 	article, err := p.Parser.Parse(ctx, url, canonical)
 	if err != nil {
-		return nil, &StageError{Stage: PipelineStageParse, Err: err, Intermediate: canonical}
+		return nil, &StageError{Stage: PipelineStageParse, SubStage: stageName(p.Parser), Err: err, Intermediate: canonical}
 	}
 
 	d.logger.DebugContext(ctx, "dispatch complete",

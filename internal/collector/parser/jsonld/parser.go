@@ -25,6 +25,8 @@ func New() *Parser {
 	return &Parser{}
 }
 
+func (*Parser) String() string { return "JSONLDParser" }
+
 func (p *Parser) Parse(_ context.Context, url string, data string) (*collector.Article, error) {
 	var best *collector.Article
 

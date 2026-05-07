@@ -76,6 +76,8 @@ type RetryFetcher struct {
 
 var _ collector.Fetcher = (*RetryFetcher)(nil)
 
+func (*RetryFetcher) String() string { return "RetryFetcher" }
+
 func NewRetryFetcher(inner *HTTPFetcher, maxRetries int, initialBackoff time.Duration) *RetryFetcher {
 	return &RetryFetcher{
 		inner:      inner,
