@@ -12,22 +12,48 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/repo"
 )
 
 var ErrParamMissing = errors.New("param missing")
 
+// ServerOption configures optional dependencies on a Server.
+type ServerOption func(*Server)
+
+// WithProgressCache attaches a ProgressCache used by GetFetch. When unset, a
+// NoOpProgressCache is used (no caching).
+func WithProgressCache(c ProgressCache) ServerOption {
+	return func(s *Server) {
+		if c != nil {
+			s.Cache = c
+		}
+	}
+}
+
+// WithGetFetchLimiter attaches a per-IP rate limiter applied to GET /fetches/{id}.
+// When unset, no rate limiting is applied.
+func WithGetFetchLimiter(l middleware.IPLimiter) ServerOption {
+	return func(s *Server) {
+		if l != nil {
+			s.GetFetchLimiter = l
+		}
+	}
+}
+
 // Server groups dependencies shared by all API handlers.
 type Server struct {
-	Logger      *slog.Logger
-	Scout       repo.Scout
-	Tasks       repo.Tasks
-	Pipeline    repo.Pipeline
-	UserFetches repo.UserFetches
+	Logger          *slog.Logger
+	Scout           repo.Scout
+	Tasks           repo.Tasks
+	Pipeline        repo.Pipeline
+	UserFetches     repo.UserFetches
+	Cache           ProgressCache
+	GetFetchLimiter middleware.IPLimiter
 }
 
 // NewServer validates dependencies and returns a ready-to-register Server.
-func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline repo.Pipeline, userFetches repo.UserFetches) (*Server, error) {
+func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline repo.Pipeline, userFetches repo.UserFetches, opts ...ServerOption) (*Server, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
@@ -43,15 +69,32 @@ func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline
 	if userFetches == nil {
 		return nil, fmt.Errorf("%w: userFetches", ErrParamMissing)
 	}
-	return &Server{Logger: logger, Scout: scout, Tasks: tasks, Pipeline: pipeline, UserFetches: userFetches}, nil
+	s := &Server{
+		Logger:          logger,
+		Scout:           scout,
+		Tasks:           tasks,
+		Pipeline:        pipeline,
+		UserFetches:     userFetches,
+		Cache:           NoOpProgressCache{},
+		GetFetchLimiter: middleware.NoOpIPLimiter{},
+	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s, nil
 }
 
 // Register wires v1 routes onto the supplied mux under the /api/v1 prefix.
+//
+// The /fetches/{id} route is wrapped in a per-IP rate-limit middleware. When
+// no limiter is configured, the wrapping uses NoOpIPLimiter and is effectively
+// a passthrough.
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/candidates", s.ListCandidates)
 	mux.HandleFunc("POST /api/v1/page_fetch", s.PageFetch)
 	mux.HandleFunc("GET /api/v1/contents/{candidate_id}", s.GetContent)
-	mux.HandleFunc("GET /api/v1/fetches/{id}", s.GetFetch)
+	mux.Handle("GET /api/v1/fetches/{id}",
+		middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch)))
 }
 
 // ErrorResponse is the standard JSON error body.

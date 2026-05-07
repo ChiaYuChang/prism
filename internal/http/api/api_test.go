@@ -2,10 +2,12 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +19,32 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+type fakeProgressCache struct {
+	hit  bool
+	resp api.FetchProgressResponse
+	gets int32
+	sets int32
+	last api.FetchProgressResponse
+}
+
+func (f *fakeProgressCache) Get(_ context.Context, _ uuid.UUID) (api.FetchProgressResponse, bool, error) {
+	atomic.AddInt32(&f.gets, 1)
+	if f.hit {
+		return f.resp, true, nil
+	}
+	return api.FetchProgressResponse{}, false, nil
+}
+
+func (f *fakeProgressCache) Set(_ context.Context, _ uuid.UUID, resp api.FetchProgressResponse) error {
+	atomic.AddInt32(&f.sets, 1)
+	f.last = resp
+	return nil
+}
+
+type denyAllLimiter struct{}
+
+func (denyAllLimiter) Allow(string) bool { return false }
 
 type testServerMocks struct {
 	scout       *mocks.MockScout
@@ -303,6 +331,90 @@ func TestGetFetch_InvalidID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.GetFetch(rec, req)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestGetFetch_CacheHit_ShortCircuitsRepo(t *testing.T) {
+	t.Helper()
+	m := &testServerMocks{
+		scout:       mocks.NewMockScout(t),
+		tasks:       mocks.NewMockTasks(t),
+		pipeline:    mocks.NewMockPipeline(t),
+		userFetches: mocks.NewMockUserFetches(t),
+	}
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	fetchID := uuid.Must(uuid.NewV7())
+	cache := &fakeProgressCache{
+		hit:  true,
+		resp: api.FetchProgressResponse{FetchID: fetchID, Total: 7, Completed: 7, Terminal: true},
+	}
+	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches, api.WithProgressCache(cache))
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fetches/"+fetchID.String(), nil)
+	req.SetPathValue("id", fetchID.String())
+	rec := httptest.NewRecorder()
+	srv.GetFetch(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.FetchProgressResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.EqualValues(t, 7, body.Total)
+	require.True(t, body.Terminal)
+	require.EqualValues(t, 1, atomic.LoadInt32(&cache.gets))
+	require.EqualValues(t, 0, atomic.LoadInt32(&cache.sets))
+	// userFetches mock has no expectations — would fail if called.
+}
+
+func TestGetFetch_CacheMiss_PopulatesCache(t *testing.T) {
+	srv, m := newTestServer(t)
+	cache := &fakeProgressCache{}
+	srvWithCache, err := api.NewServer(slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		m.scout, m.tasks, m.pipeline, m.userFetches, api.WithProgressCache(cache))
+	require.NoError(t, err)
+	_ = srv
+
+	fetchID := uuid.Must(uuid.NewV7())
+	m.userFetches.EXPECT().Get(mock.Anything, fetchID).
+		Return(repo.UserFetch{ID: fetchID}, nil).Once()
+	m.userFetches.EXPECT().GetProgress(mock.Anything, fetchID).
+		Return(repo.UserFetchProgress{Total: 2, Completed: 2, Terminal: true}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fetches/"+fetchID.String(), nil)
+	req.SetPathValue("id", fetchID.String())
+	rec := httptest.NewRecorder()
+	srvWithCache.GetFetch(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.EqualValues(t, 1, atomic.LoadInt32(&cache.gets))
+	require.EqualValues(t, 1, atomic.LoadInt32(&cache.sets))
+	require.True(t, cache.last.Terminal)
+	require.EqualValues(t, 2, cache.last.Total)
+}
+
+func TestGetFetch_RateLimit_Returns429(t *testing.T) {
+	t.Helper()
+	m := &testServerMocks{
+		scout:       mocks.NewMockScout(t),
+		tasks:       mocks.NewMockTasks(t),
+		pipeline:    mocks.NewMockPipeline(t),
+		userFetches: mocks.NewMockUserFetches(t),
+	}
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches,
+		api.WithGetFetchLimiter(denyAllLimiter{}))
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.Register(mux)
+
+	fetchID := uuid.Must(uuid.NewV7())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fetches/"+fetchID.String(), nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	require.Equal(t, "1", rec.Header().Get("Retry-After"))
 }
 
 func TestGetContent_NotFoundReturns404(t *testing.T) {

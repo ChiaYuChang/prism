@@ -48,6 +48,15 @@ func (s *Server) GetFetch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+
+	if cached, ok, err := s.Cache.Get(ctx, fetchID); err != nil {
+		s.Logger.WarnContext(ctx, "progress cache get failed",
+			slog.String("fetch_id", fetchID.String()), slog.Any("error", err))
+	} else if ok {
+		writeJSON(w, http.StatusOK, cached)
+		return
+	}
+
 	if _, err := s.UserFetches.Get(ctx, fetchID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "fetch not found")
@@ -67,7 +76,7 @@ func (s *Server) GetFetch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, FetchProgressResponse{
+	resp := FetchProgressResponse{
 		FetchID:         fetchID,
 		Total:           progress.Total,
 		Pending:         progress.Pending,
@@ -76,5 +85,10 @@ func (s *Server) GetFetch(w http.ResponseWriter, r *http.Request) {
 		Failed:          progress.Failed,
 		AlreadyComplete: progress.AlreadyComplete,
 		Terminal:        progress.Terminal,
-	})
+	}
+	if err := s.Cache.Set(ctx, fetchID, resp); err != nil {
+		s.Logger.WarnContext(ctx, "progress cache set failed",
+			slog.String("fetch_id", fetchID.String()), slog.Any("error", err))
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

@@ -161,3 +161,70 @@ func TestChain_OutermostRunsFirst(t *testing.T) {
 
 	assert.Equal(t, []string{"a-in", "b-in", "inner", "b-out", "a-out"}, order)
 }
+
+func TestRateLimit_AllowsThenBlocks(t *testing.T) {
+	limiter := middleware.NewInMemoryIPLimiter(1, 2, 16)
+	called := 0
+	h := middleware.RateLimit(limiter)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called++
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	mk := func() *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/x", nil)
+		r.RemoteAddr = "10.0.0.42:9999"
+		return r
+	}
+
+	rec1 := httptest.NewRecorder()
+	h.ServeHTTP(rec1, mk())
+	require.Equal(t, http.StatusOK, rec1.Code)
+
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, mk())
+	require.Equal(t, http.StatusOK, rec2.Code)
+
+	rec3 := httptest.NewRecorder()
+	h.ServeHTTP(rec3, mk())
+	require.Equal(t, http.StatusTooManyRequests, rec3.Code)
+	require.Equal(t, "1", rec3.Header().Get("Retry-After"))
+	require.Equal(t, 2, called)
+}
+
+func TestRateLimit_PerIPIsolation(t *testing.T) {
+	limiter := middleware.NewInMemoryIPLimiter(1, 1, 16)
+	h := middleware.RateLimit(limiter)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	mk := func(ip string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/x", nil)
+		r.RemoteAddr = ip + ":1"
+		return r
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, mk("10.0.0.1"))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, mk("10.0.0.2"))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, mk("10.0.0.1"))
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+}
+
+func TestClientIP_PrefersXForwardedFor(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/x", nil)
+	r.RemoteAddr = "10.0.0.1:1234"
+	r.Header.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.1")
+	require.Equal(t, "203.0.113.7", middleware.ClientIP(r))
+}
+
+func TestClientIP_FallsBackToRemoteAddr(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/x", nil)
+	r.RemoteAddr = "10.0.0.1:1234"
+	require.Equal(t, "10.0.0.1", middleware.ClientIP(r))
+}

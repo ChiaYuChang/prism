@@ -35,7 +35,12 @@ Current sprint and pending checklist. Items move to `done.md` as they complete. 
   * Client-pull model (5s fixed or `2→5→10s` backoff). No long-polling.
 * [x] **Dropped `PageFetchTaskResult` / `PageFetchResponse.Results`** + Swagger regen (`task swag`).
 * [x] **Tests:** `created` path with task_id, not_found echo + ordering + no task_id leak in JSON, `already_active` collapse to `created` with no identifier leak, `already_complete` snapshot, race-miss → 500, `GetFetch` happy path / 404 / invalid UUID.
-* [ ] **Stage 3 (next):** server-side Valkey cache + rate limit on `GET /fetches/{id}`; wire Valkey flags into `cmd/api-server`.
+* [x] **Stage 3:** server-side Valkey cache + per-IP rate limit on `GET /fetches/{id}`; wire Valkey flags into `cmd/api-server`. Both features opt-in (default OFF), independently toggleable.
+  * `ProgressCache` interface in `internal/http/api/cache.go` with `NoOpProgressCache` default; `ValkeyProgressCache` impl in `cache_valkey.go` keyed by `fetch:progress:{fetch_id}`. Two TTLs: live (default 2s) and terminal (default 60s); terminal flag from response body picks bucket.
+  * Per-IP token-bucket limiter in `internal/http/middleware/ratelimit.go`: `IPLimiter` interface, `NoOpIPLimiter`, `InMemoryIPLimiter` (LRU-bounded `*rate.Limiter` per client IP). `RateLimit` middleware returns `429 Too Many Requests` + `Retry-After: 1` when over budget. `ClientIP` honors leftmost `X-Forwarded-For` then falls back to `RemoteAddr`.
+  * `Server` gains `Cache` + `GetFetchLimiter` fields wired via `WithProgressCache` / `WithGetFetchLimiter` functional options. `Register` always wraps `/fetches/{id}` in `RateLimit`; with the noop default the wrap is a passthrough.
+  * `cmd/api-server` flags: `--cache-enabled`, `--cache-live-ttl`, `--cache-terminal-ttl`, `--rate-limit-enabled`, `--rate-limit-rps`, `--rate-limit-burst`, `--rate-limit-ip-cache-size`, plus `--valkey-host/-port/-username/-password/-password-file/-db`. `main.go` only dials Valkey when cache is enabled, and only constructs the limiter when rate-limit is enabled.
+  * Tests: cache hit short-circuits repo, cache miss populates, rate-limit returns 429, per-IP isolation, `ClientIP` precedence. `go test -short ./...` = 417 pass.
 * [ ] **Stage 4 (next):** e2e — bring up stack, `POST /page_fetch` real, observe collector, `GET /fetches/{id}` terminal.
 * [ ] **Notification deferred:** `fetches.completed_at` column persisted but unused in v1; v2 sets via sweeper or compute-on-write transition and fires webhook/email.
 * [ ] **Update done.md / spec.md cross-refs after Stage 3/4 merge.**

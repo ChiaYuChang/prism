@@ -24,6 +24,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
+	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
@@ -63,7 +64,46 @@ func main() {
 	}
 	defer func() { _ = repositoryCloser.Close() }()
 
-	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches())
+	var serverOpts []api.ServerOption
+
+	if config.Cache.Enabled {
+		valkeyClient, err := infra.NewValkeyClient(ctx, &redis.Options{
+			Addr:     config.Valkey.Addr(),
+			Username: config.Valkey.Username,
+			Password: config.Valkey.Password,
+			DB:       config.Valkey.DB,
+		})
+		if err != nil {
+			logger.Error("failed to dial valkey for progress cache", "addr", config.Valkey.Addr(), "error", err)
+			os.Exit(1)
+		}
+		defer func() { _ = valkeyClient.Close() }()
+		cache, err := api.NewValkeyProgressCache(valkeyClient, config.Cache.LiveTTL, config.Cache.TerminalTTL)
+		if err != nil {
+			logger.Error("failed to construct progress cache", "error", err)
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, api.WithProgressCache(cache))
+		logger.Info("progress cache enabled",
+			"valkey_addr", config.Valkey.Addr(),
+			"live_ttl", config.Cache.LiveTTL,
+			"terminal_ttl", config.Cache.TerminalTTL)
+	}
+
+	if config.RateLimit.Enabled {
+		limiter := middleware.NewInMemoryIPLimiter(
+			config.RateLimit.RPS,
+			config.RateLimit.Burst,
+			config.RateLimit.IPCacheSize,
+		)
+		serverOpts = append(serverOpts, api.WithGetFetchLimiter(limiter))
+		logger.Info("get-fetch rate limit enabled",
+			"rps", config.RateLimit.RPS,
+			"burst", config.RateLimit.Burst,
+			"ip_cache_size", config.RateLimit.IPCacheSize)
+	}
+
+	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches(), serverOpts...)
 	if err != nil {
 		logger.Error("failed to construct api server", "error", err)
 		os.Exit(1)
