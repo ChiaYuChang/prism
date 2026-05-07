@@ -267,7 +267,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_tasks_active_page_fetch
 ALTER TABLE tasks SET (fillfactor = 80);
 
 COMMENT ON TABLE candidates IS 'Article briefs (title/url/desc) before full-page fetch. Discovery terminal asset.';
-COMMENT ON COLUMN candidates.fingerprint IS 'Dedup key (URL-derived, MD5 hex). Not a separate table.';
+COMMENT ON COLUMN candidates.fingerprint IS 'Dedup key (SHA-256[:16] hex of URL+title+published_at). Not a separate table.';
 COMMENT ON TABLE contents IS 'Full fetched article. 1:1 with candidates via UNIQUE candidate_id.';
 COMMENT ON TABLE batches IS 'Groups one cron/trigger run so planner can detect completion. id used in tasks.batch_id and copied into candidates/contents.';
 COMMENT ON TABLE tasks IS 'Runnable request-oriented work unit. Scheduler claims with FOR UPDATE SKIP LOCKED.';

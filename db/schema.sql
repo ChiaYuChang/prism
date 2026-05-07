@@ -250,7 +250,7 @@ COMMENT ON TABLE public.candidates IS 'Article briefs (title/url/desc) before fu
 -- Name: COLUMN candidates.fingerprint; Type: COMMENT; Schema: public; Owner: postgres
 --
 
-COMMENT ON COLUMN public.candidates.fingerprint IS 'Dedup key (URL-derived, MD5 hex). Not a separate table.';
+COMMENT ON COLUMN public.candidates.fingerprint IS 'Dedup key (SHA-256[:16] hex of URL+title+published_at). Not a separate table.';
 
 
 --

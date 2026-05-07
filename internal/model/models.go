@@ -1,8 +1,8 @@
 package model
 
 import (
-	"crypto/md5"
-	"encoding/base64"
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,13 +45,17 @@ type Candidates struct {
 	Metadata        map[string]any `json:"metadata"`
 }
 
-// Fingerprint returns a unique identifier for the candidate based on its URL, title, and published time.
+// Fingerprint returns a unique identifier for the candidate based on its URL,
+// title, and published time. The output is the first 16 bytes of SHA-256
+// rendered as 32 hex chars, matching the candidates.fingerprint CHAR(32)
+// column. 128 bits is well within the dedup collision budget.
 func (c Candidates) Fingerprint() string {
-	hasher := md5.New()
+	hasher := sha256.New()
 	hasher.Write([]byte(c.URL))
 	hasher.Write([]byte(c.Title))
 	hasher.Write([]byte(c.PublishedAt.UTC().Format(time.DateTime)))
-	return base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+	sum := hasher.Sum(nil)
+	return hex.EncodeToString(sum[:16])
 }
 
 // ArticleContent represents a standardized news article object after parsing.
