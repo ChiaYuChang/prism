@@ -1,0 +1,4 @@
+{
+  "status": 200,
+  "body": "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\": [\n          {\n            \"text\": \"Hi\"\n          }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\": \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\": 12,\n    \"candidatesTokenCount\": 1,\n    \"totalTokenCount\": 46,\n    \"promptTokensDetails\": [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 12\n      }\n    ],\n    \"thoughtsTokenCount\": 33,\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\": \"gemini-2.5-flash\",\n  \"responseId\": \"w4z8aavPDvae1e8PutTa-Aw\"\n}\n"
+}

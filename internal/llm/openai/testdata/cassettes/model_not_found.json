@@ -1,0 +1,4 @@
+{
+  "status": 404,
+  "body": "{\"error\":{\"message\":\"model 'definitely-not-a-real-model' not found\",\"type\":\"not_found_error\",\"param\":null,\"code\":null}}\n"
+}

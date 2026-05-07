@@ -1,0 +1,4 @@
+{
+  "status": 200,
+  "body": "{\"model\":\"gemma-4-E4B-it:Q4_K_M\",\"created_at\":\"2026-05-07T13:37:18.612527832Z\",\"message\":{\"role\":\"assistant\",\"content\":\"{\\\"greeting\\\": \\\"您好\\\", \\\"language\\\": \\\"zh\\\"}\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":2679877462,\"load_duration\":651658246,\"prompt_eval_count\":76,\"prompt_eval_duration\":493450201,\"eval_count\":14,\"eval_duration\":1305905418}"
+}

@@ -197,7 +197,7 @@ func (p *Provider) Embed(ctx context.Context, req *llm.EmbedRequest) (*llm.Embed
 			OfArrayOfStrings: req.Input,
 		},
 		Dimensions:     openai.Int(int64(req.Dimentions)),
-		EncodingFormat: openai.EmbeddingNewParamsEncodingFormatBase64,
+		EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 	}
 
 	// Extract UserID from context via internal/obs

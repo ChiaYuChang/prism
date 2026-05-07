@@ -1,0 +1,4 @@
+{
+  "status": 200,
+  "body": "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\": [\n          {\n            \"text\": \"{\\\"greeting\\\":\\\"您好\\\",\\\"language\\\":\\\"zh-TW\\\"}\"\n          }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\": \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\": 24,\n    \"candidatesTokenCount\": 12,\n    \"totalTokenCount\": 95,\n    \"promptTokensDetails\": [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 24\n      }\n    ],\n    \"thoughtsTokenCount\": 59,\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\": \"gemini-2.5-flash\",\n  \"responseId\": \"xIz8aeD6Gvuivr0P3t7r2A4\"\n}\n"
+}

@@ -1,0 +1,4 @@
+{
+  "status": 200,
+  "body": "{\"model\":\"gemma-4-E4B-it:Q4_K_M\",\"created_at\":\"2026-05-07T13:36:07.682538255Z\",\"message\":{\"role\":\"assistant\",\"content\":\"Hi\"},\"done\":true,\"done_reason\":\"stop\",\"total_duration\":9076595004,\"load_duration\":8070728933,\"prompt_eval_count\":27,\"prompt_eval_duration\":642032258,\"eval_count\":2,\"eval_duration\":108888260}"
+}
