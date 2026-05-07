@@ -646,6 +646,26 @@ type Entity struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+// User-facing observation layer for POST /page_fetch. Groups one user submission. Parallel to batches; see docs/plan/spec.md §6.
+type Fetch struct {
+	ID uuid.UUID `db:"id" json:"id"`
+	// Nullable in v1 (single-user dev). Filter target for multi-user RBAC.
+	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	// Persisted in v1 but unused; v2 notification dispatcher will set on transition.
+	CompletedAt pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+}
+
+// One row per (fetch, candidate). task_id may point at a shared active task created by another fetch — task fan-out is internal and never user-visible.
+type FetchItem struct {
+	FetchID     uuid.UUID   `db:"fetch_id" json:"fetch_id"`
+	CandidateID uuid.UUID   `db:"candidate_id" json:"candidate_id"`
+	TaskID      pgtype.UUID `db:"task_id" json:"task_id"`
+	// NULL for live items (status comes from tasks.status). Set to ALREADY_COMPLETE when the candidate already had contents at submit time.
+	SnapshotStatus pgtype.Text        `db:"snapshot_status" json:"snapshot_status"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Model struct {
 	ID          int16              `db:"id" json:"id"`
 	Name        string             `db:"name" json:"name"`
@@ -702,24 +722,4 @@ type Task struct {
 	LastRunAt   pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
-// User-facing observation layer for POST /page_fetch. Groups one user submission. Parallel to batches; see docs/plan/spec.md §6.
-type UserFetchRequest struct {
-	ID uuid.UUID `db:"id" json:"id"`
-	// Nullable in v1 (single-user dev). Filter target for multi-user RBAC.
-	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	// Persisted in v1 but unused; v2 notification dispatcher will set on transition.
-	CompletedAt pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
-}
-
-// One row per (request, candidate). task_id may point at a shared active task created by another request — task fan-out is internal and never user-visible.
-type UserFetchRequestItem struct {
-	RequestID   uuid.UUID   `db:"request_id" json:"request_id"`
-	CandidateID uuid.UUID   `db:"candidate_id" json:"candidate_id"`
-	TaskID      pgtype.UUID `db:"task_id" json:"task_id"`
-	// NULL for live items (status comes from tasks.status). Set to ALREADY_COMPLETE when the candidate already had contents at submit time.
-	SnapshotStatus pgtype.Text        `db:"snapshot_status" json:"snapshot_status"`
-	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }

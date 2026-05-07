@@ -451,6 +451,70 @@ ALTER SEQUENCE public.entities_id_seq OWNED BY public.entities.id;
 
 
 --
+-- Name: fetch_items; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.fetch_items (
+    fetch_id uuid NOT NULL,
+    candidate_id uuid NOT NULL,
+    task_id uuid,
+    snapshot_status text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.fetch_items OWNER TO postgres;
+
+--
+-- Name: TABLE fetch_items; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.fetch_items IS 'One row per (fetch, candidate). task_id may point at a shared active task created by another fetch — task fan-out is internal and never user-visible.';
+
+
+--
+-- Name: COLUMN fetch_items.snapshot_status; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.fetch_items.snapshot_status IS 'NULL for live items (status comes from tasks.status). Set to ALREADY_COMPLETE when the candidate already had contents at submit time.';
+
+
+--
+-- Name: fetches; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.fetches (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    user_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone
+);
+
+
+ALTER TABLE public.fetches OWNER TO postgres;
+
+--
+-- Name: TABLE fetches; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.fetches IS 'User-facing observation layer for POST /page_fetch. Groups one user submission. Parallel to batches; see docs/plan/spec.md §6.';
+
+
+--
+-- Name: COLUMN fetches.user_id; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.fetches.user_id IS 'Nullable in v1 (single-user dev). Filter target for multi-user RBAC.';
+
+
+--
+-- Name: COLUMN fetches.completed_at; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.fetches.completed_at IS 'Persisted in v1 but unused; v2 notification dispatcher will set on transition.';
+
+
+--
 -- Name: models; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -588,70 +652,6 @@ COMMENT ON COLUMN public.tasks.payload IS 'Request details (e.g. {query, site} f
 --
 
 COMMENT ON COLUMN public.tasks.payload_hash IS 'SHA-256(canonical JSON payload), hex. KEYWORD_SEARCH dedup via uq_tasks_active_payload. PAGE_FETCH dedups on url instead.';
-
-
---
--- Name: user_fetch_request_items; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.user_fetch_request_items (
-    request_id uuid NOT NULL,
-    candidate_id uuid NOT NULL,
-    task_id uuid,
-    snapshot_status text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE public.user_fetch_request_items OWNER TO postgres;
-
---
--- Name: TABLE user_fetch_request_items; Type: COMMENT; Schema: public; Owner: postgres
---
-
-COMMENT ON TABLE public.user_fetch_request_items IS 'One row per (request, candidate). task_id may point at a shared active task created by another request — task fan-out is internal and never user-visible.';
-
-
---
--- Name: COLUMN user_fetch_request_items.snapshot_status; Type: COMMENT; Schema: public; Owner: postgres
---
-
-COMMENT ON COLUMN public.user_fetch_request_items.snapshot_status IS 'NULL for live items (status comes from tasks.status). Set to ALREADY_COMPLETE when the candidate already had contents at submit time.';
-
-
---
--- Name: user_fetch_requests; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.user_fetch_requests (
-    id uuid DEFAULT uuidv7() NOT NULL,
-    user_id uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    completed_at timestamp with time zone
-);
-
-
-ALTER TABLE public.user_fetch_requests OWNER TO postgres;
-
---
--- Name: TABLE user_fetch_requests; Type: COMMENT; Schema: public; Owner: postgres
---
-
-COMMENT ON TABLE public.user_fetch_requests IS 'User-facing observation layer for POST /page_fetch. Groups one user submission. Parallel to batches; see docs/plan/spec.md §6.';
-
-
---
--- Name: COLUMN user_fetch_requests.user_id; Type: COMMENT; Schema: public; Owner: postgres
---
-
-COMMENT ON COLUMN public.user_fetch_requests.user_id IS 'Nullable in v1 (single-user dev). Filter target for multi-user RBAC.';
-
-
---
--- Name: COLUMN user_fetch_requests.completed_at; Type: COMMENT; Schema: public; Owner: postgres
---
-
-COMMENT ON COLUMN public.user_fetch_requests.completed_at IS 'Persisted in v1 but unused; v2 notification dispatcher will set on transition.';
 
 
 --
@@ -794,6 +794,22 @@ ALTER TABLE ONLY public.entities
 
 
 --
+-- Name: fetch_items fetch_items_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.fetch_items
+    ADD CONSTRAINT fetch_items_pkey PRIMARY KEY (fetch_id, candidate_id);
+
+
+--
+-- Name: fetches fetches_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.fetches
+    ADD CONSTRAINT fetches_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: models models_name_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -847,22 +863,6 @@ ALTER TABLE ONLY public.sources
 
 ALTER TABLE ONLY public.tasks
     ADD CONSTRAINT tasks_pkey PRIMARY KEY (id);
-
-
---
--- Name: user_fetch_request_items user_fetch_request_items_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.user_fetch_request_items
-    ADD CONSTRAINT user_fetch_request_items_pkey PRIMARY KEY (request_id, candidate_id);
-
-
---
--- Name: user_fetch_requests user_fetch_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.user_fetch_requests
-    ADD CONSTRAINT user_fetch_requests_pkey PRIMARY KEY (id);
 
 
 --
@@ -1118,6 +1118,27 @@ CREATE INDEX idx_entities_type ON public.entities USING btree (type);
 
 
 --
+-- Name: idx_fetch_items_task_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_fetch_items_task_id ON public.fetch_items USING btree (task_id) WHERE (task_id IS NOT NULL);
+
+
+--
+-- Name: idx_fetches_open; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_fetches_open ON public.fetches USING btree (created_at) WHERE (completed_at IS NULL);
+
+
+--
+-- Name: idx_fetches_user_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_fetches_user_id ON public.fetches USING btree (user_id, created_at DESC) WHERE (user_id IS NOT NULL);
+
+
+--
 -- Name: idx_models_type_name; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1199,27 +1220,6 @@ CREATE INDEX idx_tasks_trace_id ON public.tasks USING btree (trace_id);
 --
 
 CREATE INDEX idx_tasks_url ON public.tasks USING btree (url);
-
-
---
--- Name: idx_user_fetch_request_items_task_id; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_user_fetch_request_items_task_id ON public.user_fetch_request_items USING btree (task_id) WHERE (task_id IS NOT NULL);
-
-
---
--- Name: idx_user_fetch_requests_open; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_user_fetch_requests_open ON public.user_fetch_requests USING btree (created_at) WHERE (completed_at IS NULL);
-
-
---
--- Name: idx_user_fetch_requests_user_id; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_user_fetch_requests_user_id ON public.user_fetch_requests USING btree (user_id, created_at DESC) WHERE (user_id IS NOT NULL);
 
 
 --
@@ -1370,35 +1370,35 @@ ALTER TABLE ONLY public.contents
 
 
 --
+-- Name: fetch_items fetch_items_candidate_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.fetch_items
+    ADD CONSTRAINT fetch_items_candidate_id_fkey FOREIGN KEY (candidate_id) REFERENCES public.candidates(id);
+
+
+--
+-- Name: fetch_items fetch_items_fetch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.fetch_items
+    ADD CONSTRAINT fetch_items_fetch_id_fkey FOREIGN KEY (fetch_id) REFERENCES public.fetches(id) ON DELETE CASCADE;
+
+
+--
+-- Name: fetch_items fetch_items_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.fetch_items
+    ADD CONSTRAINT fetch_items_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id) ON DELETE SET NULL;
+
+
+--
 -- Name: tasks tasks_source_abbr_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.tasks
     ADD CONSTRAINT tasks_source_abbr_fkey FOREIGN KEY (source_abbr) REFERENCES public.sources(abbr);
-
-
---
--- Name: user_fetch_request_items user_fetch_request_items_candidate_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.user_fetch_request_items
-    ADD CONSTRAINT user_fetch_request_items_candidate_id_fkey FOREIGN KEY (candidate_id) REFERENCES public.candidates(id);
-
-
---
--- Name: user_fetch_request_items user_fetch_request_items_request_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.user_fetch_request_items
-    ADD CONSTRAINT user_fetch_request_items_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.user_fetch_requests(id) ON DELETE CASCADE;
-
-
---
--- Name: user_fetch_request_items user_fetch_request_items_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.user_fetch_request_items
-    ADD CONSTRAINT user_fetch_request_items_task_id_fkey FOREIGN KEY (task_id) REFERENCES public.tasks(id) ON DELETE SET NULL;
 
 
 --
@@ -1507,6 +1507,20 @@ GRANT ALL ON SEQUENCE public.entities_id_seq TO prism;
 
 
 --
+-- Name: TABLE fetch_items; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.fetch_items TO prism;
+
+
+--
+-- Name: TABLE fetches; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.fetches TO prism;
+
+
+--
 -- Name: TABLE models; Type: ACL; Schema: public; Owner: postgres
 --
 
@@ -1546,20 +1560,6 @@ GRANT ALL ON TABLE public.sources TO prism;
 --
 
 GRANT ALL ON TABLE public.tasks TO prism;
-
-
---
--- Name: TABLE user_fetch_request_items; Type: ACL; Schema: public; Owner: postgres
---
-
-GRANT ALL ON TABLE public.user_fetch_request_items TO prism;
-
-
---
--- Name: TABLE user_fetch_requests; Type: ACL; Schema: public; Owner: postgres
---
-
-GRANT ALL ON TABLE public.user_fetch_requests TO prism;
 
 
 --

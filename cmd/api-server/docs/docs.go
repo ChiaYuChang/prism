@@ -130,6 +130,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/fetches/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fetches"
+                ],
+                "summary": "Get progress for a user fetch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User fetch ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.FetchProgressResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/healthz": {
             "get": {
                 "produces": [
@@ -305,6 +351,35 @@ const docTemplate = `{
                 }
             }
         },
+        "api.FetchProgressResponse": {
+            "type": "object",
+            "properties": {
+                "already_complete": {
+                    "type": "integer"
+                },
+                "completed": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "fetch_id": {
+                    "type": "string"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "running": {
+                    "type": "integer"
+                },
+                "terminal": {
+                    "type": "boolean"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.ListCandidatesResponse": {
             "type": "object",
             "properties": {
@@ -325,6 +400,17 @@ const docTemplate = `{
                 }
             }
         },
+        "api.PageFetchItem": {
+            "type": "object",
+            "properties": {
+                "candidate_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "api.PageFetchRequest": {
             "type": "object",
             "properties": {
@@ -339,28 +425,14 @@ const docTemplate = `{
         "api.PageFetchResponse": {
             "type": "object",
             "properties": {
-                "results": {
+                "fetch_id": {
+                    "type": "string"
+                },
+                "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.PageFetchTaskResult"
+                        "$ref": "#/definitions/api.PageFetchItem"
                     }
-                }
-            }
-        },
-        "api.PageFetchTaskResult": {
-            "type": "object",
-            "properties": {
-                "candidate_id": {
-                    "type": "string"
-                },
-                "reason": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "task_id": {
-                    "type": "string"
                 }
             }
         },

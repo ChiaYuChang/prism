@@ -55,6 +55,25 @@ definitions:
       error:
         type: string
     type: object
+  api.FetchProgressResponse:
+    properties:
+      already_complete:
+        type: integer
+      completed:
+        type: integer
+      failed:
+        type: integer
+      fetch_id:
+        type: string
+      pending:
+        type: integer
+      running:
+        type: integer
+      terminal:
+        type: boolean
+      total:
+        type: integer
+    type: object
   api.ListCandidatesResponse:
     properties:
       count:
@@ -68,6 +87,13 @@ definitions:
       offset:
         type: integer
     type: object
+  api.PageFetchItem:
+    properties:
+      candidate_id:
+        type: string
+      status:
+        type: string
+    type: object
   api.PageFetchRequest:
     properties:
       candidate_ids:
@@ -77,21 +103,12 @@ definitions:
     type: object
   api.PageFetchResponse:
     properties:
-      results:
+      fetch_id:
+        type: string
+      items:
         items:
-          $ref: '#/definitions/api.PageFetchTaskResult'
+          $ref: '#/definitions/api.PageFetchItem'
         type: array
-    type: object
-  api.PageFetchTaskResult:
-    properties:
-      candidate_id:
-        type: string
-      reason:
-        type: string
-      status:
-        type: string
-      task_id:
-        type: string
     type: object
   obs.HealthLevel:
     enum:
@@ -197,6 +214,36 @@ paths:
       summary: Get fetched content for a candidate
       tags:
       - contents
+  /fetches/{id}:
+    get:
+      parameters:
+      - description: User fetch ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.FetchProgressResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get progress for a user fetch
+      tags:
+      - fetches
   /healthz:
     get:
       produces:

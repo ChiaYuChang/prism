@@ -63,7 +63,7 @@ func main() {
 	}
 	defer func() { _ = repositoryCloser.Close() }()
 
-	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline())
+	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches())
 	if err != nil {
 		logger.Error("failed to construct api server", "error", err)
 		os.Exit(1)

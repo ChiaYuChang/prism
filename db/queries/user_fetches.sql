@@ -1,51 +1,51 @@
--- name: CreateUserFetchRequest :one
-INSERT INTO user_fetch_requests (user_id)
+-- name: CreateUserFetch :one
+INSERT INTO fetches (user_id)
 VALUES (sqlc.narg(user_id))
 RETURNING *;
 
--- name: GetUserFetchRequest :one
+-- name: GetUserFetch :one
 SELECT *
-FROM user_fetch_requests
+FROM fetches
 WHERE id = $1
 LIMIT 1;
 
--- name: CreateUserFetchRequestItem :one
-INSERT INTO user_fetch_request_items (
-    request_id,
+-- name: CreateUserFetchItem :one
+INSERT INTO fetch_items (
+    fetch_id,
     candidate_id,
     task_id,
     snapshot_status
 ) VALUES (
-    sqlc.arg(request_id),
+    sqlc.arg(fetch_id),
     sqlc.arg(candidate_id),
     sqlc.narg(task_id),
     sqlc.narg(snapshot_status)
 )
 RETURNING *;
 
--- name: ListUserFetchRequestItems :many
+-- name: ListUserFetchItems :many
 SELECT
-    i.request_id,
+    i.fetch_id,
     i.candidate_id,
     i.task_id,
     i.snapshot_status,
     i.created_at,
     t.status AS task_status
-FROM user_fetch_request_items i
+FROM fetch_items i
 LEFT JOIN tasks t ON t.id = i.task_id
-WHERE i.request_id = $1
+WHERE i.fetch_id = $1
 ORDER BY i.created_at ASC;
 
--- name: GetUserFetchRequestProgress :one
+-- name: GetUserFetchProgress :one
 -- Aggregates item status using COALESCE(snapshot_status, tasks.status).
 -- Returns counters plus a derived `terminal` flag (all items in COMPLETED /
 -- FAILED / ALREADY_COMPLETE).
 WITH resolved AS (
     SELECT
         COALESCE(i.snapshot_status, t.status::text) AS status
-    FROM user_fetch_request_items i
+    FROM fetch_items i
     LEFT JOIN tasks t ON t.id = i.task_id
-    WHERE i.request_id = $1
+    WHERE i.fetch_id = $1
 )
 SELECT
     COUNT(*)                                                                   AS total,
@@ -59,11 +59,11 @@ SELECT
     ) = COUNT(*))                                                              AS terminal
 FROM resolved;
 
--- name: MarkUserFetchRequestCompleted :exec
+-- name: MarkUserFetchCompleted :exec
 -- Sets completed_at on transition to terminal. Idempotent (WHERE clause
 -- guards against double-set). v1 callers may skip this — progress endpoint
 -- computes terminal on-the-fly. Reserved for v2 notification dispatcher.
-UPDATE user_fetch_requests
+UPDATE fetches
 SET completed_at = NOW()
 WHERE id = $1
   AND completed_at IS NULL;

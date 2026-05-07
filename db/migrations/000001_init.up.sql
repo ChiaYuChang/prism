@@ -277,59 +277,63 @@ COMMENT ON TABLE prompts IS 'Prompt asset registry. hash = SHA-256(body), used t
 COMMENT ON TABLE content_extractions IS 'One structured extraction per (content, model, prompt, schema_version). Append-only snapshot.';
 
 -- ----------------------------------------------------------------------------
--- User-facing fetch request layer (Phase 2.7)
+-- User-facing fetch layer (Phase 2.7)
 --
 -- Parallel to `batches` but serves a different purpose. `batches` is system-
 -- internal (groups one cron / discovery / planner trigger; gates Planner's
--- KEYWORD_SEARCH emission). `user_fetch_requests` is user-facing (groups the
--- candidates one user selected in one POST /page_fetch call; gates user
--- notification, not system work). Multiple requests can share the same
--- underlying active task — items snapshot which task is doing the fetch and
--- aggregate status via COALESCE(snapshot_status, tasks.status). No request
--- observes another's existence.
+-- KEYWORD_SEARCH emission). `fetches` is user-facing (groups the candidates
+-- one user selected in one POST /page_fetch call; gates user notification,
+-- not system work). Multiple fetches can share the same underlying active
+-- task — items snapshot which task is doing the work and aggregate status
+-- via COALESCE(snapshot_status, tasks.status). No fetch observes another's
+-- existence.
+--
+-- Names are unprefixed (`fetches`, `fetch_items`) so a future migration can
+-- move them into a dedicated `user` schema (`user.fetches`, `user.fetch_items`,
+-- `user.users`) via `ALTER TABLE ... SET SCHEMA "user"` without renaming.
 --
 -- See docs/plan/spec.md §6 for the full design clarification.
 -- ----------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS user_fetch_requests (
+CREATE TABLE IF NOT EXISTS fetches (
     id            UUID PRIMARY KEY DEFAULT uuidv7(),
     user_id       UUID,                                   -- nullable: reserved for multi-user RBAC
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at  TIMESTAMPTZ                             -- nullable: persisted hook for v2 notifications
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_fetch_requests_user_id
-    ON user_fetch_requests(user_id, created_at DESC)
+CREATE INDEX IF NOT EXISTS idx_fetches_user_id
+    ON fetches(user_id, created_at DESC)
     WHERE user_id IS NOT NULL;
 
-CREATE INDEX IF NOT EXISTS idx_user_fetch_requests_open
-    ON user_fetch_requests(created_at)
+CREATE INDEX IF NOT EXISTS idx_fetches_open
+    ON fetches(created_at)
     WHERE completed_at IS NULL;
 
-CREATE TABLE IF NOT EXISTS user_fetch_request_items (
-    request_id        UUID NOT NULL REFERENCES user_fetch_requests(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS fetch_items (
+    fetch_id          UUID NOT NULL REFERENCES fetches(id) ON DELETE CASCADE,
     candidate_id      UUID NOT NULL REFERENCES candidates(id),
     task_id           UUID REFERENCES tasks(id) ON DELETE SET NULL,
     snapshot_status   TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (request_id, candidate_id)
+    PRIMARY KEY (fetch_id, candidate_id)
 );
 
--- Reverse lookup ("which fetch requests reference this task") for the
--- aggregator and for live progress fan-out.
-CREATE INDEX IF NOT EXISTS idx_user_fetch_request_items_task_id
-    ON user_fetch_request_items(task_id)
+-- Reverse lookup ("which fetches reference this task") for the aggregator
+-- and for live progress fan-out.
+CREATE INDEX IF NOT EXISTS idx_fetch_items_task_id
+    ON fetch_items(task_id)
     WHERE task_id IS NOT NULL;
 
-COMMENT ON TABLE user_fetch_requests IS
+COMMENT ON TABLE fetches IS
     'User-facing observation layer for POST /page_fetch. Groups one user submission. Parallel to batches; see docs/plan/spec.md §6.';
-COMMENT ON COLUMN user_fetch_requests.user_id IS
+COMMENT ON COLUMN fetches.user_id IS
     'Nullable in v1 (single-user dev). Filter target for multi-user RBAC.';
-COMMENT ON COLUMN user_fetch_requests.completed_at IS
+COMMENT ON COLUMN fetches.completed_at IS
     'Persisted in v1 but unused; v2 notification dispatcher will set on transition.';
-COMMENT ON TABLE user_fetch_request_items IS
-    'One row per (request, candidate). task_id may point at a shared active task created by another request — task fan-out is internal and never user-visible.';
-COMMENT ON COLUMN user_fetch_request_items.snapshot_status IS
+COMMENT ON TABLE fetch_items IS
+    'One row per (fetch, candidate). task_id may point at a shared active task created by another fetch — task fan-out is internal and never user-visible.';
+COMMENT ON COLUMN fetch_items.snapshot_status IS
     'NULL for live items (status comes from tasks.status). Set to ALREADY_COMPLETE when the candidate already had contents at submit time.';
 
 COMMIT;

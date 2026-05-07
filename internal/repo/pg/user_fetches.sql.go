@@ -12,15 +12,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createUserFetchRequest = `-- name: CreateUserFetchRequest :one
-INSERT INTO user_fetch_requests (user_id)
+const createUserFetch = `-- name: CreateUserFetch :one
+INSERT INTO fetches (user_id)
 VALUES ($1)
 RETURNING id, user_id, created_at, completed_at
 `
 
-func (q *Queries) CreateUserFetchRequest(ctx context.Context, userID pgtype.UUID) (UserFetchRequest, error) {
-	row := q.db.QueryRow(ctx, createUserFetchRequest, userID)
-	var i UserFetchRequest
+func (q *Queries) CreateUserFetch(ctx context.Context, userID pgtype.UUID) (Fetch, error) {
+	row := q.db.QueryRow(ctx, createUserFetch, userID)
+	var i Fetch
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -30,9 +30,9 @@ func (q *Queries) CreateUserFetchRequest(ctx context.Context, userID pgtype.UUID
 	return i, err
 }
 
-const createUserFetchRequestItem = `-- name: CreateUserFetchRequestItem :one
-INSERT INTO user_fetch_request_items (
-    request_id,
+const createUserFetchItem = `-- name: CreateUserFetchItem :one
+INSERT INTO fetch_items (
+    fetch_id,
     candidate_id,
     task_id,
     snapshot_status
@@ -42,26 +42,26 @@ INSERT INTO user_fetch_request_items (
     $3,
     $4
 )
-RETURNING request_id, candidate_id, task_id, snapshot_status, created_at
+RETURNING fetch_id, candidate_id, task_id, snapshot_status, created_at
 `
 
-type CreateUserFetchRequestItemParams struct {
-	RequestID      uuid.UUID   `db:"request_id" json:"request_id"`
+type CreateUserFetchItemParams struct {
+	FetchID        uuid.UUID   `db:"fetch_id" json:"fetch_id"`
 	CandidateID    uuid.UUID   `db:"candidate_id" json:"candidate_id"`
 	TaskID         pgtype.UUID `db:"task_id" json:"task_id"`
 	SnapshotStatus pgtype.Text `db:"snapshot_status" json:"snapshot_status"`
 }
 
-func (q *Queries) CreateUserFetchRequestItem(ctx context.Context, arg CreateUserFetchRequestItemParams) (UserFetchRequestItem, error) {
-	row := q.db.QueryRow(ctx, createUserFetchRequestItem,
-		arg.RequestID,
+func (q *Queries) CreateUserFetchItem(ctx context.Context, arg CreateUserFetchItemParams) (FetchItem, error) {
+	row := q.db.QueryRow(ctx, createUserFetchItem,
+		arg.FetchID,
 		arg.CandidateID,
 		arg.TaskID,
 		arg.SnapshotStatus,
 	)
-	var i UserFetchRequestItem
+	var i FetchItem
 	err := row.Scan(
-		&i.RequestID,
+		&i.FetchID,
 		&i.CandidateID,
 		&i.TaskID,
 		&i.SnapshotStatus,
@@ -109,16 +109,16 @@ func (q *Queries) GetActivePageFetchTaskByURL(ctx context.Context, url string) (
 	return i, err
 }
 
-const getUserFetchRequest = `-- name: GetUserFetchRequest :one
+const getUserFetch = `-- name: GetUserFetch :one
 SELECT id, user_id, created_at, completed_at
-FROM user_fetch_requests
+FROM fetches
 WHERE id = $1
 LIMIT 1
 `
 
-func (q *Queries) GetUserFetchRequest(ctx context.Context, id uuid.UUID) (UserFetchRequest, error) {
-	row := q.db.QueryRow(ctx, getUserFetchRequest, id)
-	var i UserFetchRequest
+func (q *Queries) GetUserFetch(ctx context.Context, id uuid.UUID) (Fetch, error) {
+	row := q.db.QueryRow(ctx, getUserFetch, id)
+	var i Fetch
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -128,13 +128,13 @@ func (q *Queries) GetUserFetchRequest(ctx context.Context, id uuid.UUID) (UserFe
 	return i, err
 }
 
-const getUserFetchRequestProgress = `-- name: GetUserFetchRequestProgress :one
+const getUserFetchProgress = `-- name: GetUserFetchProgress :one
 WITH resolved AS (
     SELECT
         COALESCE(i.snapshot_status, t.status::text) AS status
-    FROM user_fetch_request_items i
+    FROM fetch_items i
     LEFT JOIN tasks t ON t.id = i.task_id
-    WHERE i.request_id = $1
+    WHERE i.fetch_id = $1
 )
 SELECT
     COUNT(*)                                                                   AS total,
@@ -149,7 +149,7 @@ SELECT
 FROM resolved
 `
 
-type GetUserFetchRequestProgressRow struct {
+type GetUserFetchProgressRow struct {
 	Total           int64       `db:"total" json:"total"`
 	Pending         int64       `db:"pending" json:"pending"`
 	Running         int64       `db:"running" json:"running"`
@@ -162,9 +162,9 @@ type GetUserFetchRequestProgressRow struct {
 // Aggregates item status using COALESCE(snapshot_status, tasks.status).
 // Returns counters plus a derived `terminal` flag (all items in COMPLETED /
 // FAILED / ALREADY_COMPLETE).
-func (q *Queries) GetUserFetchRequestProgress(ctx context.Context, requestID uuid.UUID) (GetUserFetchRequestProgressRow, error) {
-	row := q.db.QueryRow(ctx, getUserFetchRequestProgress, requestID)
-	var i GetUserFetchRequestProgressRow
+func (q *Queries) GetUserFetchProgress(ctx context.Context, fetchID uuid.UUID) (GetUserFetchProgressRow, error) {
+	row := q.db.QueryRow(ctx, getUserFetchProgress, fetchID)
+	var i GetUserFetchProgressRow
 	err := row.Scan(
 		&i.Total,
 		&i.Pending,
@@ -177,22 +177,22 @@ func (q *Queries) GetUserFetchRequestProgress(ctx context.Context, requestID uui
 	return i, err
 }
 
-const listUserFetchRequestItems = `-- name: ListUserFetchRequestItems :many
+const listUserFetchItems = `-- name: ListUserFetchItems :many
 SELECT
-    i.request_id,
+    i.fetch_id,
     i.candidate_id,
     i.task_id,
     i.snapshot_status,
     i.created_at,
     t.status AS task_status
-FROM user_fetch_request_items i
+FROM fetch_items i
 LEFT JOIN tasks t ON t.id = i.task_id
-WHERE i.request_id = $1
+WHERE i.fetch_id = $1
 ORDER BY i.created_at ASC
 `
 
-type ListUserFetchRequestItemsRow struct {
-	RequestID      uuid.UUID          `db:"request_id" json:"request_id"`
+type ListUserFetchItemsRow struct {
+	FetchID        uuid.UUID          `db:"fetch_id" json:"fetch_id"`
 	CandidateID    uuid.UUID          `db:"candidate_id" json:"candidate_id"`
 	TaskID         pgtype.UUID        `db:"task_id" json:"task_id"`
 	SnapshotStatus pgtype.Text        `db:"snapshot_status" json:"snapshot_status"`
@@ -200,17 +200,17 @@ type ListUserFetchRequestItemsRow struct {
 	TaskStatus     NullTaskStatus     `db:"task_status" json:"task_status"`
 }
 
-func (q *Queries) ListUserFetchRequestItems(ctx context.Context, requestID uuid.UUID) ([]ListUserFetchRequestItemsRow, error) {
-	rows, err := q.db.Query(ctx, listUserFetchRequestItems, requestID)
+func (q *Queries) ListUserFetchItems(ctx context.Context, fetchID uuid.UUID) ([]ListUserFetchItemsRow, error) {
+	rows, err := q.db.Query(ctx, listUserFetchItems, fetchID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListUserFetchRequestItemsRow
+	var items []ListUserFetchItemsRow
 	for rows.Next() {
-		var i ListUserFetchRequestItemsRow
+		var i ListUserFetchItemsRow
 		if err := rows.Scan(
-			&i.RequestID,
+			&i.FetchID,
 			&i.CandidateID,
 			&i.TaskID,
 			&i.SnapshotStatus,
@@ -227,8 +227,8 @@ func (q *Queries) ListUserFetchRequestItems(ctx context.Context, requestID uuid.
 	return items, nil
 }
 
-const markUserFetchRequestCompleted = `-- name: MarkUserFetchRequestCompleted :exec
-UPDATE user_fetch_requests
+const markUserFetchCompleted = `-- name: MarkUserFetchCompleted :exec
+UPDATE fetches
 SET completed_at = NOW()
 WHERE id = $1
   AND completed_at IS NULL
@@ -237,7 +237,7 @@ WHERE id = $1
 // Sets completed_at on transition to terminal. Idempotent (WHERE clause
 // guards against double-set). v1 callers may skip this — progress endpoint
 // computes terminal on-the-fly. Reserved for v2 notification dispatcher.
-func (q *Queries) MarkUserFetchRequestCompleted(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, markUserFetchRequestCompleted, id)
+func (q *Queries) MarkUserFetchCompleted(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markUserFetchCompleted, id)
 	return err
 }

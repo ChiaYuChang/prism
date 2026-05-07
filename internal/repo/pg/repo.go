@@ -692,40 +692,40 @@ func (r *PGAnalysis) ReplaceContentExtractionPhrases(ctx context.Context, extrac
 	})
 }
 
-// User-fetch request repository. Parallel to BatchTrigger; serves the
+// User-facing fetch repository. Parallel to BatchTrigger; serves the
 // user-facing observation layer for POST /page_fetch. See
 // docs/plan/spec.md §6.
-func (r *PGUserFetches) CreateRequest(ctx context.Context, arg repo.CreateUserFetchRequestParams) (repo.UserFetchRequest, error) {
-	row, err := r.q.CreateUserFetchRequest(ctx, pgconv.UUIDPtrToPgUUID(arg.UserID))
+func (r *PGUserFetches) Create(ctx context.Context, arg repo.CreateUserFetchParams) (repo.UserFetch, error) {
+	row, err := r.q.CreateUserFetch(ctx, pgconv.UUIDPtrToPgUUID(arg.UserID))
 	if err != nil {
-		return repo.UserFetchRequest{}, err
+		return repo.UserFetch{}, err
 	}
-	return dbUserFetchRequestToRepo(row), nil
+	return dbUserFetchToRepo(row), nil
 }
 
-func (r *PGUserFetches) GetRequest(ctx context.Context, id uuid.UUID) (repo.UserFetchRequest, error) {
-	row, err := r.q.GetUserFetchRequest(ctx, id)
+func (r *PGUserFetches) Get(ctx context.Context, id uuid.UUID) (repo.UserFetch, error) {
+	row, err := r.q.GetUserFetch(ctx, id)
 	if err != nil {
-		return repo.UserFetchRequest{}, err
+		return repo.UserFetch{}, err
 	}
-	return dbUserFetchRequestToRepo(row), nil
+	return dbUserFetchToRepo(row), nil
 }
 
-func (r *PGUserFetches) CreateRequestItem(ctx context.Context, arg repo.CreateUserFetchRequestItemParams) (repo.UserFetchRequestItem, error) {
-	row, err := r.q.CreateUserFetchRequestItem(ctx, CreateUserFetchRequestItemParams{
-		RequestID:      arg.RequestID,
+func (r *PGUserFetches) CreateItem(ctx context.Context, arg repo.CreateUserFetchItemParams) (repo.UserFetchItem, error) {
+	row, err := r.q.CreateUserFetchItem(ctx, CreateUserFetchItemParams{
+		FetchID:        arg.FetchID,
 		CandidateID:    arg.CandidateID,
 		TaskID:         pgconv.UUIDPtrToPgUUID(arg.TaskID),
 		SnapshotStatus: pgconv.StringPtrToPgText(arg.SnapshotStatus),
 	})
 	if err != nil {
-		return repo.UserFetchRequestItem{}, err
+		return repo.UserFetchItem{}, err
 	}
-	return dbUserFetchRequestItemToRepo(row), nil
+	return dbUserFetchItemToRepo(row), nil
 }
 
-func (r *PGUserFetches) GetRequestProgress(ctx context.Context, requestID uuid.UUID) (repo.UserFetchProgress, error) {
-	row, err := r.q.GetUserFetchRequestProgress(ctx, requestID)
+func (r *PGUserFetches) GetProgress(ctx context.Context, fetchID uuid.UUID) (repo.UserFetchProgress, error) {
+	row, err := r.q.GetUserFetchProgress(ctx, fetchID)
 	if err != nil {
 		return repo.UserFetchProgress{}, err
 	}
@@ -740,12 +740,12 @@ func (r *PGUserFetches) GetRequestProgress(ctx context.Context, requestID uuid.U
 	}, nil
 }
 
-func (r *PGUserFetches) MarkRequestCompleted(ctx context.Context, requestID uuid.UUID) error {
-	return r.q.MarkUserFetchRequestCompleted(ctx, requestID)
+func (r *PGUserFetches) MarkCompleted(ctx context.Context, fetchID uuid.UUID) error {
+	return r.q.MarkUserFetchCompleted(ctx, fetchID)
 }
 
-func dbUserFetchRequestToRepo(row UserFetchRequest) repo.UserFetchRequest {
-	return repo.UserFetchRequest{
+func dbUserFetchToRepo(row Fetch) repo.UserFetch {
+	return repo.UserFetch{
 		ID:          row.ID,
 		UserID:      pgconv.PgUUIDToUUIDPtr(row.UserID),
 		CreatedAt:   *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
@@ -753,9 +753,9 @@ func dbUserFetchRequestToRepo(row UserFetchRequest) repo.UserFetchRequest {
 	}
 }
 
-func dbUserFetchRequestItemToRepo(row UserFetchRequestItem) repo.UserFetchRequestItem {
-	return repo.UserFetchRequestItem{
-		RequestID:      row.RequestID,
+func dbUserFetchItemToRepo(row FetchItem) repo.UserFetchItem {
+	return repo.UserFetchItem{
+		FetchID:        row.FetchID,
 		CandidateID:    row.CandidateID,
 		TaskID:         pgconv.PgUUIDToUUIDPtr(row.TaskID),
 		SnapshotStatus: pgconv.PgTextToStringPtr(row.SnapshotStatus),

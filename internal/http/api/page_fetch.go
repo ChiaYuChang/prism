@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -8,30 +9,45 @@ import (
 
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 const maxPageFetchBatch = 100
+
+// Per-item status values returned by POST /page_fetch. Three values only:
+// `created` collapses fresh-insert and shared-active-task to avoid leaking
+// cross-user / cross-request activity. `task_id` is never exposed.
+const (
+	PageFetchStatusCreated         = "created"
+	PageFetchStatusAlreadyComplete = "already_complete"
+	PageFetchStatusNotFound        = "not_found"
+)
 
 type PageFetchRequest struct {
 	CandidateIDs []uuid.UUID `json:"candidate_ids"`
 }
 
-type PageFetchTaskResult struct {
+// PageFetchItem is the per-candidate response entry.
+type PageFetchItem struct {
 	CandidateID uuid.UUID `json:"candidate_id"`
-	TaskID      uuid.UUID `json:"task_id,omitempty"`
 	Status      string    `json:"status"`
-	Reason      string    `json:"reason,omitempty"`
 }
 
+// PageFetchResponse is returned by POST /api/v1/page_fetch.
+//
+// Items preserve input candidate_id order. See docs/plan/spec.md §6 for
+// the rationale on the three-status collapse.
 type PageFetchResponse struct {
-	Results []PageFetchTaskResult `json:"results"`
+	FetchID uuid.UUID       `json:"fetch_id"`
+	Items   []PageFetchItem `json:"items"`
 }
 
 // PageFetch handles POST /api/v1/page_fetch.
 //
-// Creates MEDIA + PAGE_FETCH tasks for the supplied candidate IDs.
-// Duplicate active tasks (same URL pending/running) are reported as
-// "already_active" rather than an error — the endpoint is idempotent.
+// Creates a user_fetch_request grouping the supplied candidates, then for
+// each candidate either creates a PAGE_FETCH task, attaches to an
+// existing active task with the same URL, or records an
+// `already_complete` snapshot when contents are already present.
 //
 // @Summary   Request full-article fetch for candidates
 // @Tags      candidates
@@ -70,40 +86,113 @@ func (s *Server) PageFetch(w http.ResponseWriter, r *http.Request) {
 		byID[c.ID] = c
 	}
 
-	results := make([]PageFetchTaskResult, 0, len(req.CandidateIDs))
+	fetch, err := s.UserFetches.Create(ctx, repo.CreateUserFetchParams{UserID: nil})
+	if err != nil {
+		s.Logger.ErrorContext(ctx, "create user fetch failed", slog.Any("error", err))
+		writeError(w, http.StatusInternalServerError, "failed to create fetch")
+		return
+	}
+
+	items := make([]PageFetchItem, 0, len(req.CandidateIDs))
 	for _, id := range req.CandidateIDs {
 		c, ok := byID[id]
 		if !ok {
-			results = append(results, PageFetchTaskResult{CandidateID: id, Status: "not_found"})
+			items = append(items, PageFetchItem{CandidateID: id, Status: PageFetchStatusNotFound})
 			continue
 		}
 
-		meta, err := json.Marshal(map[string]any{"candidate_id": c.ID.String()})
+		status, err := s.recordPageFetchItem(ctx, fetch.ID, c)
 		if err != nil {
-			results = append(results, PageFetchTaskResult{CandidateID: id, Status: "error", Reason: "marshal meta"})
-			continue
+			s.Logger.ErrorContext(ctx, "record page fetch item failed",
+				slog.String("candidate_id", id.String()),
+				slog.String("fetch_id", fetch.ID.String()),
+				slog.Any("error", err))
+			writeError(w, http.StatusInternalServerError, "failed to record fetch item")
+			return
 		}
-
-		task, err := s.Tasks.CreateTask(ctx, repo.CreateTaskParams{
-			BatchID:    c.BatchID,
-			Kind:       repo.TaskKindPageFetch,
-			SourceType: repo.SourceTypeMedia,
-			SourceAbbr: c.SourceAbbr,
-			URL:        c.URL,
-			Meta:       meta,
-			TraceID:    c.TraceID,
-		})
-		switch {
-		case errors.Is(err, repo.ErrTaskAlreadyActive):
-			results = append(results, PageFetchTaskResult{CandidateID: id, Status: "already_active"})
-		case err != nil:
-			s.Logger.ErrorContext(ctx, "create page_fetch task failed",
-				slog.String("candidate_id", id.String()), slog.Any("error", err))
-			results = append(results, PageFetchTaskResult{CandidateID: id, Status: "error", Reason: err.Error()})
-		default:
-			results = append(results, PageFetchTaskResult{CandidateID: id, TaskID: task.ID, Status: "created"})
-		}
+		items = append(items, PageFetchItem{CandidateID: id, Status: status})
 	}
 
-	writeJSON(w, http.StatusAccepted, PageFetchResponse{Results: results})
+	writeJSON(w, http.StatusAccepted, PageFetchResponse{FetchID: fetch.ID, Items: items})
+}
+
+// recordPageFetchItem persists one user_fetch_request_items row and returns
+// its public status.
+//
+// Flow per docs/plan/spec.md §6:
+//
+//  1. CreateTask success → item references the new task; status `created`.
+//  2. ErrTaskAlreadyActive → recover existing active task by URL; item
+//     references the shared task; status `created` (collapsed for
+//     privacy).
+//  3. Conflict + lookup miss → contents already present → item snapshot
+//     `ALREADY_COMPLETE`, task_id NULL; status `already_complete`.
+//  4. Conflict + lookup miss + no contents → design-invariant violation
+//     (collector ordering CreateContent → CompleteTask makes the window
+//     non-existent); surface as 500.
+func (s *Server) recordPageFetchItem(ctx context.Context, fetchID uuid.UUID, c repo.Candidate) (string, error) {
+	meta, err := json.Marshal(map[string]any{"candidate_id": c.ID.String()})
+	if err != nil {
+		return "", err
+	}
+
+	task, err := s.Tasks.CreateTask(ctx, repo.CreateTaskParams{
+		BatchID:    c.BatchID,
+		Kind:       repo.TaskKindPageFetch,
+		SourceType: repo.SourceTypeMedia,
+		SourceAbbr: c.SourceAbbr,
+		URL:        c.URL,
+		Meta:       meta,
+		TraceID:    c.TraceID,
+	})
+	switch {
+	case err == nil:
+		taskID := task.ID
+		if _, err := s.UserFetches.CreateItem(ctx, repo.CreateUserFetchItemParams{
+			FetchID:     fetchID,
+			CandidateID: c.ID,
+			TaskID:      &taskID,
+		}); err != nil {
+			return "", err
+		}
+		return PageFetchStatusCreated, nil
+
+	case errors.Is(err, repo.ErrTaskAlreadyActive):
+		existing, lookupErr := s.Tasks.GetActivePageFetchTaskByURL(ctx, c.URL)
+		if lookupErr == nil {
+			taskID := existing.ID
+			if _, err := s.UserFetches.CreateItem(ctx, repo.CreateUserFetchItemParams{
+				FetchID:     fetchID,
+				CandidateID: c.ID,
+				TaskID:      &taskID,
+			}); err != nil {
+				return "", err
+			}
+			return PageFetchStatusCreated, nil
+		}
+		if !errors.Is(lookupErr, pgx.ErrNoRows) {
+			return "", lookupErr
+		}
+
+		content, contentErr := s.Pipeline.GetContentByURL(ctx, c.URL)
+		if contentErr != nil {
+			if errors.Is(contentErr, pgx.ErrNoRows) {
+				return "", errors.New("page_fetch race: active task drained without contents row (design invariant)")
+			}
+			return "", contentErr
+		}
+		_ = content
+		snapshot := repo.UserFetchItemSnapshotAlreadyComplete
+		if _, err := s.UserFetches.CreateItem(ctx, repo.CreateUserFetchItemParams{
+			FetchID:        fetchID,
+			CandidateID:    c.ID,
+			SnapshotStatus: &snapshot,
+		}); err != nil {
+			return "", err
+		}
+		return PageFetchStatusAlreadyComplete, nil
+
+	default:
+		return "", err
+	}
 }

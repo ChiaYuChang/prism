@@ -22,8 +22,8 @@ type Querier interface {
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
-	CreateUserFetchRequest(ctx context.Context, userID pgtype.UUID) (UserFetchRequest, error)
-	CreateUserFetchRequestItem(ctx context.Context, arg CreateUserFetchRequestItemParams) (UserFetchRequestItem, error)
+	CreateUserFetch(ctx context.Context, userID pgtype.UUID) (Fetch, error)
+	CreateUserFetchItem(ctx context.Context, arg CreateUserFetchItemParams) (FetchItem, error)
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
@@ -51,11 +51,11 @@ type Querier interface {
 	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
-	GetUserFetchRequest(ctx context.Context, id uuid.UUID) (UserFetchRequest, error)
+	GetUserFetch(ctx context.Context, id uuid.UUID) (Fetch, error)
 	// Aggregates item status using COALESCE(snapshot_status, tasks.status).
 	// Returns counters plus a derived `terminal` flag (all items in COMPLETED /
 	// FAILED / ALREADY_COMPLETE).
-	GetUserFetchRequestProgress(ctx context.Context, requestID uuid.UUID) (GetUserFetchRequestProgressRow, error)
+	GetUserFetchProgress(ctx context.Context, fetchID uuid.UUID) (GetUserFetchProgressRow, error)
 	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
 	ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error)
 	ListCandidatesForAnalysis(ctx context.Context, arg ListCandidatesForAnalysisParams) ([]Candidate, error)
@@ -67,13 +67,13 @@ type Querier interface {
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
 	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
-	ListUserFetchRequestItems(ctx context.Context, requestID uuid.UUID) ([]ListUserFetchRequestItemsRow, error)
+	ListUserFetchItems(ctx context.Context, fetchID uuid.UUID) ([]ListUserFetchItemsRow, error)
 	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) error
 	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
 	// Sets completed_at on transition to terminal. Idempotent (WHERE clause
 	// guards against double-set). v1 callers may skip this — progress endpoint
 	// computes terminal on-the-fly. Reserved for v2 notification dispatcher.
-	MarkUserFetchRequestCompleted(ctx context.Context, id uuid.UUID) error
+	MarkUserFetchCompleted(ctx context.Context, id uuid.UUID) error
 	RecordBatchPublishFailure(ctx context.Context, arg RecordBatchPublishFailureParams) error
 	// Resets RUNNING tasks back to PENDING in bulk, undoing the ClaimTasks
 	// retry_count increment. Used when dispatch is skipped (e.g. rate-limited)

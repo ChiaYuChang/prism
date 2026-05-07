@@ -92,14 +92,14 @@ type Embeddings interface {
 // See docs/plan/spec.md §6 for why this is parallel to BatchTrigger and not
 // merged into it.
 type UserFetches interface {
-	CreateRequest(ctx context.Context, arg CreateUserFetchRequestParams) (UserFetchRequest, error)
-	GetRequest(ctx context.Context, id uuid.UUID) (UserFetchRequest, error)
-	CreateRequestItem(ctx context.Context, arg CreateUserFetchRequestItemParams) (UserFetchRequestItem, error)
-	GetRequestProgress(ctx context.Context, requestID uuid.UUID) (UserFetchProgress, error)
-	// MarkRequestCompleted is reserved for the v2 notification dispatcher.
-	// v1 callers compute terminal on-the-fly from GetRequestProgress and may
+	Create(ctx context.Context, arg CreateUserFetchParams) (UserFetch, error)
+	Get(ctx context.Context, id uuid.UUID) (UserFetch, error)
+	CreateItem(ctx context.Context, arg CreateUserFetchItemParams) (UserFetchItem, error)
+	GetProgress(ctx context.Context, fetchID uuid.UUID) (UserFetchProgress, error)
+	// MarkCompleted is reserved for the v2 notification dispatcher.
+	// v1 callers compute terminal on-the-fly from GetProgress and may
 	// skip this entirely.
-	MarkRequestCompleted(ctx context.Context, requestID uuid.UUID) error
+	MarkCompleted(ctx context.Context, fetchID uuid.UUID) error
 }
 
 type Analysis interface {

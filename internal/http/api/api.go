@@ -19,14 +19,15 @@ var ErrParamMissing = errors.New("param missing")
 
 // Server groups dependencies shared by all API handlers.
 type Server struct {
-	Logger   *slog.Logger
-	Scout    repo.Scout
-	Tasks    repo.Tasks
-	Pipeline repo.Pipeline
+	Logger      *slog.Logger
+	Scout       repo.Scout
+	Tasks       repo.Tasks
+	Pipeline    repo.Pipeline
+	UserFetches repo.UserFetches
 }
 
 // NewServer validates dependencies and returns a ready-to-register Server.
-func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline repo.Pipeline) (*Server, error) {
+func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline repo.Pipeline, userFetches repo.UserFetches) (*Server, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
@@ -39,7 +40,10 @@ func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline
 	if pipeline == nil {
 		return nil, fmt.Errorf("%w: pipeline", ErrParamMissing)
 	}
-	return &Server{Logger: logger, Scout: scout, Tasks: tasks, Pipeline: pipeline}, nil
+	if userFetches == nil {
+		return nil, fmt.Errorf("%w: userFetches", ErrParamMissing)
+	}
+	return &Server{Logger: logger, Scout: scout, Tasks: tasks, Pipeline: pipeline, UserFetches: userFetches}, nil
 }
 
 // Register wires v1 routes onto the supplied mux under the /api/v1 prefix.
@@ -47,6 +51,7 @@ func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/candidates", s.ListCandidates)
 	mux.HandleFunc("POST /api/v1/page_fetch", s.PageFetch)
 	mux.HandleFunc("GET /api/v1/contents/{candidate_id}", s.GetContent)
+	mux.HandleFunc("GET /api/v1/fetches/{id}", s.GetFetch)
 }
 
 // ErrorResponse is the standard JSON error body.

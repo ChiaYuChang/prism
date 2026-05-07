@@ -126,12 +126,12 @@ type CreateContentExtractionEntityParams struct {
 	Ordinal      *int16    `validate:"omitempty"`
 }
 
-type CreateUserFetchRequestParams struct {
+type CreateUserFetchParams struct {
 	UserID *uuid.UUID `validate:"omitempty"`
 }
 
-type CreateUserFetchRequestItemParams struct {
-	RequestID      uuid.UUID  `validate:"required"`
+type CreateUserFetchItemParams struct {
+	FetchID        uuid.UUID  `validate:"required"`
 	CandidateID    uuid.UUID  `validate:"required"`
 	TaskID         *uuid.UUID `validate:"omitempty"`
 	SnapshotStatus *string    `validate:"omitempty"`

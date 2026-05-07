@@ -142,15 +142,15 @@ type Entity struct {
 	CreatedAt time.Time
 }
 
-type UserFetchRequest struct {
+type UserFetch struct {
 	ID          uuid.UUID
 	UserID      *uuid.UUID
 	CreatedAt   time.Time
 	CompletedAt *time.Time
 }
 
-type UserFetchRequestItem struct {
-	RequestID      uuid.UUID
+type UserFetchItem struct {
+	FetchID        uuid.UUID
 	CandidateID    uuid.UUID
 	TaskID         *uuid.UUID
 	SnapshotStatus *string

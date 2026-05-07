@@ -39,25 +39,25 @@ func (_m *MockUserFetches) EXPECT() *MockUserFetches_Expecter {
 	return &MockUserFetches_Expecter{mock: &_m.Mock}
 }
 
-// CreateRequest provides a mock function for the type MockUserFetches
-func (_mock *MockUserFetches) CreateRequest(ctx context.Context, arg repo.CreateUserFetchRequestParams) (repo.UserFetchRequest, error) {
+// Create provides a mock function for the type MockUserFetches
+func (_mock *MockUserFetches) Create(ctx context.Context, arg repo.CreateUserFetchParams) (repo.UserFetch, error) {
 	ret := _mock.Called(ctx, arg)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateRequest")
+		panic("no return value specified for Create")
 	}
 
-	var r0 repo.UserFetchRequest
+	var r0 repo.UserFetch
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateUserFetchRequestParams) (repo.UserFetchRequest, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateUserFetchParams) (repo.UserFetch, error)); ok {
 		return returnFunc(ctx, arg)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateUserFetchRequestParams) repo.UserFetchRequest); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateUserFetchParams) repo.UserFetch); ok {
 		r0 = returnFunc(ctx, arg)
 	} else {
-		r0 = ret.Get(0).(repo.UserFetchRequest)
+		r0 = ret.Get(0).(repo.UserFetch)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateUserFetchRequestParams) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateUserFetchParams) error); ok {
 		r1 = returnFunc(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
@@ -65,27 +65,27 @@ func (_mock *MockUserFetches) CreateRequest(ctx context.Context, arg repo.Create
 	return r0, r1
 }
 
-// MockUserFetches_CreateRequest_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateRequest'
-type MockUserFetches_CreateRequest_Call struct {
+// MockUserFetches_Create_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Create'
+type MockUserFetches_Create_Call struct {
 	*mock.Call
 }
 
-// CreateRequest is a helper method to define mock.On call
+// Create is a helper method to define mock.On call
 //   - ctx context.Context
-//   - arg repo.CreateUserFetchRequestParams
-func (_e *MockUserFetches_Expecter) CreateRequest(ctx interface{}, arg interface{}) *MockUserFetches_CreateRequest_Call {
-	return &MockUserFetches_CreateRequest_Call{Call: _e.mock.On("CreateRequest", ctx, arg)}
+//   - arg repo.CreateUserFetchParams
+func (_e *MockUserFetches_Expecter) Create(ctx interface{}, arg interface{}) *MockUserFetches_Create_Call {
+	return &MockUserFetches_Create_Call{Call: _e.mock.On("Create", ctx, arg)}
 }
 
-func (_c *MockUserFetches_CreateRequest_Call) Run(run func(ctx context.Context, arg repo.CreateUserFetchRequestParams)) *MockUserFetches_CreateRequest_Call {
+func (_c *MockUserFetches_Create_Call) Run(run func(ctx context.Context, arg repo.CreateUserFetchParams)) *MockUserFetches_Create_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 repo.CreateUserFetchRequestParams
+		var arg1 repo.CreateUserFetchParams
 		if args[1] != nil {
-			arg1 = args[1].(repo.CreateUserFetchRequestParams)
+			arg1 = args[1].(repo.CreateUserFetchParams)
 		}
 		run(
 			arg0,
@@ -95,35 +95,35 @@ func (_c *MockUserFetches_CreateRequest_Call) Run(run func(ctx context.Context, 
 	return _c
 }
 
-func (_c *MockUserFetches_CreateRequest_Call) Return(userFetchRequest repo.UserFetchRequest, err error) *MockUserFetches_CreateRequest_Call {
-	_c.Call.Return(userFetchRequest, err)
+func (_c *MockUserFetches_Create_Call) Return(userFetch repo.UserFetch, err error) *MockUserFetches_Create_Call {
+	_c.Call.Return(userFetch, err)
 	return _c
 }
 
-func (_c *MockUserFetches_CreateRequest_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateUserFetchRequestParams) (repo.UserFetchRequest, error)) *MockUserFetches_CreateRequest_Call {
+func (_c *MockUserFetches_Create_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateUserFetchParams) (repo.UserFetch, error)) *MockUserFetches_Create_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// CreateRequestItem provides a mock function for the type MockUserFetches
-func (_mock *MockUserFetches) CreateRequestItem(ctx context.Context, arg repo.CreateUserFetchRequestItemParams) (repo.UserFetchRequestItem, error) {
+// CreateItem provides a mock function for the type MockUserFetches
+func (_mock *MockUserFetches) CreateItem(ctx context.Context, arg repo.CreateUserFetchItemParams) (repo.UserFetchItem, error) {
 	ret := _mock.Called(ctx, arg)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateRequestItem")
+		panic("no return value specified for CreateItem")
 	}
 
-	var r0 repo.UserFetchRequestItem
+	var r0 repo.UserFetchItem
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateUserFetchRequestItemParams) (repo.UserFetchRequestItem, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateUserFetchItemParams) (repo.UserFetchItem, error)); ok {
 		return returnFunc(ctx, arg)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateUserFetchRequestItemParams) repo.UserFetchRequestItem); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateUserFetchItemParams) repo.UserFetchItem); ok {
 		r0 = returnFunc(ctx, arg)
 	} else {
-		r0 = ret.Get(0).(repo.UserFetchRequestItem)
+		r0 = ret.Get(0).(repo.UserFetchItem)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateUserFetchRequestItemParams) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateUserFetchItemParams) error); ok {
 		r1 = returnFunc(ctx, arg)
 	} else {
 		r1 = ret.Error(1)
@@ -131,27 +131,27 @@ func (_mock *MockUserFetches) CreateRequestItem(ctx context.Context, arg repo.Cr
 	return r0, r1
 }
 
-// MockUserFetches_CreateRequestItem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateRequestItem'
-type MockUserFetches_CreateRequestItem_Call struct {
+// MockUserFetches_CreateItem_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateItem'
+type MockUserFetches_CreateItem_Call struct {
 	*mock.Call
 }
 
-// CreateRequestItem is a helper method to define mock.On call
+// CreateItem is a helper method to define mock.On call
 //   - ctx context.Context
-//   - arg repo.CreateUserFetchRequestItemParams
-func (_e *MockUserFetches_Expecter) CreateRequestItem(ctx interface{}, arg interface{}) *MockUserFetches_CreateRequestItem_Call {
-	return &MockUserFetches_CreateRequestItem_Call{Call: _e.mock.On("CreateRequestItem", ctx, arg)}
+//   - arg repo.CreateUserFetchItemParams
+func (_e *MockUserFetches_Expecter) CreateItem(ctx interface{}, arg interface{}) *MockUserFetches_CreateItem_Call {
+	return &MockUserFetches_CreateItem_Call{Call: _e.mock.On("CreateItem", ctx, arg)}
 }
 
-func (_c *MockUserFetches_CreateRequestItem_Call) Run(run func(ctx context.Context, arg repo.CreateUserFetchRequestItemParams)) *MockUserFetches_CreateRequestItem_Call {
+func (_c *MockUserFetches_CreateItem_Call) Run(run func(ctx context.Context, arg repo.CreateUserFetchItemParams)) *MockUserFetches_CreateItem_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 repo.CreateUserFetchRequestItemParams
+		var arg1 repo.CreateUserFetchItemParams
 		if args[1] != nil {
-			arg1 = args[1].(repo.CreateUserFetchRequestItemParams)
+			arg1 = args[1].(repo.CreateUserFetchItemParams)
 		}
 		run(
 			arg0,
@@ -161,33 +161,33 @@ func (_c *MockUserFetches_CreateRequestItem_Call) Run(run func(ctx context.Conte
 	return _c
 }
 
-func (_c *MockUserFetches_CreateRequestItem_Call) Return(userFetchRequestItem repo.UserFetchRequestItem, err error) *MockUserFetches_CreateRequestItem_Call {
-	_c.Call.Return(userFetchRequestItem, err)
+func (_c *MockUserFetches_CreateItem_Call) Return(userFetchItem repo.UserFetchItem, err error) *MockUserFetches_CreateItem_Call {
+	_c.Call.Return(userFetchItem, err)
 	return _c
 }
 
-func (_c *MockUserFetches_CreateRequestItem_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateUserFetchRequestItemParams) (repo.UserFetchRequestItem, error)) *MockUserFetches_CreateRequestItem_Call {
+func (_c *MockUserFetches_CreateItem_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateUserFetchItemParams) (repo.UserFetchItem, error)) *MockUserFetches_CreateItem_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// GetRequest provides a mock function for the type MockUserFetches
-func (_mock *MockUserFetches) GetRequest(ctx context.Context, id uuid.UUID) (repo.UserFetchRequest, error) {
+// Get provides a mock function for the type MockUserFetches
+func (_mock *MockUserFetches) Get(ctx context.Context, id uuid.UUID) (repo.UserFetch, error) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetRequest")
+		panic("no return value specified for Get")
 	}
 
-	var r0 repo.UserFetchRequest
+	var r0 repo.UserFetch
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repo.UserFetchRequest, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repo.UserFetch, error)); ok {
 		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) repo.UserFetchRequest); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) repo.UserFetch); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
-		r0 = ret.Get(0).(repo.UserFetchRequest)
+		r0 = ret.Get(0).(repo.UserFetch)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
 		r1 = returnFunc(ctx, id)
@@ -197,19 +197,19 @@ func (_mock *MockUserFetches) GetRequest(ctx context.Context, id uuid.UUID) (rep
 	return r0, r1
 }
 
-// MockUserFetches_GetRequest_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRequest'
-type MockUserFetches_GetRequest_Call struct {
+// MockUserFetches_Get_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Get'
+type MockUserFetches_Get_Call struct {
 	*mock.Call
 }
 
-// GetRequest is a helper method to define mock.On call
+// Get is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id uuid.UUID
-func (_e *MockUserFetches_Expecter) GetRequest(ctx interface{}, id interface{}) *MockUserFetches_GetRequest_Call {
-	return &MockUserFetches_GetRequest_Call{Call: _e.mock.On("GetRequest", ctx, id)}
+func (_e *MockUserFetches_Expecter) Get(ctx interface{}, id interface{}) *MockUserFetches_Get_Call {
+	return &MockUserFetches_Get_Call{Call: _e.mock.On("Get", ctx, id)}
 }
 
-func (_c *MockUserFetches_GetRequest_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockUserFetches_GetRequest_Call {
+func (_c *MockUserFetches_Get_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockUserFetches_Get_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -227,55 +227,55 @@ func (_c *MockUserFetches_GetRequest_Call) Run(run func(ctx context.Context, id 
 	return _c
 }
 
-func (_c *MockUserFetches_GetRequest_Call) Return(userFetchRequest repo.UserFetchRequest, err error) *MockUserFetches_GetRequest_Call {
-	_c.Call.Return(userFetchRequest, err)
+func (_c *MockUserFetches_Get_Call) Return(userFetch repo.UserFetch, err error) *MockUserFetches_Get_Call {
+	_c.Call.Return(userFetch, err)
 	return _c
 }
 
-func (_c *MockUserFetches_GetRequest_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) (repo.UserFetchRequest, error)) *MockUserFetches_GetRequest_Call {
+func (_c *MockUserFetches_Get_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) (repo.UserFetch, error)) *MockUserFetches_Get_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// GetRequestProgress provides a mock function for the type MockUserFetches
-func (_mock *MockUserFetches) GetRequestProgress(ctx context.Context, requestID uuid.UUID) (repo.UserFetchProgress, error) {
-	ret := _mock.Called(ctx, requestID)
+// GetProgress provides a mock function for the type MockUserFetches
+func (_mock *MockUserFetches) GetProgress(ctx context.Context, fetchID uuid.UUID) (repo.UserFetchProgress, error) {
+	ret := _mock.Called(ctx, fetchID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetRequestProgress")
+		panic("no return value specified for GetProgress")
 	}
 
 	var r0 repo.UserFetchProgress
 	var r1 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repo.UserFetchProgress, error)); ok {
-		return returnFunc(ctx, requestID)
+		return returnFunc(ctx, fetchID)
 	}
 	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) repo.UserFetchProgress); ok {
-		r0 = returnFunc(ctx, requestID)
+		r0 = returnFunc(ctx, fetchID)
 	} else {
 		r0 = ret.Get(0).(repo.UserFetchProgress)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
-		r1 = returnFunc(ctx, requestID)
+		r1 = returnFunc(ctx, fetchID)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockUserFetches_GetRequestProgress_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRequestProgress'
-type MockUserFetches_GetRequestProgress_Call struct {
+// MockUserFetches_GetProgress_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetProgress'
+type MockUserFetches_GetProgress_Call struct {
 	*mock.Call
 }
 
-// GetRequestProgress is a helper method to define mock.On call
+// GetProgress is a helper method to define mock.On call
 //   - ctx context.Context
-//   - requestID uuid.UUID
-func (_e *MockUserFetches_Expecter) GetRequestProgress(ctx interface{}, requestID interface{}) *MockUserFetches_GetRequestProgress_Call {
-	return &MockUserFetches_GetRequestProgress_Call{Call: _e.mock.On("GetRequestProgress", ctx, requestID)}
+//   - fetchID uuid.UUID
+func (_e *MockUserFetches_Expecter) GetProgress(ctx interface{}, fetchID interface{}) *MockUserFetches_GetProgress_Call {
+	return &MockUserFetches_GetProgress_Call{Call: _e.mock.On("GetProgress", ctx, fetchID)}
 }
 
-func (_c *MockUserFetches_GetRequestProgress_Call) Run(run func(ctx context.Context, requestID uuid.UUID)) *MockUserFetches_GetRequestProgress_Call {
+func (_c *MockUserFetches_GetProgress_Call) Run(run func(ctx context.Context, fetchID uuid.UUID)) *MockUserFetches_GetProgress_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -293,46 +293,46 @@ func (_c *MockUserFetches_GetRequestProgress_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *MockUserFetches_GetRequestProgress_Call) Return(userFetchProgress repo.UserFetchProgress, err error) *MockUserFetches_GetRequestProgress_Call {
+func (_c *MockUserFetches_GetProgress_Call) Return(userFetchProgress repo.UserFetchProgress, err error) *MockUserFetches_GetProgress_Call {
 	_c.Call.Return(userFetchProgress, err)
 	return _c
 }
 
-func (_c *MockUserFetches_GetRequestProgress_Call) RunAndReturn(run func(ctx context.Context, requestID uuid.UUID) (repo.UserFetchProgress, error)) *MockUserFetches_GetRequestProgress_Call {
+func (_c *MockUserFetches_GetProgress_Call) RunAndReturn(run func(ctx context.Context, fetchID uuid.UUID) (repo.UserFetchProgress, error)) *MockUserFetches_GetProgress_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// MarkRequestCompleted provides a mock function for the type MockUserFetches
-func (_mock *MockUserFetches) MarkRequestCompleted(ctx context.Context, requestID uuid.UUID) error {
-	ret := _mock.Called(ctx, requestID)
+// MarkCompleted provides a mock function for the type MockUserFetches
+func (_mock *MockUserFetches) MarkCompleted(ctx context.Context, fetchID uuid.UUID) error {
+	ret := _mock.Called(ctx, fetchID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for MarkRequestCompleted")
+		panic("no return value specified for MarkCompleted")
 	}
 
 	var r0 error
 	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
-		r0 = returnFunc(ctx, requestID)
+		r0 = returnFunc(ctx, fetchID)
 	} else {
 		r0 = ret.Error(0)
 	}
 	return r0
 }
 
-// MockUserFetches_MarkRequestCompleted_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkRequestCompleted'
-type MockUserFetches_MarkRequestCompleted_Call struct {
+// MockUserFetches_MarkCompleted_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkCompleted'
+type MockUserFetches_MarkCompleted_Call struct {
 	*mock.Call
 }
 
-// MarkRequestCompleted is a helper method to define mock.On call
+// MarkCompleted is a helper method to define mock.On call
 //   - ctx context.Context
-//   - requestID uuid.UUID
-func (_e *MockUserFetches_Expecter) MarkRequestCompleted(ctx interface{}, requestID interface{}) *MockUserFetches_MarkRequestCompleted_Call {
-	return &MockUserFetches_MarkRequestCompleted_Call{Call: _e.mock.On("MarkRequestCompleted", ctx, requestID)}
+//   - fetchID uuid.UUID
+func (_e *MockUserFetches_Expecter) MarkCompleted(ctx interface{}, fetchID interface{}) *MockUserFetches_MarkCompleted_Call {
+	return &MockUserFetches_MarkCompleted_Call{Call: _e.mock.On("MarkCompleted", ctx, fetchID)}
 }
 
-func (_c *MockUserFetches_MarkRequestCompleted_Call) Run(run func(ctx context.Context, requestID uuid.UUID)) *MockUserFetches_MarkRequestCompleted_Call {
+func (_c *MockUserFetches_MarkCompleted_Call) Run(run func(ctx context.Context, fetchID uuid.UUID)) *MockUserFetches_MarkCompleted_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -350,12 +350,12 @@ func (_c *MockUserFetches_MarkRequestCompleted_Call) Run(run func(ctx context.Co
 	return _c
 }
 
-func (_c *MockUserFetches_MarkRequestCompleted_Call) Return(err error) *MockUserFetches_MarkRequestCompleted_Call {
+func (_c *MockUserFetches_MarkCompleted_Call) Return(err error) *MockUserFetches_MarkCompleted_Call {
 	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *MockUserFetches_MarkRequestCompleted_Call) RunAndReturn(run func(ctx context.Context, requestID uuid.UUID) error) *MockUserFetches_MarkRequestCompleted_Call {
+func (_c *MockUserFetches_MarkCompleted_Call) RunAndReturn(run func(ctx context.Context, fetchID uuid.UUID) error) *MockUserFetches_MarkCompleted_Call {
 	_c.Call.Return(run)
 	return _c
 }
