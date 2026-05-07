@@ -118,34 +118,53 @@ func (q *Queries) CompleteTask(ctx context.Context, id uuid.UUID) error {
 }
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (
-    batch_id,
-    kind,
-    source_type,
-    source_abbr,
-    url,
-    payload,
-    payload_hash,
-    meta,
-    trace_id,
-    frequency,
-    next_run_at,
-    expires_at
-) VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    COALESCE($6, '{}'::jsonb),
-    $7,
-    $8,
-    $9,
-    $10,
-    COALESCE($11, NOW()),
-    $12
+WITH ins AS (
+    INSERT INTO tasks (
+        batch_id,
+        kind,
+        source_type,
+        source_abbr,
+        url,
+        payload,
+        payload_hash,
+        meta,
+        trace_id,
+        frequency,
+        next_run_at,
+        expires_at
+    ) VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        COALESCE($6, '{}'::jsonb),
+        $7,
+        $8,
+        $9,
+        $10,
+        COALESCE($11, NOW()),
+        $12
+    )
+    ON CONFLICT DO NOTHING
+    RETURNING tasks.id, tasks.batch_id, tasks.kind, tasks.source_type, tasks.source_abbr, tasks.url, tasks.payload, tasks.payload_hash, tasks.meta, tasks.trace_id, tasks.frequency, tasks.next_run_at, tasks.expires_at, tasks.status, tasks.retry_count, tasks.last_run_at, tasks.created_at, tasks.updated_at
 )
-RETURNING id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT i.id, i.batch_id, i.kind, i.source_type, i.source_abbr, i.url, i.payload, i.payload_hash, i.meta, i.trace_id, i.frequency, i.next_run_at, i.expires_at, i.status, i.retry_count, i.last_run_at, i.created_at, i.updated_at, TRUE AS inserted FROM ins i
+UNION ALL
+SELECT t.id, t.batch_id, t.kind, t.source_type, t.source_abbr, t.url, t.payload, t.payload_hash, t.meta, t.trace_id, t.frequency, t.next_run_at, t.expires_at, t.status, t.retry_count, t.last_run_at, t.created_at, t.updated_at, FALSE AS inserted
+FROM tasks t
+WHERE NOT EXISTS (SELECT 1 FROM ins)
+  AND t.status IN ('PENDING', 'RUNNING')
+  AND t.kind = $2
+  AND (
+        (t.kind = 'PAGE_FETCH' AND t.url = $5)
+     OR (
+            t.source_abbr  = $4
+        AND t.payload_hash IS NOT NULL
+        AND t.payload_hash = $7
+        )
+  )
+LIMIT 1
 `
 
 type CreateTaskParams struct {
@@ -163,7 +182,35 @@ type CreateTaskParams struct {
 	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
-func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
+type CreateTaskRow struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Kind        TaskKind           `db:"kind" json:"kind"`
+	SourceType  SourceType         `db:"source_type" json:"source_type"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
+	Url         string             `db:"url" json:"url"`
+	Payload     []byte             `db:"payload" json:"payload"`
+	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta        []byte             `db:"meta" json:"meta"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt   pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Status      TaskStatus         `db:"status" json:"status"`
+	RetryCount  int32              `db:"retry_count" json:"retry_count"`
+	LastRunAt   pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	Inserted    bool               `db:"inserted" json:"inserted"`
+}
+
+// Single-round-trip insert-or-recover. On unique-violation against either
+// uq_tasks_active_payload or uq_tasks_active_page_fetch, returns the
+// existing PENDING/RUNNING row with inserted=false. Adapter maps
+// inserted=false to repo.ErrTaskAlreadyActive while still surfacing the
+// recovered task fields, so callers that need the existing task_id (e.g.
+// the user-fetch handler) avoid a second SELECT.
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (CreateTaskRow, error) {
 	row := q.db.QueryRow(ctx, createTask,
 		arg.BatchID,
 		arg.Kind,
@@ -178,7 +225,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.NextRunAt,
 		arg.ExpiresAt,
 	)
-	var i Task
+	var i CreateTaskRow
 	err := row.Scan(
 		&i.ID,
 		&i.BatchID,
@@ -198,6 +245,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.LastRunAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Inserted,
 	)
 	return i, err
 }

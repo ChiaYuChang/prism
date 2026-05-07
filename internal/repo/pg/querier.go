@@ -21,7 +21,13 @@ type Querier interface {
 	CreateContentEmbeddingGemma2025(ctx context.Context, arg CreateContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
-	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	// Single-round-trip insert-or-recover. On unique-violation against either
+	// uq_tasks_active_payload or uq_tasks_active_page_fetch, returns the
+	// existing PENDING/RUNNING row with inserted=false. Adapter maps
+	// inserted=false to repo.ErrTaskAlreadyActive while still surfacing the
+	// recovered task fields, so callers that need the existing task_id (e.g.
+	// the user-fetch handler) avoid a second SELECT.
+	CreateTask(ctx context.Context, arg CreateTaskParams) (CreateTaskRow, error)
 	CreateUserFetch(ctx context.Context, userID pgtype.UUID) (Fetch, error)
 	CreateUserFetchItem(ctx context.Context, arg CreateUserFetchItemParams) (FetchItem, error)
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
@@ -31,11 +37,6 @@ type Querier interface {
 	FailTask(ctx context.Context, id uuid.UUID) error
 	// Finds batches where all tasks are completed and all candidates are promoted to contents.
 	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
-	// Companion to CreateTask's ON CONFLICT path. When CreateTask reports the
-	// duplicate-active conflict, callers use this to recover the existing task's
-	// id without an extra round-trip. Returns the row that owns the
-	// uq_tasks_active_page_fetch index slot.
-	GetActivePageFetchTaskByURL(ctx context.Context, url string) (Task, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
 	GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]Candidate, error)

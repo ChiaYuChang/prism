@@ -16,34 +16,59 @@ VALUES ($1, $2, $3)
 ON CONFLICT (id) DO NOTHING;
 
 -- name: CreateTask :one
-INSERT INTO tasks (
-    batch_id,
-    kind,
-    source_type,
-    source_abbr,
-    url,
-    payload,
-    payload_hash,
-    meta,
-    trace_id,
-    frequency,
-    next_run_at,
-    expires_at
-) VALUES (
-    sqlc.arg(batch_id),
-    sqlc.arg(kind),
-    sqlc.arg(source_type),
-    sqlc.arg(source_abbr),
-    sqlc.arg(url),
-    COALESCE(sqlc.narg(payload), '{}'::jsonb),
-    sqlc.narg(payload_hash),
-    sqlc.narg(meta),
-    sqlc.arg(trace_id),
-    sqlc.narg(frequency),
-    COALESCE(sqlc.narg(next_run_at), NOW()),
-    sqlc.narg(expires_at)
+-- Single-round-trip insert-or-recover. On unique-violation against either
+-- uq_tasks_active_payload or uq_tasks_active_page_fetch, returns the
+-- existing PENDING/RUNNING row with inserted=false. Adapter maps
+-- inserted=false to repo.ErrTaskAlreadyActive while still surfacing the
+-- recovered task fields, so callers that need the existing task_id (e.g.
+-- the user-fetch handler) avoid a second SELECT.
+WITH ins AS (
+    INSERT INTO tasks (
+        batch_id,
+        kind,
+        source_type,
+        source_abbr,
+        url,
+        payload,
+        payload_hash,
+        meta,
+        trace_id,
+        frequency,
+        next_run_at,
+        expires_at
+    ) VALUES (
+        sqlc.arg(batch_id),
+        sqlc.arg(kind),
+        sqlc.arg(source_type),
+        sqlc.arg(source_abbr),
+        sqlc.arg(url),
+        COALESCE(sqlc.narg(payload), '{}'::jsonb),
+        sqlc.narg(payload_hash),
+        sqlc.narg(meta),
+        sqlc.arg(trace_id),
+        sqlc.narg(frequency),
+        COALESCE(sqlc.narg(next_run_at), NOW()),
+        sqlc.narg(expires_at)
+    )
+    ON CONFLICT DO NOTHING
+    RETURNING tasks.*
 )
-RETURNING *;
+SELECT i.*, TRUE AS inserted FROM ins i
+UNION ALL
+SELECT t.*, FALSE AS inserted
+FROM tasks t
+WHERE NOT EXISTS (SELECT 1 FROM ins)
+  AND t.status IN ('PENDING', 'RUNNING')
+  AND t.kind = sqlc.arg(kind)
+  AND (
+        (t.kind = 'PAGE_FETCH' AND t.url = sqlc.arg(url))
+     OR (
+            t.source_abbr  = sqlc.arg(source_abbr)
+        AND t.payload_hash IS NOT NULL
+        AND t.payload_hash = sqlc.narg(payload_hash)
+        )
+  )
+LIMIT 1;
 
 -- name: ClaimTasks :many
 UPDATE tasks

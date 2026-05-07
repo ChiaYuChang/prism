@@ -8,8 +8,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/pkg/pgconv"
 	"github.com/google/uuid"
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	pgvector "github.com/pgvector/pgvector-go"
 )
@@ -300,24 +299,21 @@ func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (re
 		ExpiresAt:   pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
 	})
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) &&
-			pgErr.Code == pgerrcode.UniqueViolation &&
-			(pgErr.ConstraintName == "uq_tasks_active_payload" ||
-				pgErr.ConstraintName == "uq_tasks_active_page_fetch") {
+		// Zero rows = conflict at insert AND no PENDING/RUNNING row by SELECT
+		// time. Race window where the colliding task transitioned to terminal
+		// between ON CONFLICT and the recovery SELECT. Surface as
+		// ErrTaskAlreadyActive with a zero task; PAGE_FETCH callers detect
+		// the empty ID and fall back to a contents lookup.
+		if errors.Is(err, pgx.ErrNoRows) {
 			return repo.Task{}, repo.ErrTaskAlreadyActive
 		}
 		return repo.Task{}, err
 	}
-	return dbTaskToRepoTask(row), nil
-}
-
-func (r *PGTasks) GetActivePageFetchTaskByURL(ctx context.Context, url string) (repo.Task, error) {
-	row, err := r.q.GetActivePageFetchTaskByURL(ctx, url)
-	if err != nil {
-		return repo.Task{}, err
+	task := dbCreateTaskRowToRepoTask(row)
+	if !row.Inserted {
+		return task, repo.ErrTaskAlreadyActive
 	}
-	return dbTaskToRepoTask(row), nil
+	return task, nil
 }
 
 func (r *PGTasks) ExtendActiveTaskExpiry(ctx context.Context, arg repo.ExtendActiveTaskExpiryParams) error {

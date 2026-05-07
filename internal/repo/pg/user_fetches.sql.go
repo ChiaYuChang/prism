@@ -70,45 +70,6 @@ func (q *Queries) CreateUserFetchItem(ctx context.Context, arg CreateUserFetchIt
 	return i, err
 }
 
-const getActivePageFetchTaskByURL = `-- name: GetActivePageFetchTaskByURL :one
-SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
-FROM tasks
-WHERE kind = 'PAGE_FETCH'
-  AND url = $1
-  AND status IN ('PENDING', 'RUNNING')
-LIMIT 1
-`
-
-// Companion to CreateTask's ON CONFLICT path. When CreateTask reports the
-// duplicate-active conflict, callers use this to recover the existing task's
-// id without an extra round-trip. Returns the row that owns the
-// uq_tasks_active_page_fetch index slot.
-func (q *Queries) GetActivePageFetchTaskByURL(ctx context.Context, url string) (Task, error) {
-	row := q.db.QueryRow(ctx, getActivePageFetchTaskByURL, url)
-	var i Task
-	err := row.Scan(
-		&i.ID,
-		&i.BatchID,
-		&i.Kind,
-		&i.SourceType,
-		&i.SourceAbbr,
-		&i.Url,
-		&i.Payload,
-		&i.PayloadHash,
-		&i.Meta,
-		&i.TraceID,
-		&i.Frequency,
-		&i.NextRunAt,
-		&i.ExpiresAt,
-		&i.Status,
-		&i.RetryCount,
-		&i.LastRunAt,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const getUserFetch = `-- name: GetUserFetch :one
 SELECT id, user_id, created_at, completed_at
 FROM fetches

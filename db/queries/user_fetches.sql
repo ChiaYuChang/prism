@@ -68,14 +68,3 @@ SET completed_at = NOW()
 WHERE id = $1
   AND completed_at IS NULL;
 
--- name: GetActivePageFetchTaskByURL :one
--- Companion to CreateTask's ON CONFLICT path. When CreateTask reports the
--- duplicate-active conflict, callers use this to recover the existing task's
--- id without an extra round-trip. Returns the row that owns the
--- uq_tasks_active_page_fetch index slot.
-SELECT *
-FROM tasks
-WHERE kind = 'PAGE_FETCH'
-  AND url = $1
-  AND status IN ('PENDING', 'RUNNING')
-LIMIT 1;

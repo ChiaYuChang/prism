@@ -8,6 +8,28 @@ import (
 	"github.com/google/uuid"
 )
 
+func dbCreateTaskRowToRepoTask(row CreateTaskRow) repo.Task {
+	return repo.Task{
+		ID:          row.ID,
+		BatchID:     row.BatchID,
+		TraceID:     row.TraceID,
+		Kind:        string(row.Kind),
+		SourceType:  string(row.SourceType),
+		SourceAbbr:  row.SourceAbbr,
+		URL:         row.Url,
+		Payload:     row.Payload,
+		PayloadHash: pgconv.PgTextToStringPtr(row.PayloadHash),
+		Meta:        row.Meta,
+		NextRunAt:   *pgconv.PgTimestamptzToTimePtr(row.NextRunAt),
+		ExpiresAt:   pgconv.PgTimestamptzToTimePtr(row.ExpiresAt),
+		Status:      repo.TaskStatus(row.Status),
+		RetryCount:  int(row.RetryCount),
+		LastRunAt:   pgconv.PgTimestamptzToTimePtr(row.LastRunAt),
+		CreatedAt:   *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+		UpdatedAt:   *pgconv.PgTimestamptzToTimePtr(row.UpdatedAt),
+	}
+}
+
 func dbTaskToRepoTask(task Task) repo.Task {
 	return repo.Task{
 		ID:          task.ID,

@@ -161,9 +161,7 @@ func TestPageFetch_AlreadyActiveCollapsesToCreated(t *testing.T) {
 	fetchID := expectCreateFetch(t, m)
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).
-		Return(repo.Task{}, repo.ErrTaskAlreadyActive).Once()
-	m.tasks.EXPECT().GetActivePageFetchTaskByURL(mock.Anything, url).
-		Return(repo.Task{ID: existingTaskID}, nil).Once()
+		Return(repo.Task{ID: existingTaskID}, repo.ErrTaskAlreadyActive).Once()
 	m.userFetches.EXPECT().CreateItem(mock.Anything, mock.MatchedBy(func(p repo.CreateUserFetchItemParams) bool {
 		return p.FetchID == fetchID && p.CandidateID == candID &&
 			p.TaskID != nil && *p.TaskID == existingTaskID && p.SnapshotStatus == nil
@@ -201,8 +199,6 @@ func TestPageFetch_AlreadyCompleteSnapshot(t *testing.T) {
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).
 		Return(repo.Task{}, repo.ErrTaskAlreadyActive).Once()
-	m.tasks.EXPECT().GetActivePageFetchTaskByURL(mock.Anything, url).
-		Return(repo.Task{}, pgx.ErrNoRows).Once()
 	m.pipeline.EXPECT().GetContentByURL(mock.Anything, url).
 		Return(repo.Content{ID: uuid.Must(uuid.NewV7())}, nil).Once()
 	m.userFetches.EXPECT().CreateItem(mock.Anything, mock.MatchedBy(func(p repo.CreateUserFetchItemParams) bool {
@@ -238,8 +234,6 @@ func TestPageFetch_RaceMissReturns500(t *testing.T) {
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).
 		Return(repo.Task{}, repo.ErrTaskAlreadyActive).Once()
-	m.tasks.EXPECT().GetActivePageFetchTaskByURL(mock.Anything, url).
-		Return(repo.Task{}, pgx.ErrNoRows).Once()
 	m.pipeline.EXPECT().GetContentByURL(mock.Anything, url).
 		Return(repo.Content{}, pgx.ErrNoRows).Once()
 

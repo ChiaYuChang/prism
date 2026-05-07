@@ -51,12 +51,12 @@ type Scout interface {
 type Tasks interface {
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	// CreateTask is insert-or-recover: on unique-violation against an
+	// existing PENDING/RUNNING task it returns the existing row alongside
+	// repo.ErrTaskAlreadyActive, so callers that need the existing task_id
+	// (e.g. the user-fetch handler) avoid a second round-trip.
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
-	// GetActivePageFetchTaskByURL recovers the existing active PAGE_FETCH task
-	// after CreateTask returns ErrTaskAlreadyActive. Used by the user-fetch
-	// handler to record the shared task_id on the request item.
-	GetActivePageFetchTaskByURL(ctx context.Context, url string) (Task, error)
 }
 
 type Pipeline interface {

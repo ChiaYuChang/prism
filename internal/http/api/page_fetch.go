@@ -116,20 +116,24 @@ func (s *Server) PageFetch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, PageFetchResponse{FetchID: fetch.ID, Items: items})
 }
 
-// recordPageFetchItem persists one user_fetch_request_items row and returns
-// its public status.
+// recordPageFetchItem persists one fetch_items row and returns its public
+// status.
 //
 // Flow per docs/plan/spec.md §6:
 //
-//  1. CreateTask success → item references the new task; status `created`.
-//  2. ErrTaskAlreadyActive → recover existing active task by URL; item
-//     references the shared task; status `created` (collapsed for
-//     privacy).
-//  3. Conflict + lookup miss → contents already present → item snapshot
-//     `ALREADY_COMPLETE`, task_id NULL; status `already_complete`.
-//  4. Conflict + lookup miss + no contents → design-invariant violation
-//     (collector ordering CreateContent → CompleteTask makes the window
-//     non-existent); surface as 500.
+//  1. CreateTask success (inserted) → item references the new task; status
+//     `created`.
+//  2. CreateTask returns ErrTaskAlreadyActive with the existing active task
+//     populated → item references the shared task; status `created`
+//     (collapsed for privacy).
+//  3. Existing-task path with PAGE_FETCH already drained → contents
+//     already present → item snapshot `ALREADY_COMPLETE`, task_id NULL;
+//     status `already_complete`. Detected by querying contents when the
+//     recovered task is no longer active.
+//
+// The "active task drained without contents row" window is non-existent
+// by design (collector ordering CreateContent → CompleteTask), so any
+// remaining miss is an invariant violation and surfaces as 500.
 func (s *Server) recordPageFetchItem(ctx context.Context, fetchID uuid.UUID, c repo.Candidate) (string, error) {
 	meta, err := json.Marshal(map[string]any{"candidate_id": c.ID.String()})
 	if err != nil {
@@ -158,9 +162,8 @@ func (s *Server) recordPageFetchItem(ctx context.Context, fetchID uuid.UUID, c r
 		return PageFetchStatusCreated, nil
 
 	case errors.Is(err, repo.ErrTaskAlreadyActive):
-		existing, lookupErr := s.Tasks.GetActivePageFetchTaskByURL(ctx, c.URL)
-		if lookupErr == nil {
-			taskID := existing.ID
+		if task.ID != uuid.Nil {
+			taskID := task.ID
 			if _, err := s.UserFetches.CreateItem(ctx, repo.CreateUserFetchItemParams{
 				FetchID:     fetchID,
 				CandidateID: c.ID,
@@ -170,10 +173,11 @@ func (s *Server) recordPageFetchItem(ctx context.Context, fetchID uuid.UUID, c r
 			}
 			return PageFetchStatusCreated, nil
 		}
-		if !errors.Is(lookupErr, pgx.ErrNoRows) {
-			return "", lookupErr
-		}
 
+		// Race: conflict at insert but the colliding task was no longer
+		// PENDING/RUNNING by recovery-SELECT time. Collector ordering
+		// (CreateContent → CompleteTask) means the contents row must
+		// exist by now.
 		content, contentErr := s.Pipeline.GetContentByURL(ctx, c.URL)
 		if contentErr != nil {
 			if errors.Is(contentErr, pgx.ErrNoRows) {
