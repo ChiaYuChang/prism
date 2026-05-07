@@ -150,7 +150,7 @@ func (q *Queries) ListReadyToPublishBatches(ctx context.Context, arg ListReadyTo
 	return items, nil
 }
 
-const markBatchCompleted = `-- name: MarkBatchCompleted :exec
+const markBatchCompleted = `-- name: MarkBatchCompleted :execrows
 UPDATE batches
 SET completed_at = NOW(),
     updated_at = NOW(),
@@ -164,9 +164,15 @@ type MarkBatchCompletedParams struct {
 	TraceID interface{} `db:"trace_id" json:"trace_id"`
 }
 
-func (q *Queries) MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) error {
-	_, err := q.db.Exec(ctx, markBatchCompleted, arg.ID, arg.TraceID)
-	return err
+// Optimistic-concurrency claim: returns rows-affected so the caller can
+// distinguish the winner (1) from a loser racing against another instance
+// (0). Only the winner should publish the batch.completed signal.
+func (q *Queries) MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markBatchCompleted, arg.ID, arg.TraceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const markBatchPublished = `-- name: MarkBatchPublished :exec

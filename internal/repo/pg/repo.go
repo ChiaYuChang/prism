@@ -457,7 +457,7 @@ func (r *PGBatchTrigger) FindNewlyCompletedBatches(ctx context.Context, limit in
 	return out, nil
 }
 
-func (r *PGBatchTrigger) MarkBatchCompleted(ctx context.Context, batchID uuid.UUID, traceID string) error {
+func (r *PGBatchTrigger) MarkBatchCompleted(ctx context.Context, batchID uuid.UUID, traceID string) (int64, error) {
 	return r.q.MarkBatchCompleted(ctx, MarkBatchCompletedParams{
 		ID:      batchID,
 		TraceID: traceID,

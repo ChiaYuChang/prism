@@ -69,7 +69,10 @@ type Querier interface {
 	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
 	ListUserFetchItems(ctx context.Context, fetchID uuid.UUID) ([]ListUserFetchItemsRow, error)
-	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) error
+	// Optimistic-concurrency claim: returns rows-affected so the caller can
+	// distinguish the winner (1) from a loser racing against another instance
+	// (0). Only the winner should publish the batch.completed signal.
+	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) (int64, error)
 	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
 	// Sets completed_at on transition to terminal. Idempotent (WHERE clause
 	// guards against double-set). v1 callers may skip this — progress endpoint

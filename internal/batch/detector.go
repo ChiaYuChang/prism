@@ -55,9 +55,20 @@ func (d *Detector) Detect(ctx context.Context, limit int32) ([]CompletedBatch, e
 			traceID = *batch.TraceID
 		}
 
-		// Atomic update: only mark as completed if it's currently NULL.
-		if err := d.repo.MarkBatchCompleted(ctx, batch.ID, traceID); err != nil {
+		// Optimistic claim. rows == 1 means this instance won the race and
+		// owns the batch.completed publish; rows == 0 means another
+		// instance already marked it and we drop it silently to avoid a
+		// duplicate signal.
+		rows, err := d.repo.MarkBatchCompleted(ctx, batch.ID, traceID)
+		if err != nil {
 			return nil, fmt.Errorf("mark batch %s completed: %w", batch.ID, err)
+		}
+		if rows == 0 {
+			d.logger.InfoContext(ctx, "batch already claimed by another instance; skipping",
+				slog.String("batch_id", batch.ID.String()),
+				slog.String("source_type", batch.SourceType),
+			)
+			continue
 		}
 
 		completed = append(completed, CompletedBatch{

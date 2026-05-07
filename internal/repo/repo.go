@@ -72,7 +72,10 @@ type Pipeline interface {
 type BatchTrigger interface {
 	ListPendingCompletionBatches(ctx context.Context, limit int32, sourceType string) ([]Batch, error)
 	FindNewlyCompletedBatches(ctx context.Context, limit int32, sourceType string) ([]Batch, error)
-	MarkBatchCompleted(ctx context.Context, batchID uuid.UUID, traceID string) error
+	// MarkBatchCompleted is an optimistic claim. Returns rows-affected so
+	// callers can distinguish the winning instance (1) from a loser racing
+	// against another instance (0). Only the winner should publish.
+	MarkBatchCompleted(ctx context.Context, batchID uuid.UUID, traceID string) (int64, error)
 	ListReadyToPublishBatches(ctx context.Context, limit int32, sourceType string) ([]Batch, error)
 	MarkBatchPublished(ctx context.Context, batchID uuid.UUID) error
 	RecordBatchPublishFailure(ctx context.Context, batchID uuid.UUID, publishErr string) error

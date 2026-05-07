@@ -47,7 +47,7 @@ func TestDetector_Detect(t *testing.T) {
 
 	mRepo.EXPECT().
 		MarkBatchCompleted(mock.Anything, batchID, traceID).
-		Return(nil)
+		Return(int64(1), nil)
 
 	d, err := NewDetector(testutils.Logger(), noop.NewTracerProvider().Tracer("test"), mRepo)
 	require.NoError(t, err)
@@ -56,6 +56,33 @@ func TestDetector_Detect(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, batchID, got[0].BatchID)
+}
+
+// TestDetector_Detect_LoserDropsBatch verifies that when MarkBatchCompleted
+// reports rows==0 (another instance won the OCC race) the detector silently
+// drops the batch instead of returning it for publish, preventing duplicate
+// batch.completed signals across multi-instance trigger deployments.
+func TestDetector_Detect_LoserDropsBatch(t *testing.T) {
+	batchID := uuid.Must(uuid.NewV7())
+	traceID := "trace-loser"
+	limit := int32(10)
+
+	mRepo := mocks.NewMockBatchTrigger(t)
+	mRepo.EXPECT().
+		FindNewlyCompletedBatches(mock.Anything, limit, repo.SourceTypeParty).
+		Return([]repo.Batch{
+			{ID: batchID, SourceType: repo.SourceTypeParty, TraceID: &traceID},
+		}, nil)
+	mRepo.EXPECT().
+		MarkBatchCompleted(mock.Anything, batchID, traceID).
+		Return(int64(0), nil)
+
+	d, err := NewDetector(testutils.Logger(), noop.NewTracerProvider().Tracer("test"), mRepo)
+	require.NoError(t, err)
+
+	got, err := d.Detect(context.Background(), limit)
+	require.NoError(t, err)
+	require.Empty(t, got)
 }
 
 func TestGetBatchProgressTracksTaskIDsByStatus(t *testing.T) {

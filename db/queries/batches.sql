@@ -19,7 +19,10 @@ WHERE b.completed_at IS NULL
 ORDER BY b.created_at ASC
 LIMIT $2;
 
--- name: MarkBatchCompleted :exec
+-- name: MarkBatchCompleted :execrows
+-- Optimistic-concurrency claim: returns rows-affected so the caller can
+-- distinguish the winner (1) from a loser racing against another instance
+-- (0). Only the winner should publish the batch.completed signal.
 UPDATE batches
 SET completed_at = NOW(),
     updated_at = NOW(),
