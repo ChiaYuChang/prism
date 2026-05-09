@@ -111,13 +111,12 @@ func (llm *LLMArticleContent) ToArticleContent(url string) *collector.Article {
 	return article
 }
 
-var ParserConfigJSONSchema = func() pkgschema.JSONSchema {
-	s := pkgschema.NewSkeleton[LLMArticleContent]("parser_config", 1)
-	s.Title = "Article Parser Output"
-	s.Description = "Extracted article content with CSS selectors for future rule-based parser configuration."
-	s.Required = []string{"title", "author", "published_at", "date_layouts", "content"}
-
-	targetNodeSchema := &jsonschema.Schema{
+// newTargetNodeSchema builds a fresh {selector, value} subschema. A function
+// rather than a shared pointer because the jsonschema validator requires
+// schemas to form a tree — one *jsonschema.Schema cannot appear under two
+// distinct paths in the document.
+func newTargetNodeSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
 		Type:        "object",
 		Description: "A DOM node mapping: the CSS selector that targets the element and the extracted text value.",
 		Required:    []string{"selector", "value"},
@@ -133,21 +132,28 @@ var ParserConfigJSONSchema = func() pkgschema.JSONSchema {
 		},
 		PropertyOrder: []string{"selector", "value"},
 	}
+}
+
+var ParserConfigJSONSchema = func() pkgschema.JSONSchema {
+	s := pkgschema.NewSkeleton[LLMArticleContent]("parser_config", 1)
+	s.Title = "Article Parser Output"
+	s.Description = "Extracted article content with CSS selectors for future rule-based parser configuration."
+	s.Required = []string{"title", "author", "published_at", "date_layouts", "content"}
 
 	s.Properties["title"].Description = "Selector/value pairs for the article headline, in priority order."
-	s.Properties["title"].Items = targetNodeSchema
+	s.Properties["title"].Items = newTargetNodeSchema()
 
 	s.Properties["author"].Description = "Selector/value pairs for the article author(s), in priority order."
-	s.Properties["author"].Items = targetNodeSchema
+	s.Properties["author"].Items = newTargetNodeSchema()
 
 	s.Properties["published_at"].Description = "Selector/value pairs for the publish date element, in priority order."
-	s.Properties["published_at"].Items = targetNodeSchema
+	s.Properties["published_at"].Items = newTargetNodeSchema()
 
 	s.Properties["date_layouts"].Description = "Go time.Parse layout strings to try when parsing the date value, in priority order (e.g. '2006-01-02T15:04:05Z07:00', '2006-01-02')."
 	s.Properties["date_layouts"].Items = &jsonschema.Schema{Type: "string"}
 
 	s.Properties["content"].Description = "Selector/value pairs for the article body. Array entries are fallback tiers — use a comma-separated multi-selector (e.g. 'p.a, p.b') to preserve DOM order when content spans interleaved elements."
-	s.Properties["content"].Items = targetNodeSchema
+	s.Properties["content"].Items = newTargetNodeSchema()
 
 	return s
 }()

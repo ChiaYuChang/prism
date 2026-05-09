@@ -24,6 +24,8 @@ import (
 	"github.com/ChiaYuChang/prism/internal/collector/parser/config"
 	"github.com/ChiaYuChang/prism/internal/collector/parser/html"
 	"github.com/ChiaYuChang/prism/internal/collector/parser/jsonld"
+	parserllm "github.com/ChiaYuChang/prism/internal/collector/parser/llm"
+	llmfactory "github.com/ChiaYuChang/prism/internal/llm/factory"
 	"github.com/spf13/pflag"
 	"go.opentelemetry.io/otel/trace/noop"
 	"gopkg.in/yaml.v3"
@@ -36,6 +38,7 @@ func main() {
 		inputPath  = pflag.String("input", "", "input HTML path (required; '-' for stdin)")
 		allParsers = pflag.Bool("all-parsers", false, "ignore host routing; run every configured host's parser + generic fallback")
 		format     = pflag.String("format", "plaintext", "output format: plaintext|json|yaml")
+		promptFlag = pflag.String("prompt", "", "override path to the LLM fallback system-instruction file (defaults to fallback.prompt_file in parsers.yaml)")
 	)
 	pflag.Parse()
 
@@ -58,6 +61,25 @@ func main() {
 	logger := silentLogger()
 	tracer := noop.NewTracerProvider().Tracer("parse-probe")
 
+	var llmFactory config.LLMFactory
+	if cfg.Fallback.Enable {
+		if *promptFlag != "" {
+			cfg.Fallback.PromptFile = *promptFlag
+		}
+		prompt, perr := config.LoadFallbackPrompt(cfg.Fallback)
+		if perr != nil {
+			die("load fallback prompt: %v", perr)
+		}
+		gen, gerr := llmfactory.NewGenerator(ctx, cfg.Fallback.LLM, logger)
+		if gerr != nil {
+			die("init fallback LLM generator: %v", gerr)
+		}
+		model := cfg.Fallback.LLM.Model
+		llmFactory = func() (collector.Parser, error) {
+			return parserllm.NewParser(gen, logger, model, prompt)
+		}
+	}
+
 	results := make(map[string]Result)
 	if *allParsers {
 		for host, pCfg := range cfg.Parsers {
@@ -66,8 +88,15 @@ func main() {
 			}
 			results[host] = run(ctx, buildParser(pCfg, logger), *urlFlag, data)
 		}
+		if llmFactory != nil {
+			llmParser, err := llmFactory()
+			if err != nil {
+				die("build llm parser: %v", err)
+			}
+			results["__llm__"] = run(ctx, llmParser, *urlFlag, data)
+		}
 	} else {
-		registry, err := config.BuildRegistry(cfg, logger, tracer)
+		registry, err := config.BuildRegistry(cfg, logger, tracer, llmFactory)
 		if err != nil {
 			die("build registry: %v", err)
 		}

@@ -57,14 +57,10 @@ Phase A (`ArticleParser` removal + tests for kept components) and the 2026-05 la
 
 ## Immediate Next Steps (items 11–15)
 
-11. **Fill layer 1 unit test gaps (2.9), Phase B — config-opt-in LLM fallback parser** (Phase A done; see `done.md`):
-    * [ ] Design fallback config schema: per-host empty config entry + `fallback: llm` flag (NOT a global "fallback all unmatched hosts" — too expensive, accidental coverage). Mechanism: to enable LLM extraction for a new host, operator adds an empty entry to `parsers.yaml` with `fallback: llm`. This makes LLM activation explicit, host-by-host, and reviewable.
-    * [ ] Wire LLM provider into `config.BuildRegistry`: when entry has `fallback: llm`, build an LLM parser bound to that host and register it in the map; no global fallback path.
-    * [ ] `cmd/dev/parse-probe`: when `--all-parsers` is set, include `__llm__` in the result map only if at least one host has `fallback: llm` configured (uses the configured LLM provider; no implicit baseline).
-    * [ ] Add `Registry`/`config.BuildRegistry` tests for LLM fallback path (use a stub LLM provider; do not call real API in unit tests).
-    * [ ] Add §6 Design Clarification (in `spec.md`): LLM has two roles — (a) parse-time extractor when host opts in via `fallback: llm`, (b) config-snippet generator for human review (`ToConfigSnippet`). Both are explicitly opt-in; there is no automatic promotion path from LLM output to formalized parser rules. The intended workflow for adopting a new site: operator adds empty config + `fallback: llm` → site is parseable via LLM → operator reviews extracted samples + LLM-generated snippet → if quality acceptable, operator promotes the snippet to a real `html`/`jsonld` rule and removes the `fallback` flag.
-    * [ ] Update todo.md / done.md after each item completes.
-    * Fix `s3_test.go` flake separately. Defer layer 2 (`internal/repo/pg` testcontainers) until layer 1 lands.
+11. **LLM fallback parser** (Phase A + Phase B both shipped; see `done.md`):
+    * [ ] **Per-input-type fallback (deferred plus):** `fallback.html` / `fallback.json` / `fallback.xml` with per-type prompt files. Requires content-type propagation through the F→M→T→P pipeline. v1's global `fallback.enable + fallback.llm` block is a foundation; the schema can be extended without breaking the global `enable` flag.
+    * [ ] **Save-on-parse-failure path (PR2 from the original split):** when an assigned host's parser returns empty or errors AND fallback is disabled, archive the minified+transformed bytes with `recover_from: parse` metadata so `cmd/recover` can replay after a parsers.yaml fix. Touches `internal/collector/dispatcher.go` (empty-Article detection) + `cmd/recover` (new `recover_from` arm).
+    * [ ] **Live-stack verification:** stand up `task test:e2e:page-fetch` against a candidate URL with no `parsers.yaml` entry and `fallback.enable=true` + a real provider key. Confirms end-to-end LLM extraction beyond the stub-generator unit tests.
 
 12. **End-to-end smoke run incl. recover:** drive scheduler → discovery → collector → archiver → recover via `cmd/dev/fixture-server`; broad assertions only (`len(contents) > 0 && title != ""`). Replay-only path verified 2026-05-04 (item A); recover invocation not yet covered. (Containerize workers — formerly #12 — closed in Phase 4 / `done.md`.)
 

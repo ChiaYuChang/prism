@@ -60,7 +60,7 @@ func TestParsersConfig_ContractEachHost(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tracer := noop.NewTracerProvider().Tracer("test")
 
-	registry, err := config.BuildRegistry(cfg, logger, tracer)
+	registry, err := config.BuildRegistry(cfg, logger, tracer, nil)
 	require.NoError(t, err)
 
 	for host, pCfg := range cfg.Parsers {

@@ -11,8 +11,11 @@ import (
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/appconfig"
+	"github.com/ChiaYuChang/prism/internal/collector"
 	"github.com/ChiaYuChang/prism/internal/collector/archiver"
 	"github.com/ChiaYuChang/prism/internal/collector/parser/config"
+	parserllm "github.com/ChiaYuChang/prism/internal/collector/parser/llm"
+	llmfactory "github.com/ChiaYuChang/prism/internal/llm/factory"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
@@ -28,6 +31,7 @@ type cliOptions struct {
 	subcommand    string
 	archiveURI    string
 	parsersConfig string
+	prompt        string
 	since         time.Time
 	until         time.Time
 	limit         int
@@ -88,7 +92,31 @@ func main() {
 			logger.Error("failed to load parsers config", "path", opts.parsersConfig, "error", err)
 			os.Exit(1)
 		}
-		registry, err := config.BuildRegistry(cfg, logger, noop.NewTracerProvider().Tracer("recover"))
+
+		var llmFactory config.LLMFactory
+		if cfg.Fallback.Enable {
+			if opts.prompt != "" {
+				cfg.Fallback.PromptFile = opts.prompt
+			}
+			prompt, perr := config.LoadFallbackPrompt(cfg.Fallback)
+			if perr != nil {
+				logger.Error("failed to load fallback prompt",
+					"path", cfg.Fallback.PromptFile, "error", perr)
+				os.Exit(1)
+			}
+			gen, gerr := llmfactory.NewGenerator(ctx, cfg.Fallback.LLM, logger)
+			if gerr != nil {
+				logger.Error("failed to initialize fallback LLM generator",
+					"provider", cfg.Fallback.LLM.Provider, "error", gerr)
+				os.Exit(1)
+			}
+			model := cfg.Fallback.LLM.Model
+			llmFactory = func() (collector.Parser, error) {
+				return parserllm.NewParser(gen, logger, model, prompt)
+			}
+		}
+
+		registry, err := config.BuildRegistry(cfg, logger, noop.NewTracerProvider().Tracer("recover"), llmFactory)
 		if err != nil {
 			logger.Error("failed to build parser registry", "error", err)
 			os.Exit(1)
@@ -285,6 +313,7 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 
 	fs.StringVar(&opts.archiveURI, "archive", "", "archive URI (file:///path or bare path)")
 	fs.StringVar(&opts.parsersConfig, "parsers-config", "internal/collector/parser/config/parsers.yaml", "path to parsers.yaml (used by run subcommand)")
+	fs.StringVar(&opts.prompt, "prompt", "", "override path to the LLM fallback system-instruction file (defaults to fallback.prompt_file in parsers.yaml)")
 
 	var sinceRaw, untilRaw string
 	fs.StringVar(&sinceRaw, "since", "", "filter archives since date (YYYY-MM-DD)")

@@ -2,27 +2,18 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/discovery/extractor"
 	"github.com/ChiaYuChang/prism/internal/discovery/planner"
 	"github.com/ChiaYuChang/prism/internal/infra"
-	"github.com/ChiaYuChang/prism/internal/llm"
-	"github.com/ChiaYuChang/prism/internal/llm/gemini"
-	"github.com/ChiaYuChang/prism/internal/llm/ollama"
-	"github.com/ChiaYuChang/prism/internal/llm/openai"
+	llmfactory "github.com/ChiaYuChang/prism/internal/llm/factory"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
-	"github.com/go-playground/mold/v4"
-	"github.com/go-playground/validator/v10"
 )
 
 const (
@@ -74,7 +65,7 @@ func main() {
 	}
 	defer func() { _ = dbRepoCloser.Close() }()
 
-	generator, err := newGenerator(ctx, config.LLM, logger)
+	generator, err := llmfactory.NewGenerator(ctx, config.LLM, logger)
 	if err != nil {
 		logger.Error("failed to initialize LLM generator", "provider", config.LLM.Provider, "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize LLM generator")
@@ -150,33 +141,3 @@ func main() {
 	}
 }
 
-// newGenerator instantiates an llm.Generator from the given LLMConfig.
-func newGenerator(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logger) (llm.Generator, error) {
-	timeout := cfg.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
-	}
-
-	v := validator.New()
-	m := mold.New()
-	hc := &http.Client{Timeout: timeout}
-
-	switch cfg.Provider {
-	case "gemini":
-		return gemini.New(ctx, logger, infra.Tracer(), v, m, hc, gemini.Config{
-			APIKey:  cfg.Key,
-			Timeout: timeout,
-		})
-	case "openai":
-		return openai.New(ctx, logger, infra.Tracer(), v, m, hc, openai.Config{
-			APIKey:  cfg.Key,
-			Timeout: timeout,
-		})
-	case "ollama":
-		return ollama.New(ctx, logger, infra.Tracer(), v, m, hc, ollama.Config{
-			Timeout: timeout,
-		})
-	default:
-		return nil, fmt.Errorf("unsupported LLM provider: %s", cfg.Provider)
-	}
-}

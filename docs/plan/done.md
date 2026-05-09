@@ -121,6 +121,53 @@ Phase A of Immediate Next Steps #11 — `ArticleParser` removal + tests for kept
 * [x] Add `internal/collector/transformer/noop_test.go`: identity behavior on empty / large / nil inputs
 * [x] Run coverage → `parser` 36.4% → 79.5%, `parser/llm` 0% → 95.6%, `transformer` 75% → 100%; 149 tests passing across `internal/collector/...`
 
+## Phase 2.9 — LLM Fallback Parser (2026-05)
+
+Phase B of Immediate Next Steps #11. LLM-backed `collector.Parser` activates via a global `fallback:` block in `parsers.yaml`; provider config sits in the same yaml so the operator sees the choice in one place (no hidden flag/env state). API key arrives via `key_file` path, mirroring `PostgresConfig.PasswordFile` / `ValkeyConfig.PasswordFile`.
+
+```yaml
+# parsers.yaml
+fallback:
+  enable: true
+  prompt_file: /app/assets/prompts/collector/article_parser.md
+  llm:
+    provider: gemini      # gemini | openai | ollama
+    model: gemini-2.0-flash
+    key_file: /run/secrets/llm_key
+    timeout: 30s
+parsers:
+  www.example.com: { ... }
+```
+
+The system instruction lives in `assets/prompts/collector/article_parser.md` (already shipped) and is loaded at startup via `parserconfig.LoadFallbackPrompt`. Keeping the prompt out of the binary lets operators iterate on extraction quality without rebuilding worker images.
+
+Plumbing:
+
+* [x] `internal/collector/parser/llm/parser.go` — `Parser` (`collector.Parser` impl) using `llm.Generator` + `ParserConfigJSONSchema`. Constructor takes the system instruction as a parameter (loaded from `assets/prompts/collector/article_parser.md` at startup) so prompt iteration does not require a rebuild. Tests use a stub generator returning canned JSON; nil-generator / nil-logger / empty-prompt constructor checks; generator-error and decode-error paths covered.
+* [x] `internal/collector/parser/llm/schema.go` — `ParserConfigJSONSchema` was reusing one `*jsonschema.Schema` pointer across multiple property paths, which violates the validator's tree requirement (`schemas at <anonymous schema> do not form a tree`). Replaced with a `newTargetNodeSchema()` factory so each property path gets a fresh subschema. Latent bug — only surfaced once the schema was actually run through `DecodeJsonSchema`.
+* [x] `internal/collector/parser/registry.go` — `NewRegistry` accepts an optional fallback parser. `Parse` routes host-miss to fallback (info log) when set; `ErrNoMatchingParser` when not (existing behavior). Registry tests cover both fallback-used and fallback-not-invoked-on-host-match paths.
+* [x] `internal/collector/parser/config/config.go` — added `FallbackConfig{Enable bool; PromptFile string; LLM appconfig.LLMConfig}` and `Config.Fallback`. `LoadConfig` requires `prompt_file` when `Enable=true`, runs `cfg.Fallback.LLM.ResolveSecrets()`, and validates the LLM block only when `Enable=true` — disabled fallback does not require dummy provider/model/key fields. Helper `LoadFallbackPrompt(cfg)` reads the prompt file and trims trailing whitespace.
+* [x] `internal/collector/parser/config/factory.go` — `BuildRegistry` signature gains `llmFactory LLMFactory` (a `func() (collector.Parser, error)` so the config package stays free of an `llm` import). When `cfg.Fallback.Enable && llmFactory != nil`, the factory result is wired into the registry as the host-miss fallback. When `Enable=true` but factory is nil, `ErrFallbackEnabledNoFactory` — a guard that fires before any HTTP traffic.
+
+Provider wiring:
+
+* [x] `internal/appconfig/llm.go` — added `KeyFile string` (yaml: `key_file`, mapstructure: `key-file`); `ResolveSecrets()` reads `KeyFile` and overrides `Key`; `String()` and `LogValue()` redact the API key. YAML tags added alongside existing mapstructure tags so the same `LLMConfig` can be loaded via direct yaml.v3 decoding (when embedded under `fallback.llm:` in parsers.yaml) or via viper (when bound to `--llm-*` flags). `validate:"required"` dropped from `Key` since `KeyFile` is the alternative path.
+* [x] `internal/llm/factory/factory.go` (new subpackage) — `NewGenerator(ctx, cfg, logger) → llm.Generator` promoted from `cmd/worker/planner/main.go` so collector / recover / parse-probe share one provider-construction path. Subpackage avoids the `internal/llm` ↔ `internal/llm/{gemini,openai,ollama}` import cycle that would arise if the helper lived in the parent package.
+* [x] `cmd/worker/planner/main.go` — replaced local `newGenerator` with `llmfactory.NewGenerator`; pruned unused imports.
+* [x] `cmd/worker/collector/main.go` — when `cfg.Fallback.Enable`, builds generator via `llmfactory.NewGenerator`, builds factory `func() (collector.Parser, error) { return parserllm.NewParser(gen, logger, model) }`, passes to `BuildRegistry`. Logs the active provider/model at startup.
+* [x] `cmd/recover/main.go` — same pattern (uses noop tracer).
+* [x] `cmd/dev/parse-probe/main.go` — same pattern; `--all-parsers` mode includes `__llm__` in the result map when fallback is enabled.
+
+Tests added:
+
+* [x] `internal/appconfig/llm_test.go` — secret-leak guard (fmt verbs + slog.Any redact); `ResolveSecrets` reads from file, no-file leaves `Key` intact, missing-file returns error.
+* [x] `internal/collector/parser/config/config_test.go` — `LoadConfig` with `fallback.enable=true` resolves `key_file`, missing provider triggers validation error, fallback disabled skips LLM validation.
+* [x] `internal/llm/factory/factory_test.go` — unsupported-provider error path (real-provider construction lives in per-provider unit tests).
+
+`docs/plan/spec.md` §6 — LLM dual-role entry covers parse-time fallback + config-snippet generator, global `fallback.enable` activation, no-automatic-promotion workflow, v1 HTML-shape input assumption, and the deliberate non-support of per-host overrides.
+
+`go test -short ./...` = full suite green except the pre-existing `internal/collector/archiver` SeaweedFS testcontainer flake (Phase 5 track).
+
 ## Phase 2.9 — Layer 1 Tail Closure (2026-05)
 
 Closes the two remaining real layer-1 gaps surfaced by the post-Stage-3 coverage survey. The journal-listed dispatcher / parser-html / parser-jsonld / minifier / fetcher / model entries were already at 76–100% by the time of survey and needed no additional work; only `parser/config` (`BuildRegistry` + `LoadConfig`) and `internal/message` (Watermill publisher path) were genuinely uncovered.

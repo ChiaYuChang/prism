@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -11,7 +12,23 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func BuildRegistry(cfg Config, logger *slog.Logger, tracer trace.Tracer) (*parser.Registry, error) {
+// ErrFallbackEnabledNoFactory is returned when parsers.yaml sets
+// fallback.enable=true but the caller did not supply an llmFactory. Caught
+// at startup so a misconfigured deploy fails loudly instead of silently
+// disabling fallback at runtime.
+var ErrFallbackEnabledNoFactory = errors.New("fallback enabled but no llm factory supplied")
+
+// LLMFactory builds the fallback collector.Parser used when no host-specific
+// entry matches. Returning a func keeps this package free of an llm import;
+// the call site (cmd/worker/collector / cmd/recover / parse-probe) wires
+// the actual provider. May be nil when fallback is disabled in config.
+type LLMFactory func() (collector.Parser, error)
+
+// BuildRegistry assembles a parser.Registry from the supplied config. When
+// cfg.Fallback.Enable is true and llmFactory is non-nil, the returned
+// registry routes host-miss requests to the factory-built fallback parser
+// instead of returning ErrNoMatchingParser.
+func BuildRegistry(cfg Config, logger *slog.Logger, tracer trace.Tracer, llmFactory LLMFactory) (*parser.Registry, error) {
 	parsers := make(map[string]collector.Parser)
 
 	for host, pCfg := range cfg.Parsers {
@@ -37,5 +54,17 @@ func BuildRegistry(cfg Config, logger *slog.Logger, tracer trace.Tracer) (*parse
 		}
 	}
 
-	return parser.NewRegistry(logger, tracer, parsers)
+	var fallback collector.Parser
+	if cfg.Fallback.Enable {
+		if llmFactory == nil {
+			return nil, ErrFallbackEnabledNoFactory
+		}
+		fb, err := llmFactory()
+		if err != nil {
+			return nil, fmt.Errorf("build fallback parser: %w", err)
+		}
+		fallback = fb
+	}
+
+	return parser.NewRegistry(logger, tracer, parsers, fallback)
 }

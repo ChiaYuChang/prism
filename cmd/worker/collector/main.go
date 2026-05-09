@@ -13,9 +13,11 @@ import (
 	"github.com/ChiaYuChang/prism/internal/collector/fetcher"
 	"github.com/ChiaYuChang/prism/internal/collector/minifier"
 	parserconfig "github.com/ChiaYuChang/prism/internal/collector/parser/config"
+	parserllm "github.com/ChiaYuChang/prism/internal/collector/parser/llm"
 	"github.com/ChiaYuChang/prism/internal/collector/transformer"
 	"github.com/ChiaYuChang/prism/internal/dev"
 	"github.com/ChiaYuChang/prism/internal/infra"
+	llmfactory "github.com/ChiaYuChang/prism/internal/llm/factory"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
@@ -116,7 +118,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	registry, err := parserconfig.BuildRegistry(pCfg, logger, tracer)
+	var llmFactory parserconfig.LLMFactory
+	if pCfg.Fallback.Enable {
+		if config.Prompt != "" {
+			pCfg.Fallback.PromptFile = config.Prompt
+		}
+		prompt, perr := parserconfig.LoadFallbackPrompt(pCfg.Fallback)
+		if perr != nil {
+			logger.Error("failed to load fallback prompt",
+				"path", pCfg.Fallback.PromptFile, "error", perr)
+			monitor.SetStatus(obs.LevelError, "Failed to load fallback prompt")
+			os.Exit(1)
+		}
+		gen, gerr := llmfactory.NewGenerator(ctx, pCfg.Fallback.LLM, logger)
+		if gerr != nil {
+			logger.Error("failed to initialize fallback LLM generator",
+				"provider", pCfg.Fallback.LLM.Provider, "error", gerr)
+			monitor.SetStatus(obs.LevelError, "Failed to initialize fallback LLM generator")
+			os.Exit(1)
+		}
+		model := pCfg.Fallback.LLM.Model
+		llmFactory = func() (collector.Parser, error) {
+			return parserllm.NewParser(gen, logger, model, prompt)
+		}
+		logger.Info("parser fallback enabled",
+			"provider", pCfg.Fallback.LLM.Provider, "model", model,
+			"prompt_file", pCfg.Fallback.PromptFile)
+	}
+
+	registry, err := parserconfig.BuildRegistry(pCfg, logger, tracer, llmFactory)
 	if err != nil {
 		logger.Error("failed to build parser registry", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to build parser registry")

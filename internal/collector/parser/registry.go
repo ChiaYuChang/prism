@@ -18,12 +18,17 @@ var (
 )
 
 type Registry struct {
-	logger  *slog.Logger
-	tracer  trace.Tracer
-	parsers map[string]collector.Parser
+	logger   *slog.Logger
+	tracer   trace.Tracer
+	parsers  map[string]collector.Parser
+	fallback collector.Parser
 }
 
-func NewRegistry(logger *slog.Logger, tracer trace.Tracer, parsers map[string]collector.Parser) (*Registry, error) {
+// NewRegistry builds a per-host parser registry. fallback is optional; when
+// non-nil, Parse routes host-miss requests to it (with an info log) instead
+// of returning ErrNoMatchingParser. Wire fallback from config.BuildRegistry
+// — global fallback.enable in parsers.yaml.
+func NewRegistry(logger *slog.Logger, tracer trace.Tracer, parsers map[string]collector.Parser, fallback collector.Parser) (*Registry, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
@@ -37,9 +42,10 @@ func NewRegistry(logger *slog.Logger, tracer trace.Tracer, parsers map[string]co
 	}
 
 	return &Registry{
-		logger:  logger,
-		tracer:  tracer,
-		parsers: cloned,
+		logger:   logger,
+		tracer:   tracer,
+		parsers:  cloned,
+		fallback: fallback,
 	}, nil
 }
 
@@ -53,10 +59,16 @@ func (r *Registry) Parse(ctx context.Context, rawURL string, data string) (*coll
 	}
 
 	host := strings.ToLower(u.Hostname())
-	p, ok := r.parsers[host]
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrNoMatchingParser, host)
+	if p, ok := r.parsers[host]; ok {
+		r.logger.DebugContext(ctx, "using specific parser for host", slog.String("host", host))
+		return p.Parse(ctx, rawURL, data)
 	}
-	r.logger.DebugContext(ctx, "using specific parser for host", slog.String("host", host))
-	return p.Parse(ctx, rawURL, data)
+
+	if r.fallback != nil {
+		r.logger.InfoContext(ctx, "no host-specific parser; using fallback",
+			slog.String("host", host), slog.String("url", rawURL))
+		return r.fallback.Parse(ctx, rawURL, data)
+	}
+
+	return nil, fmt.Errorf("%w: %s", ErrNoMatchingParser, host)
 }
