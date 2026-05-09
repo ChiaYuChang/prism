@@ -228,9 +228,9 @@ tasks:
       VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} build scheduler-slow discovery
-        collector
+        collector prism-api fixture-server
       - docker compose -f {{.COMPOSE_MERGED}} up -d scheduler-slow scheduler-fast
-        discovery collector
+        discovery collector prism-api fixture-server
 
   compose:worker:down:
     desc: stop containerized workers (leaves infra stack running)
@@ -251,9 +251,9 @@ tasks:
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} stop scheduler-slow scheduler-fast
-        discovery collector
+        discovery collector prism-api fixture-server
       - docker compose -f {{.COMPOSE_MERGED}} rm -f scheduler-slow scheduler-fast
-        discovery collector
+        discovery collector prism-api fixture-server
 
   compose:worker:logs:
     desc: tail logs from containerized workers
@@ -473,8 +473,8 @@ tasks:
   # MODE=e2e isolates this stack from the daily 'dev' stack via
   # COMPOSE_PROJECT_NAME=prism-e2e (separate volumes / networks).
   # ----------------------------------------------------------------------------
-  test:e2e:setup:
-    desc: bring up a fresh e2e stack and seed DIRECTORY_FETCH tasks
+  test:e2e:setup:bare:
+    desc: bring up a fresh e2e stack + migrate (no seed); driver tests use this
     vars:
       MODE: e2e
       PROJECT: "{{.NAME}}-{{.MODE}}"
@@ -489,6 +489,11 @@ tasks:
       - task: compose:up
         vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
       - task: migrate:up
+
+  test:e2e:setup:
+    desc: bring up a fresh e2e stack and seed DIRECTORY_FETCH tasks (Phase 1 operator e2e)
+    cmds:
+      - task: test:e2e:setup:bare
       - task: test:e2e:seed
 
   test:e2e:seed:
@@ -516,6 +521,29 @@ tasks:
         vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
       - task: compose:clean
         vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+
+  # Phase 6 / Phase 2.7 Stage 4 — automated user-line driver.
+  # Brings up an isolated e2e stack (infra + workers + prism-api +
+  # fixture-server), seeds a candidate via the driver, exercises POST
+  # /page_fetch → terminal GET /fetches/{id}, asserts contents row.
+  # FIXTURE_BASE drives the collector's replay rewrite so no real-site
+  # traffic is generated.
+  test:e2e:page-fetch:
+    desc: Phase 6 — automated user-line driver test (Phase 2.7 Stage 4)
+    vars:
+      MODE: e2e
+      PROJECT: "{{.NAME}}-{{.MODE}}"
+    env:
+      FIXTURE_BASE: "http://fixture-server:9999"
+      PRISM_E2E_DSN: "{{.POSTGRES_URL}}"
+      PRISM_E2E_API_BASE: "http://localhost:8090"
+    cmds:
+      - task: test:e2e:setup:bare
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+      - task: compose:worker
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+      - defer: { task: test:e2e:teardown, vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" } }
+      - go test -tags=e2e -count=1 -v ./e2e/...
 
   # ----------------------------------------------------------------------------
   # Worker Lifecycle (background processes; logs in logs/<name>.log).

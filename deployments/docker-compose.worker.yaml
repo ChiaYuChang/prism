@@ -96,6 +96,9 @@ services:
       - --nats-host=nats
       - --nats-port=4222
       - --scout-config=/app/configs/scouts.yaml
+      # Same FIXTURE_BASE pattern as collector — empty default = real-site
+      # fetch; set to http://fixture-server:9999 for replay (Phase 6).
+      - --fixture-base=${FIXTURE_BASE:-}
       - --pg-host=postgres
       - --pg-port=5432
       - --pg-username=${POSTGRES_APP_USER:-prism}
@@ -127,6 +130,10 @@ services:
       - --nats-port=4222
       - --parsers-config=/app/configs/parsers.yaml
       - --archive=file:///app/archives
+      # FIXTURE_BASE is unset for normal real-site operation; the empty
+      # value is a passthrough in dev.WrapClientReplay. Set to
+      # http://fixture-server:9999 for e2e replay (Phase 6).
+      - --fixture-base=${FIXTURE_BASE:-}
       - --pg-host=postgres
       - --pg-port=5432
       - --pg-username=${POSTGRES_APP_USER:-prism}
@@ -143,6 +150,69 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      fixture-server:
+        condition: service_started
+    restart: unless-stopped
+
+  # api-server — user-facing HTTP API (Phase 2.7). Stage 3 toggles
+  # (--cache-enabled, --rate-limit-enabled) are ON here so the live
+  # paths are exercised by the Phase 6 e2e driver. Burst is high enough
+  # that a 1Hz poll never trips the limiter.
+  prism-api:
+    profiles: [ worker ]
+    image: prism/api-server:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        CMD_PATH: cmd/api-server
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --port=8090
+      - --pg-host=postgres
+      - --pg-port=5432
+      - --pg-username=${POSTGRES_APP_USER:-prism}
+      - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --valkey-host=valkey
+      - --valkey-port=6379
+      - --valkey-username=${VALKEY_APP_USER:-prism}
+      - --cache-enabled
+      - --rate-limit-enabled
+      - --rate-limit-rps=100
+      - --rate-limit-burst=200
+    environment:
+      PRISM_API_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_API_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
+    ports:
+      - "8090:8090"
+    networks:
+      - prism-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # fixture-server — serves testdata/fixtures over HTTP for the e2e
+  # replay path. Idle in normal worker mode (no traffic until collector
+  # is launched with FIXTURE_BASE=http://fixture-server:9999).
+  fixture-server:
+    profiles: [ worker ]
+    image: prism/fixture-server:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        CMD_PATH: cmd/dev/fixture-server
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --addr=:9999
+      - --root=/fixtures
+    volumes:
+      - ../testdata/fixtures:/fixtures:ro
+    networks:
+      - prism-net
     restart: unless-stopped
 
 volumes:
