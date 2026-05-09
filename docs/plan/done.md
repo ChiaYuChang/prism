@@ -121,6 +121,15 @@ Phase A of Immediate Next Steps #11 — `ArticleParser` removal + tests for kept
 * [x] Add `internal/collector/transformer/noop_test.go`: identity behavior on empty / large / nil inputs
 * [x] Run coverage → `parser` 36.4% → 79.5%, `parser/llm` 0% → 95.6%, `transformer` 75% → 100%; 149 tests passing across `internal/collector/...`
 
+## Phase 2.9 — Layer 1 Tail Closure (2026-05)
+
+Closes the two remaining real layer-1 gaps surfaced by the post-Stage-3 coverage survey. The journal-listed dispatcher / parser-html / parser-jsonld / minifier / fetcher / model entries were already at 76–100% by the time of survey and needed no additional work; only `parser/config` (`BuildRegistry` + `LoadConfig`) and `internal/message` (Watermill publisher path) were genuinely uncovered.
+
+* [x] `internal/collector/parser/config/config_test.go` — `LoadConfig` happy path / file-not-found / malformed YAML; `BuildRegistry` disabled-host skipping (verified via `Registry.Parse` routing → `ErrNoMatchingParser` for the disabled host), JSONLD-composite branch, nil-logger error propagation, empty-config registry. Coverage 54.2% → 91.7%.
+* [x] `internal/message/batch_completed_test.go` — `NewWatermillBatchCompletedPublisher` nil-publisher rejection; `PublishBatchCompleted` round-trip via in-memory `gochannel.GoChannel` (asserts payload + `trace_id` metadata); publisher-error wrapping via a fake `wm.Publisher` returning a sentinel. Coverage 22.2% → 88.9%.
+
+Out of scope (still deferred): `internal/collector/archiver/s3_test.go` testcontainer flake (Phase 5 testcontainers track); LLM-fallback parser config schema (Phase 2.9 §B / Immediate Next Steps #11).
+
 ## §7 Immediate Next Steps — Items 1–10 (2026-01 → 2026-04)
 
 1. Centralize domain enum constants into `internal/repo/constants.go`.
