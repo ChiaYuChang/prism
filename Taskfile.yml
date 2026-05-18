@@ -23,6 +23,7 @@ dotenv:
 
 env:
   POSTGRES_DATABASE: "{{.POSTGRES_APP_DB}}"
+  MIGRATE: "go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.3"
   POSTGRES_USER: "{{.POSTGRES_APP_USER}}"
   POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
 
@@ -344,25 +345,24 @@ tasks:
   migrate:up:
     desc: run database migration
     cmds:
-      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" up
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" up'
 
   migrate:down:
     desc: rollback last migration
     cmds:
-      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down 1
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down 1'
 
   migrate:clean:
     desc: rollback last migration
     cmds:
-      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down'
 
   migrate:force:
     desc: Force a migration version (use with caution!)
     vars:
       VERSION: "{{.VERSION}}"
     cmds:
-      - migrate -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" force
-        {{.VERSION}}
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" force {{.VERSION}}'
 
   migrate:create:
     desc: create new migration file (NAME=xxx)
