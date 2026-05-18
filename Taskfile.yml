@@ -437,7 +437,8 @@ tasks:
     cmds:
       - task: build:scheduler
       - task: build:discovery
-      - task: build:pipeline
+      - task: build:collector
+      - task: build:planner
       - task: build:batch-detector
       - task: build:batch-publisher
 
@@ -452,10 +453,9 @@ tasks:
     cmds:
       - go build -o {{.BUILD_DIR}}/collector ./{{.CMD_DIR}}/worker/collector
 
-  build:pipeline:
+  build:planner:
     cmds:
-      - go build -o {{.BUILD_DIR}}/pipeline
-        ./{{.CMD_DIR}}/pipeline-worker/main.go
+      - go build -o {{.BUILD_DIR}}/planner ./{{.CMD_DIR}}/worker/planner
 
   build:batch-detector:
     cmds:
