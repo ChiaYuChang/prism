@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -50,6 +52,9 @@ func TestMain(m *testing.M) {
 	}
 
 	testEndpoint = fmt.Sprintf("http://localhost:%s", mappedPort.Port())
+	if err := waitForS3Endpoint(ctx, testEndpoint, 4); err != nil {
+		panic(fmt.Sprintf("seaweedfs s3 endpoint not ready at %s: %s", testEndpoint, err))
+	}
 
 	// Create the test bucket before running tests.
 	// SeaweedFS in test mode doesn't strictly check credentials unless configured.
@@ -61,10 +66,7 @@ func TestMain(m *testing.M) {
 		o.BaseEndpoint = aws.String(testEndpoint)
 		o.UsePathStyle = true
 	})
-	_, err = client.CreateBucket(ctx, &s3.CreateBucketInput{
-		Bucket: aws.String(testBucket),
-	})
-	if err != nil {
+	if err := createBucketWithRetry(ctx, client, testBucket, 4); err != nil {
 		panic(fmt.Sprintf("failed to create test bucket %s: %s", testBucket, err))
 	}
 
@@ -77,6 +79,33 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+func waitForS3Endpoint(ctx context.Context, endpoint string, maxFailures int) error {
+	client := &http.Client{Timeout: 2 * time.Second}
+	return testutils.WithExponentialBackoff(ctx, maxFailures, 2*time.Second, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return err
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		return nil
+	})
+}
+
+func createBucketWithRetry(ctx context.Context, client *s3.Client, bucket string, maxFailures int) error {
+	return testutils.WithExponentialBackoff(ctx, maxFailures, 2*time.Second, func() error {
+		_, err := client.CreateBucket(ctx, &s3.CreateBucketInput{
+			Bucket: aws.String(bucket),
+		})
+		return err
+	})
 }
 
 func newTestS3Client(t *testing.T) *s3.Client {
