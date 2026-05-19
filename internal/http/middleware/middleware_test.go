@@ -47,6 +47,68 @@ func TestRequestID_PropagatesInboundHeader(t *testing.T) {
 	assert.Equal(t, inbound, rec.Header().Get(middleware.RequestIDHeader))
 }
 
+func TestTokenAuth_AllowsMatchingToken(t *testing.T) {
+	called := false
+	h := middleware.TokenAuth("secret-token")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set(middleware.TokenAuthHeader, "secret-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.True(t, called)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestTokenAuth_RejectsMissingToken(t *testing.T) {
+	called := false
+	h := middleware.TokenAuth("secret-token")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.False(t, called)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestTokenAuth_RejectsWrongToken(t *testing.T) {
+	called := false
+	h := middleware.TokenAuth("secret-token")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set(middleware.TokenAuthHeader, "wrong-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.False(t, called)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestTokenAuth_EmptyTokenNoops(t *testing.T) {
+	called := false
+	h := middleware.TokenAuth("")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.True(t, called)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
 func TestRecoverer_ConvertsPanicTo500(t *testing.T) {
 	h := middleware.Recoverer(discardLogger())(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("boom")

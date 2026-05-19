@@ -4,6 +4,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -24,6 +25,10 @@ const (
 // RequestIDHeader is the HTTP header that carries the request identifier.
 // Clients may supply one; otherwise the middleware generates a UUIDv7.
 const RequestIDHeader = "X-Request-Id"
+
+// TokenAuthHeader is the HTTP header used by operator clients to authenticate
+// to protected API routes.
+const TokenAuthHeader = "X-PRISM-TOKEN"
 
 // Middleware is a decorator applied to http.Handler.
 type Middleware func(http.Handler) http.Handler
@@ -63,6 +68,28 @@ func RequestID() Middleware {
 func RequestIDFromContext(ctx context.Context) string {
 	id, _ := ctx.Value(ctxKeyRequestID).(string)
 	return id
+}
+
+// TokenAuth requires callers to provide TokenAuthHeader with the configured
+// token. Empty configured token disables the check so callers can compose it
+// unconditionally while auth configuration is still optional.
+func TokenAuth(token string) Middleware {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return func(next http.Handler) http.Handler { return next }
+	}
+	expected := []byte(token)
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got := []byte(r.Header.Get(TokenAuthHeader))
+			if subtle.ConstantTimeCompare(got, expected) != 1 {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // statusRecorder captures the response status code for logging.
