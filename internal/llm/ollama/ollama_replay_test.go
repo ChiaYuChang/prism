@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -41,6 +42,36 @@ func newReplayProvider(t *testing.T, ctx context.Context, c cassette) *ollama.Pr
 	})
 	require.NoError(t, err)
 	return p
+}
+
+type captureURLTransport struct {
+	c   cassette
+	url *url.URL
+}
+
+func (t *captureURLTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.url = req.URL
+	return (&replayTransport{c: t.c}).RoundTrip(req)
+}
+
+func TestOllamaNew_DefaultsEmptyBaseURL(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tracer := noop.NewTracerProvider().Tracer("ollama-replay")
+	transport := &captureURLTransport{c: loadCassette(t, "generate_text")}
+	hc := &http.Client{Timeout: 5 * time.Second, Transport: transport}
+	p, err := ollama.New(ctx, logger, tracer, validator.New(), mold.New(), hc, ollama.Config{})
+	require.NoError(t, err)
+
+	_, err = p.Generate(ctx, &llm.GenerateRequest{
+		Model:  "gemma-4-E4B-it:Q4_K_M",
+		Prompt: "Say hi.",
+		Format: llm.ResponseFormatText,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "http", transport.url.Scheme)
+	require.Equal(t, "localhost:11434", transport.url.Host)
 }
 
 func TestOllamaReplay_GenerateText(t *testing.T) {

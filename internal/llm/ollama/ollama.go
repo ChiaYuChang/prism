@@ -20,6 +20,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const defaultBaseURL = "http://localhost:11434"
+
 // Config holds Ollama-specific configuration (Pure Data).
 type Config struct {
 	BaseURL    string            `json:"base_url"    mod:"trim,default=http://localhost:11434" validate:"omitempty,url"`
@@ -68,6 +70,12 @@ func New(ctx context.Context, l *slog.Logger, t trace.Tracer, v *validator.Valid
 
 	if c == nil {
 		c = &http.Client{Timeout: cfg.Timeout}
+	}
+	if cfg.BaseURL == "" {
+		if l != nil {
+			l.WarnContext(ctx, "ollama base URL empty; using default", "base_url", defaultBaseURL)
+		}
+		cfg.BaseURL = defaultBaseURL
 	}
 
 	// 3. Inject custom headers via transport wrapping if provided

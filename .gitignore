@@ -64,7 +64,7 @@ CLAUDE.md
 .claude
 .task/*
 build/ok*
-.mcp.json
+opencode.json
 .venv/*
 .python-version
 pyproject.toml
