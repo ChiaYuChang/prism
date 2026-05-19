@@ -144,8 +144,10 @@ func (h *Handler) process(ctx context.Context, logger *slog.Logger, sig message.
 			switch stageErr.Stage {
 			case collector.PipelineStageMinify:
 				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err, archiver.PayloadKindRaw, collector.PipelineStageMinify)
-			case collector.PipelineStageTransform, collector.PipelineStageParse:
-				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err, archiver.PayloadKindMinified, stageErr.Stage)
+			case collector.PipelineStageTransform:
+				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err, archiver.PayloadKindMinified, collector.PipelineStageTransform)
+			case collector.PipelineStageParse:
+				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err, archiver.PayloadKindCanonical, collector.PipelineStageParse)
 			}
 		}
 		return fmt.Errorf("dispatch %s: %w", sig.URL, err)
