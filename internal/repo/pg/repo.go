@@ -56,6 +56,16 @@ type PGUserFetches struct {
 	q *Queries
 }
 
+var _ repo.Repository = (*PGRepository)(nil)
+var _ repo.Scheduler = (*PGScheduler)(nil)
+var _ repo.Scout = (*PGScout)(nil)
+var _ repo.Tasks = (*PGTasks)(nil)
+var _ repo.Pipeline = (*PGPipeline)(nil)
+var _ repo.Embeddings = (*PGEmbeddings)(nil)
+var _ repo.Analysis = (*PGAnalysis)(nil)
+var _ repo.BatchTrigger = (*PGBatchTrigger)(nil)
+var _ repo.UserFetches = (*PGUserFetches)(nil)
+
 // Repository root getters.
 func (r *PGRepository) Scheduler() repo.Scheduler {
 	return &PGScheduler{q: r.q}
@@ -186,14 +196,7 @@ func (r *PGScout) GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]re
 }
 
 func (r *PGScout) ListCandidates(ctx context.Context, arg repo.ListCandidatesParams) ([]repo.Candidate, error) {
-	rows, err := r.q.ListCandidates(ctx, ListCandidatesParams{
-		Query:      pgconv.StringPtrToPgText(arg.Query),
-		SourceAbbr: pgconv.StringPtrToPgText(arg.SourceAbbr),
-		Since:      pgconv.TimePtrToPgTimestamptz(arg.Since),
-		Until:      pgconv.TimePtrToPgTimestamptz(arg.Until),
-		Lim:        arg.Limit,
-		Off:        arg.Offset,
-	})
+	rows, err := r.q.ListCandidates(ctx, repoListCandidatesParamsToDB(arg))
 	if err != nil {
 		return nil, err
 	}
@@ -276,28 +279,11 @@ func (r *PGTasks) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 }
 
 func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
-	if err := r.q.EnsureBatchExists(ctx, EnsureBatchExistsParams{
-		ID:         arg.BatchID,
-		SourceType: SourceType(arg.SourceType),
-		TraceID:    pgconv.StringPtrToPgText(&arg.TraceID),
-	}); err != nil {
+	if err := r.q.EnsureBatchExists(ctx, repoCreateTaskParamsToEnsureBatchExists(arg)); err != nil {
 		return repo.Task{}, fmt.Errorf("ensure batch %s exists: %w", arg.BatchID, err)
 	}
 
-	row, err := r.q.CreateTask(ctx, CreateTaskParams{
-		BatchID:     arg.BatchID,
-		Kind:        TaskKind(arg.Kind),
-		SourceType:  SourceType(arg.SourceType),
-		SourceAbbr:  arg.SourceAbbr,
-		Url:         arg.URL,
-		Payload:     arg.Payload,
-		PayloadHash: pgconv.StringPtrToPgText(arg.PayloadHash),
-		Meta:        arg.Meta,
-		TraceID:     arg.TraceID,
-		Frequency:   pgconv.DurationPtrToPgInterval(arg.Frequency),
-		NextRunAt:   pgconv.TimePtrToPgTimestamptz(arg.NextRunAt),
-		ExpiresAt:   pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
-	})
+	row, err := r.q.CreateTask(ctx, repoCreateTaskParamsToDB(arg))
 	if err != nil {
 		// Zero rows = conflict at insert AND no PENDING/RUNNING row by SELECT
 		// time. Race window where the colliding task transitioned to terminal
@@ -317,12 +303,7 @@ func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (re
 }
 
 func (r *PGTasks) ExtendActiveTaskExpiry(ctx context.Context, arg repo.ExtendActiveTaskExpiryParams) error {
-	return r.q.ExtendActiveTaskExpiry(ctx, ExtendActiveTaskExpiryParams{
-		SourceAbbr:  arg.SourceAbbr,
-		Kind:        TaskKind(arg.Kind),
-		PayloadHash: pgconv.StringPtrToPgText(&arg.PayloadHash),
-		ExpiresAt:   pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
-	})
+	return r.q.ExtendActiveTaskExpiry(ctx, repoExtendActiveTaskExpiryParamsToDB(arg))
 }
 
 // Pipeline repository.
@@ -351,20 +332,7 @@ func (r *PGPipeline) GetContentByCandidateID(ctx context.Context, candidateID uu
 }
 
 func (r *PGPipeline) CreateContent(ctx context.Context, arg repo.CreateContentParams) (repo.Content, error) {
-	row, err := r.q.CreateContent(ctx, CreateContentParams{
-		BatchID:     pgconv.UUIDToPgUUID(arg.BatchID),
-		Type:        ContentType(arg.Type),
-		SourceAbbr:  arg.SourceAbbr,
-		CandidateID: pgconv.UUIDToPgUUID(arg.CandidateID),
-		Url:         arg.URL,
-		Title:       arg.Title,
-		Content:     arg.Content,
-		Author:      pgconv.StringPtrToPgText(arg.Author),
-		TraceID:     arg.TraceID,
-		PublishedAt: pgconv.TimePtrToPgTimestamptz(&arg.PublishedAt),
-		FetchedAt:   pgconv.TimePtrToPgTimestamptz(&arg.FetchedAt),
-		Metadata:    arg.Metadata,
-	})
+	row, err := r.q.CreateContent(ctx, repoCreateContentParamsToDB(arg))
 	if err != nil {
 		return repo.Content{}, err
 	}
@@ -372,12 +340,7 @@ func (r *PGPipeline) CreateContent(ctx context.Context, arg repo.CreateContentPa
 }
 
 func (r *PGPipeline) UpdateContentMetadata(ctx context.Context, arg repo.UpdateContentMetadataParams) (repo.Content, error) {
-	row, err := r.q.UpdateContentMetadata(ctx, UpdateContentMetadataParams{
-		Author:      pgconv.StringPtrToPgText(arg.Author),
-		PublishedAt: pgconv.TimePtrToPgTimestamptz(arg.PublishedAt),
-		Metadata:    arg.Metadata,
-		ID:          arg.ID,
-	})
+	row, err := r.q.UpdateContentMetadata(ctx, repoUpdateContentMetadataParamsToDB(arg))
 	if err != nil {
 		return repo.Content{}, err
 	}
