@@ -7,11 +7,13 @@
 // fetches/fetch_items, scheduler PAGE_FETCH, collector, archiver).
 //
 // Required env:
-//   PRISM_E2E_DSN       — Postgres DSN reaching the running e2e stack.
-//   PRISM_E2E_API_BASE  — api-server base URL (default http://localhost:8090).
+//
+//	PRISM_E2E_DSN       — Postgres DSN reaching the running e2e stack.
+//	PRISM_E2E_API_BASE  — api-server base URL (default http://localhost:8090).
 //
 // Run:
-//   go test -tags=e2e -count=1 -v ./e2e/...
+//
+//	go test -tags=e2e -count=1 -v ./e2e/...
 package e2e
 
 import (
@@ -66,11 +68,11 @@ func TestPageFetch_HappyPath_e2e(t *testing.T) {
 	if final.Total != 1 {
 		t.Errorf("total: got=%d want=1", final.Total)
 	}
-	if final.Failed != 0 {
-		t.Errorf("failed: got=%d want=0", final.Failed)
+	if final.Failed.Count != 0 {
+		t.Errorf("failed: got=%d want=0", final.Failed.Count)
 	}
-	if final.Completed+final.AlreadyComplete != 1 {
-		t.Errorf("completed+already_complete: got=%d want=1", final.Completed+final.AlreadyComplete)
+	if final.Completed.Count+final.AlreadyComplete.Count != 1 {
+		t.Errorf("completed+already_complete: got=%d want=1", final.Completed.Count+final.AlreadyComplete.Count)
 	}
 
 	assertContent(ctx, t, pool, candidateID)

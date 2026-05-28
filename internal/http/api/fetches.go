@@ -15,14 +15,20 @@ import (
 // originating POST never appear here. Aggregation uses
 // COALESCE(snapshot_status, tasks.status) per item.
 type FetchProgressResponse struct {
-	FetchID         uuid.UUID `json:"fetch_id"`
-	Total           int64     `json:"total"`
-	Pending         int64     `json:"pending"`
-	Running         int64     `json:"running"`
-	Completed       int64     `json:"completed"`
-	Failed          int64     `json:"failed"`
-	AlreadyComplete int64     `json:"already_complete"`
-	Terminal        bool      `json:"terminal"`
+	FetchID         uuid.UUID           `json:"fetch_id"`
+	Total           int64               `json:"total"`
+	Pending         FetchProgressStatus `json:"pending"`
+	Running         FetchProgressStatus `json:"running"`
+	Completed       FetchProgressStatus `json:"completed"`
+	Failed          FetchProgressStatus `json:"failed"`
+	AlreadyComplete FetchProgressStatus `json:"already_complete"`
+	Terminal        bool                `json:"terminal"`
+}
+
+// FetchProgressStatus groups candidate IDs for one resolved fetch status.
+type FetchProgressStatus struct {
+	Count        int         `json:"count"`
+	CandidateIDs []uuid.UUID `json:"candidate_ids"`
 }
 
 // GetFetch handles GET /api/v1/fetches/{id}.
@@ -79,11 +85,11 @@ func (s *Server) GetFetch(w http.ResponseWriter, r *http.Request) {
 	resp := FetchProgressResponse{
 		FetchID:         fetchID,
 		Total:           progress.Total,
-		Pending:         progress.Pending,
-		Running:         progress.Running,
-		Completed:       progress.Completed,
-		Failed:          progress.Failed,
-		AlreadyComplete: progress.AlreadyComplete,
+		Pending:         fetchProgressStatus(progress.PendingCandidateIDs),
+		Running:         fetchProgressStatus(progress.RunningCandidateIDs),
+		Completed:       fetchProgressStatus(progress.CompletedCandidateIDs),
+		Failed:          fetchProgressStatus(progress.FailedCandidateIDs),
+		AlreadyComplete: fetchProgressStatus(progress.AlreadyCompleteCandidateIDs),
 		Terminal:        progress.Terminal,
 	}
 	if err := s.Cache.Set(ctx, fetchID, resp); err != nil {
@@ -91,4 +97,11 @@ func (s *Server) GetFetch(w http.ResponseWriter, r *http.Request) {
 			slog.String("fetch_id", fetchID.String()), slog.Any("error", err))
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func fetchProgressStatus(candidateIDs []uuid.UUID) FetchProgressStatus {
+	if candidateIDs == nil {
+		candidateIDs = []uuid.UUID{}
+	}
+	return FetchProgressStatus{Count: len(candidateIDs), CandidateIDs: candidateIDs}
 }

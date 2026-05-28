@@ -38,26 +38,46 @@ ORDER BY i.created_at ASC;
 
 -- name: GetUserFetchProgress :one
 -- Aggregates item status using COALESCE(snapshot_status, tasks.status).
--- Returns counters plus a derived `terminal` flag (all items in COMPLETED /
--- FAILED / ALREADY_COMPLETE).
+-- Returns candidate IDs grouped by status plus a derived `terminal` flag (all
+-- items in COMPLETED / FAILED / ALREADY_COMPLETE).
 WITH resolved AS (
     SELECT
+        i.candidate_id,
         COALESCE(i.snapshot_status, t.status::text) AS status
     FROM fetch_items i
     LEFT JOIN tasks t ON t.id = i.task_id
     WHERE i.fetch_id = $1
 )
 SELECT
-    COUNT(*)                                                                   AS total,
-    COUNT(*) FILTER (WHERE status = 'PENDING')                                 AS pending,
-    COUNT(*) FILTER (WHERE status = 'RUNNING')                                 AS running,
-    COUNT(*) FILTER (WHERE status = 'COMPLETED')                               AS completed,
-    COUNT(*) FILTER (WHERE status = 'FAILED')                                  AS failed,
-    COUNT(*) FILTER (WHERE status = 'ALREADY_COMPLETE')                        AS already_complete,
-    (COUNT(*) > 0 AND COUNT(*) FILTER (
+    (SELECT COUNT(*) FROM resolved)                                            AS total,
+    ARRAY(
+        SELECT candidate_id FROM resolved
+        WHERE status = 'PENDING'
+        ORDER BY candidate_id
+    )::uuid[]                                                                  AS pending_candidate_ids,
+    ARRAY(
+        SELECT candidate_id FROM resolved
+        WHERE status = 'RUNNING'
+        ORDER BY candidate_id
+    )::uuid[]                                                                  AS running_candidate_ids,
+    ARRAY(
+        SELECT candidate_id FROM resolved
+        WHERE status = 'COMPLETED'
+        ORDER BY candidate_id
+    )::uuid[]                                                                  AS completed_candidate_ids,
+    ARRAY(
+        SELECT candidate_id FROM resolved
+        WHERE status = 'FAILED'
+        ORDER BY candidate_id
+    )::uuid[]                                                                  AS failed_candidate_ids,
+    ARRAY(
+        SELECT candidate_id FROM resolved
+        WHERE status = 'ALREADY_COMPLETE'
+        ORDER BY candidate_id
+    )::uuid[]                                                                  AS already_complete_candidate_ids,
+    ((SELECT COUNT(*) FROM resolved) > 0 AND (SELECT COUNT(*) FROM resolved
         WHERE status IN ('COMPLETED', 'FAILED', 'ALREADY_COMPLETE')
-    ) = COUNT(*))                                                              AS terminal
-FROM resolved;
+    ) = (SELECT COUNT(*) FROM resolved))                                        AS terminal;
 
 -- name: MarkUserFetchCompleted :exec
 -- Sets completed_at on transition to terminal. Idempotent (WHERE clause
@@ -67,4 +87,3 @@ UPDATE fetches
 SET completed_at = NOW()
 WHERE id = $1
   AND completed_at IS NULL;
-

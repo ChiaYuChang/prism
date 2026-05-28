@@ -355,27 +355,41 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "already_complete": {
-                    "type": "integer"
+                    "$ref": "#/definitions/api.FetchProgressStatus"
                 },
                 "completed": {
-                    "type": "integer"
+                    "$ref": "#/definitions/api.FetchProgressStatus"
                 },
                 "failed": {
-                    "type": "integer"
+                    "$ref": "#/definitions/api.FetchProgressStatus"
                 },
                 "fetch_id": {
                     "type": "string"
                 },
                 "pending": {
-                    "type": "integer"
+                    "$ref": "#/definitions/api.FetchProgressStatus"
                 },
                 "running": {
-                    "type": "integer"
+                    "$ref": "#/definitions/api.FetchProgressStatus"
                 },
                 "terminal": {
                     "type": "boolean"
                 },
                 "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.FetchProgressStatus": {
+            "type": "object",
+            "properties": {
+                "candidate_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "count": {
                     "type": "integer"
                 }
             }

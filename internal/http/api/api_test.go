@@ -286,11 +286,18 @@ func TestGetFetch_HappyPath(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	fetchID := uuid.Must(uuid.NewV7())
+	runningID := uuid.Must(uuid.NewV7())
+	completedID := uuid.Must(uuid.NewV7())
+	alreadyCompleteID := uuid.Must(uuid.NewV7())
 	m.userFetches.EXPECT().Get(mock.Anything, fetchID).
 		Return(repo.UserFetch{ID: fetchID}, nil).Once()
 	m.userFetches.EXPECT().GetProgress(mock.Anything, fetchID).
 		Return(repo.UserFetchProgress{
-			Total: 3, Completed: 1, Running: 1, AlreadyComplete: 1, Terminal: false,
+			Total:                       3,
+			RunningCandidateIDs:         []uuid.UUID{runningID},
+			CompletedCandidateIDs:       []uuid.UUID{completedID},
+			AlreadyCompleteCandidateIDs: []uuid.UUID{alreadyCompleteID},
+			Terminal:                    false,
 		}, nil).Once()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/fetches/"+fetchID.String(), nil)
@@ -303,9 +310,12 @@ func TestGetFetch_HappyPath(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 	require.Equal(t, fetchID, resp.FetchID)
 	require.EqualValues(t, 3, resp.Total)
-	require.EqualValues(t, 1, resp.Completed)
-	require.EqualValues(t, 1, resp.Running)
-	require.EqualValues(t, 1, resp.AlreadyComplete)
+	require.EqualValues(t, 1, resp.Completed.Count)
+	require.Equal(t, []uuid.UUID{completedID}, resp.Completed.CandidateIDs)
+	require.EqualValues(t, 1, resp.Running.Count)
+	require.Equal(t, []uuid.UUID{runningID}, resp.Running.CandidateIDs)
+	require.EqualValues(t, 1, resp.AlreadyComplete.Count)
+	require.Equal(t, []uuid.UUID{alreadyCompleteID}, resp.AlreadyComplete.CandidateIDs)
 	require.False(t, resp.Terminal)
 }
 
@@ -343,9 +353,18 @@ func TestGetFetch_CacheHit_ShortCircuitsRepo(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	fetchID := uuid.Must(uuid.NewV7())
+	completedIDs := []uuid.UUID{uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())}
 	cache := &fakeProgressCache{
-		hit:  true,
-		resp: api.FetchProgressResponse{FetchID: fetchID, Total: 7, Completed: 7, Terminal: true},
+		hit: true,
+		resp: api.FetchProgressResponse{
+			FetchID: fetchID,
+			Total:   7,
+			Completed: api.FetchProgressStatus{
+				Count:        len(completedIDs),
+				CandidateIDs: completedIDs,
+			},
+			Terminal: true,
+		},
 	}
 	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches, api.WithProgressCache(cache))
 	require.NoError(t, err)
@@ -359,6 +378,8 @@ func TestGetFetch_CacheHit_ShortCircuitsRepo(t *testing.T) {
 	var body api.FetchProgressResponse
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	require.EqualValues(t, 7, body.Total)
+	require.EqualValues(t, 2, body.Completed.Count)
+	require.Equal(t, completedIDs, body.Completed.CandidateIDs)
 	require.True(t, body.Terminal)
 	require.EqualValues(t, 1, atomic.LoadInt32(&cache.gets))
 	require.EqualValues(t, 0, atomic.LoadInt32(&cache.sets))
@@ -374,10 +395,15 @@ func TestGetFetch_CacheMiss_PopulatesCache(t *testing.T) {
 	_ = srv
 
 	fetchID := uuid.Must(uuid.NewV7())
+	completedIDs := []uuid.UUID{uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())}
 	m.userFetches.EXPECT().Get(mock.Anything, fetchID).
 		Return(repo.UserFetch{ID: fetchID}, nil).Once()
 	m.userFetches.EXPECT().GetProgress(mock.Anything, fetchID).
-		Return(repo.UserFetchProgress{Total: 2, Completed: 2, Terminal: true}, nil).Once()
+		Return(repo.UserFetchProgress{
+			Total:                 2,
+			CompletedCandidateIDs: completedIDs,
+			Terminal:              true,
+		}, nil).Once()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/fetches/"+fetchID.String(), nil)
 	req.SetPathValue("id", fetchID.String())
@@ -389,6 +415,8 @@ func TestGetFetch_CacheMiss_PopulatesCache(t *testing.T) {
 	require.EqualValues(t, 1, atomic.LoadInt32(&cache.sets))
 	require.True(t, cache.last.Terminal)
 	require.EqualValues(t, 2, cache.last.Total)
+	require.EqualValues(t, 2, cache.last.Completed.Count)
+	require.Equal(t, completedIDs, cache.last.Completed.CandidateIDs)
 }
 
 func TestGetFetch_RateLimit_Returns429(t *testing.T) {

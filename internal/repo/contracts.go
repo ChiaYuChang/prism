@@ -158,15 +158,15 @@ type UserFetchItem struct {
 }
 
 // UserFetchProgress is the aggregator output for GET /api/v1/fetches/{id}.
-// Counts use COALESCE(snapshot_status, tasks.status) over items.
+// Candidate ID groups use COALESCE(snapshot_status, tasks.status) over items.
 type UserFetchProgress struct {
-	Total           int64
-	Pending         int64
-	Running         int64
-	Completed       int64
-	Failed          int64
-	AlreadyComplete int64
-	Terminal        bool
+	Total                       int64
+	PendingCandidateIDs         []uuid.UUID
+	RunningCandidateIDs         []uuid.UUID
+	CompletedCandidateIDs       []uuid.UUID
+	FailedCandidateIDs          []uuid.UUID
+	AlreadyCompleteCandidateIDs []uuid.UUID
+	Terminal                    bool
 }
 
 // UserFetchItemSnapshotAlreadyComplete is the only snapshot value used in v1.

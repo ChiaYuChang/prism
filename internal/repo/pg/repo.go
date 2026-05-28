@@ -689,13 +689,13 @@ func (r *PGUserFetches) GetProgress(ctx context.Context, fetchID uuid.UUID) (rep
 		return repo.UserFetchProgress{}, err
 	}
 	return repo.UserFetchProgress{
-		Total:           row.Total,
-		Pending:         row.Pending,
-		Running:         row.Running,
-		Completed:       row.Completed,
-		Failed:          row.Failed,
-		AlreadyComplete: row.AlreadyComplete,
-		Terminal:        row.Terminal.Bool,
+		Total:                       row.Total,
+		PendingCandidateIDs:         row.PendingCandidateIds,
+		RunningCandidateIDs:         row.RunningCandidateIds,
+		CompletedCandidateIDs:       row.CompletedCandidateIds,
+		FailedCandidateIDs:          row.FailedCandidateIds,
+		AlreadyCompleteCandidateIDs: row.AlreadyCompleteCandidateIds,
+		Terminal:                    row.Terminal.Bool,
 	}, nil
 }
 

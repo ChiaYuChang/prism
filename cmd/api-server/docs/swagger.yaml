@@ -58,20 +58,29 @@ definitions:
   api.FetchProgressResponse:
     properties:
       already_complete:
-        type: integer
+        $ref: '#/definitions/api.FetchProgressStatus'
       completed:
-        type: integer
+        $ref: '#/definitions/api.FetchProgressStatus'
       failed:
-        type: integer
+        $ref: '#/definitions/api.FetchProgressStatus'
       fetch_id:
         type: string
       pending:
-        type: integer
+        $ref: '#/definitions/api.FetchProgressStatus'
       running:
-        type: integer
+        $ref: '#/definitions/api.FetchProgressStatus'
       terminal:
         type: boolean
       total:
+        type: integer
+    type: object
+  api.FetchProgressStatus:
+    properties:
+      candidate_ids:
+        items:
+          type: string
+        type: array
+      count:
         type: integer
     type: object
   api.ListCandidatesResponse:
