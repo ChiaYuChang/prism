@@ -7,8 +7,7 @@ INSERT INTO sources (abbr, name, type, base_url) VALUES
     ('cna',   '中央通訊社',     'MEDIA', 'https://www.cna.com.tw'),
     ('pts',   '公共電視台',     'MEDIA', 'https://news.pts.org.tw'),
     ('ttv',   '台灣電視公司',   'MEDIA', 'https://www.ttv.com.tw'),
-    ('yahoo', 'Yahoo奇摩新聞', 'MEDIA', 'https://tw.news.yahoo.com'),
-    ('brave', 'Brave Search',  'MEDIA', 'https://api.search.brave.com')
+    ('yahoo', 'Yahoo奇摩新聞', 'MEDIA', 'https://tw.news.yahoo.com')
 ON CONFLICT (abbr) DO NOTHING;
 
 COMMIT;

@@ -93,7 +93,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler, err := NewHandler(logger, tracer, plan, dbRepo.Scout())
+	targets := config.Search.EnabledTargets()
+	handler, err := NewHandler(logger, tracer, plan, targets)
 	if err != nil {
 		logger.Error("failed to initialize handler", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize handler")
@@ -140,4 +141,3 @@ func main() {
 		}
 	}
 }
-

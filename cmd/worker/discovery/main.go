@@ -2,16 +2,21 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"syscall"
 
 	"github.com/ChiaYuChang/prism/internal/dev"
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	scoutconfig "github.com/ChiaYuChang/prism/internal/discovery/scout/config"
 	"github.com/ChiaYuChang/prism/internal/discovery/search/brave"
+	searchconfig "github.com/ChiaYuChang/prism/internal/discovery/search/config"
+	"github.com/ChiaYuChang/prism/internal/discovery/search/googlecse"
+	"github.com/ChiaYuChang/prism/internal/discovery/search/serpapi"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/message"
@@ -37,6 +42,10 @@ func main() {
 	}
 	if logFile != nil {
 		defer func() { _ = logFile.Close() }()
+	}
+	if err := config.Search.ResolveSecrets(logger); err != nil {
+		logger.Error("failed to resolve search provider secrets", "error", err)
+		os.Exit(1)
 	}
 
 	shutdownTracer := infra.InitAndSetTracer(TracerName)
@@ -113,13 +122,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	searchClients := buildSearchClients(config, httpClient, logger)
+	searchProviders, err := buildSearchProviders(config, httpClient, logger)
+	if err != nil {
+		logger.Error("failed to build search providers", "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to build search providers")
+		os.Exit(1)
+	}
 
 	handler, err := NewHandler(
 		logger,
 		tracer,
 		scoutRegistry,
-		searchClients,
+		searchProviders,
 		sink,
 		dbRepo.Scout(),
 		dbRepo.Scheduler(),
@@ -171,13 +185,140 @@ func main() {
 	}
 }
 
-func buildSearchClients(config *Config, httpClient *http.Client, logger *slog.Logger) map[string]discovery.SearchClient {
-	clients := map[string]discovery.SearchClient{}
+func buildSearchProviders(config *Config, httpClient *http.Client, logger *slog.Logger) (map[string]discovery.SearchClient, error) {
+	providers := map[string]discovery.SearchClient{}
 
-	if config.BraveAPIKey != "" {
-		clients["brave"] = brave.NewClient(httpClient, config.BraveAPIKey, brave.DefaultOptions())
-		logger.Info("brave search client enabled")
+	braveCfg := config.Search.Provider.Brave
+	if braveCfg.Enable {
+		if braveCfg.APIKey == "" {
+			return nil, fmt.Errorf("search provider brave api_key is missing")
+		}
+		providers["brave"] = brave.NewClient(httpClient, braveCfg.APIKey, brave.Options{
+			Count:                braveCfg.Count,
+			Offset:               braveCfg.Offset,
+			SearchLang:           braveCfg.SearchLang,
+			UILang:               braveCfg.UILang,
+			Country:              braveCfg.Country,
+			Freshness:            braveCfg.Freshness,
+			SafeSearch:           braveCfg.SafeSearch,
+			Spellcheck:           braveCfg.Spellcheck,
+			ExtraSnippets:        braveCfg.ExtraSnippets,
+			Goggles:              braveCfg.Goggles,
+			IncludeFetchMetadata: braveCfg.IncludeFetchMetadata,
+			Operators:            braveCfg.Operators,
+			APIVersion:           braveCfg.APIVersion,
+			CacheControl:         braveCfg.CacheControl,
+			UserAgent:            braveCfg.UserAgent,
+		})
+		logger.Info("search provider enabled", "provider", "brave")
 	}
 
-	return clients
+	googleCfg := config.Search.Provider.GoogleCSE
+	if googleCfg.Enable {
+		if googleCfg.APIKey == "" {
+			return nil, fmt.Errorf("search provider google-cse api_key is missing")
+		}
+		if googleCfg.CX == "" {
+			return nil, fmt.Errorf("search provider google-cse cx is missing")
+		}
+		providers["google-cse"] = googlecse.NewClient(httpClient, googleCfg.APIKey, googleCfg.CX, googlecse.Options{
+			Count:            googleCfg.Count,
+			Language:         googleCfg.Language,
+			Country:          googleCfg.Country,
+			GeoLocation:      googleCfg.GeoLocation,
+			InterfaceLang:    googleCfg.InterfaceLang,
+			DateRestrict:     googleCfg.DateRestrict,
+			ExactTerms:       googleCfg.ExactTerms,
+			ExcludeTerms:     googleCfg.ExcludeTerms,
+			OrTerms:          googleCfg.OrTerms,
+			HighQualityTerms: googleCfg.HighQualityTerms,
+			Safe:             googleCfg.Safe,
+			Sort:             googleCfg.Sort,
+			Filter:           googleCfg.Filter,
+			ChineseSearch:    googleCfg.ChineseSearch,
+		})
+		logger.Info("search provider enabled", "provider", "google-cse")
+	}
+
+	if err := addSerpAPIProviders(providers, config.Search.Provider.SerpAPI, httpClient, logger); err != nil {
+		return nil, err
+	}
+
+	return providers, nil
+}
+
+func addSerpAPIProviders(providers map[string]discovery.SearchClient, cfg searchconfig.SerpAPIConfig, httpClient *http.Client, logger *slog.Logger) error {
+	if !cfg.Enable {
+		return nil
+	}
+	if cfg.APIKey == "" && (cfg.GoogleNews.Enable || cfg.BingNews.Enable || cfg.DuckDuckGo.Enable) {
+		return fmt.Errorf("search provider serpapi api_key is missing")
+	}
+
+	if cfg.GoogleNews.Enable {
+		for _, name := range sortedKeys(cfg.GoogleNews.Params) {
+			params := cfg.GoogleNews.Params[name]
+			if !params.Enable {
+				continue
+			}
+			providerName := "serpapi-google-news-" + name
+			providers[providerName] = serpapi.NewClient(httpClient, cfg.APIKey, serpapi.Options{
+				Engine:    "google_news",
+				Country:   params.Geolocation,
+				Language:  params.HostLanguage,
+				SortOrder: params.SortOrder,
+				NoCache:   cfg.NoCache,
+			})
+			logger.Info("search provider enabled", "provider", providerName)
+		}
+	}
+	if cfg.DuckDuckGo.Enable {
+		for _, name := range sortedKeys(cfg.DuckDuckGo.Params) {
+			params := cfg.DuckDuckGo.Params[name]
+			if !params.Enable {
+				continue
+			}
+			providerName := "serpapi-duckduckgo-news-" + name
+			providers[providerName] = serpapi.NewClient(httpClient, cfg.APIKey, serpapi.Options{
+				Engine:     "duckduckgo_news",
+				Region:     params.RegionCode,
+				Safe:       fmt.Sprintf("%d", params.SafeSearch),
+				DateFilter: params.DateFilter,
+				Start:      params.PaginationStart,
+				MaxResults: params.PaginationCount,
+				NoCache:    cfg.NoCache,
+			})
+			logger.Info("search provider enabled", "provider", providerName)
+		}
+	}
+	if cfg.BingNews.Enable {
+		for _, name := range sortedKeys(cfg.BingNews.Params) {
+			params := cfg.BingNews.Params[name]
+			if !params.Enable {
+				continue
+			}
+			providerName := "serpapi-bing-news-" + name
+			providers[providerName] = serpapi.NewClient(httpClient, cfg.APIKey, serpapi.Options{
+				Engine:     "bing_news",
+				Country:    params.CountryCode,
+				Language:   params.MarketCode,
+				Safe:       params.SafeSearch,
+				Start:      params.PaginationFirst,
+				MaxResults: params.PaginationCount,
+				Filter:     params.QueryFilter,
+				NoCache:    cfg.NoCache,
+			})
+			logger.Info("search provider enabled", "provider", providerName)
+		}
+	}
+	return nil
+}
+
+func sortedKeys[T any](m map[string]T) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

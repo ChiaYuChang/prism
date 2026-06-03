@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/url"
 
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	"github.com/ChiaYuChang/prism/internal/message"
-	"github.com/ChiaYuChang/prism/internal/repo"
 	wm "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
@@ -25,10 +23,10 @@ type Handler struct {
 	logger  *slog.Logger
 	tracer  trace.Tracer
 	planner discovery.Planner
-	scout   repo.Scout
+	targets []discovery.PlannerTarget
 }
 
-func NewHandler(logger *slog.Logger, tracer trace.Tracer, planner discovery.Planner, scout repo.Scout) (*Handler, error) {
+func NewHandler(logger *slog.Logger, tracer trace.Tracer, planner discovery.Planner, targets []discovery.PlannerTarget) (*Handler, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
@@ -38,10 +36,10 @@ func NewHandler(logger *slog.Logger, tracer trace.Tracer, planner discovery.Plan
 	if planner == nil {
 		return nil, fmt.Errorf("%w: planner", ErrParamMissing)
 	}
-	if scout == nil {
-		return nil, fmt.Errorf("%w: scout_repository", ErrParamMissing)
+	if len(targets) == 0 {
+		return nil, ErrNoPlannerTargets
 	}
-	return &Handler{logger: logger, tracer: tracer, planner: planner, scout: scout}, nil
+	return &Handler{logger: logger, tracer: tracer, planner: planner, targets: targets}, nil
 }
 
 func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, error) {
@@ -83,26 +81,9 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	return true, nil
 }
 
-func (h *Handler) loadTargets(ctx context.Context) ([]discovery.PlannerTarget, error) {
-	sources, err := h.scout.ListSourcesByType(ctx, repo.SourceTypeMedia)
-	if err != nil {
-		return nil, fmt.Errorf("list media sources: %w", err)
-	}
-
-	targets := make([]discovery.PlannerTarget, 0, len(sources))
-	for _, source := range sources {
-		site := ""
-		if u, err := url.Parse(source.BaseURL); err == nil {
-			site = u.Hostname()
-		}
-		targets = append(targets, discovery.PlannerTarget{
-			SourceAbbr: source.Abbr,
-			URL:        source.BaseURL,
-			Site:     site,
-		})
-	}
-	if len(targets) == 0 {
+func (h *Handler) loadTargets(_ context.Context) ([]discovery.PlannerTarget, error) {
+	if len(h.targets) == 0 {
 		return nil, ErrNoPlannerTargets
 	}
-	return targets, nil
+	return h.targets, nil
 }

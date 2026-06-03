@@ -41,7 +41,7 @@ func TestCaptureTransport_TeesSuccessfulBodyToDisk(t *testing.T) {
 	require.Equal(t, body, saved)
 }
 
-func TestCaptureTransport_SkipsNon2xx(t *testing.T) {
+func TestCaptureTransport_TeesNon2xxBodyToDisk(t *testing.T) {
 	srv := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "nope", http.StatusNotFound)
@@ -53,11 +53,15 @@ func TestCaptureTransport_SkipsNon2xx(t *testing.T) {
 
 	resp, err := client.Get(srv.URL + "/missing")
 	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	_ = resp.Body.Close()
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 
-	entries, _ := os.ReadDir(dir)
-	require.Empty(t, entries, "no fixture should be written for non-2xx responses")
+	host := srv.Listener.Addr().String()
+	saved, err := os.ReadFile(filepath.Join(dir, host, "missing"))
+	require.NoError(t, err)
+	require.Equal(t, body, saved)
 }
 
 func TestCaptureTransport_FixturePathRules(t *testing.T) {

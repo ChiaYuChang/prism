@@ -56,7 +56,7 @@ func TestReplayTransport_QueryStringEncoded(t *testing.T) {
 	rt, _ := dev.NewReplayTransport(http.DefaultTransport, srv.URL)
 	client := &http.Client{Transport: rt}
 	_, _ = client.Get("https://api.example.com/feeds?start-index=1&max-results=10")
-	require.Equal(t, "/api.example.com/feeds__start-index-1_max-results-10", gotPath)
+	require.Equal(t, "/api.example.com/feeds__max-results-10_start-index-1", gotPath)
 }
 
 func TestNewReplayTransport_RejectsInvalidURL(t *testing.T) {

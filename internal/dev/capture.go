@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 )
 
-// CaptureTransport wraps an http.RoundTripper and tees successful response
-// bodies to <dir>/<host>/<path>.html. Used during Phase 1 of the
+// CaptureTransport wraps an http.RoundTripper and tees response bodies to
+// <dir>/<host>/<path>.html. Used during Phase 1 of the
 // integration test plan to build a local HTML fixture corpus from one
 // real-site run; subsequent phases replay against the captured fixtures
 // via fixture-server, so this transport is only ever active when the
@@ -45,10 +45,6 @@ func (t *CaptureTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	if err != nil {
 		return resp, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return resp, nil
-	}
-
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
 		return nil, readErr

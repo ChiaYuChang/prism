@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -22,9 +23,39 @@ func FixturePath(u *url.URL) string {
 	if u.RawQuery != "" {
 		ext := filepath.Ext(p)
 		base := strings.TrimSuffix(p, ext)
-		p = base + "__" + sanitizeQuery(u.RawQuery) + ext
+		p = base + "__" + sanitizeQuery(redactedQuery(u.Query())) + ext
 	}
 	return p
+}
+
+func redactedQuery(values url.Values) string {
+	if len(values) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	redacted := make(url.Values, len(values))
+	for _, key := range keys {
+		vals := append([]string(nil), values[key]...)
+		if isSensitiveQueryKey(key) {
+			vals = []string{"REDACTED"}
+		}
+		redacted[key] = vals
+	}
+	return redacted.Encode()
+}
+
+func isSensitiveQueryKey(key string) bool {
+	switch strings.ToLower(key) {
+	case "key", "api_key", "apikey", "access_token", "token":
+		return true
+	default:
+		return false
+	}
 }
 
 func sanitizeQuery(q string) string {

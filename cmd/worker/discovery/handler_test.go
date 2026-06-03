@@ -152,11 +152,11 @@ func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := &stubCandidateSink{}
 
-	searchClients := map[string]discovery.SearchClient{
+	searchProviders := map[string]discovery.SearchClient{
 		"brave": searchClient,
 	}
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, searchClients, sink, scoutRepo, scheduler)
+	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, searchProviders, sink, scoutRepo, scheduler)
 	require.NoError(t, err)
 
 	searchClient.EXPECT().
@@ -178,8 +178,8 @@ func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 		BatchID:    batchID,
 		Kind:       repo.TaskKindKeywordSearch,
 		SourceType: repo.SourceTypeMedia,
-		SourceAbbr: "brave",
-		URL:        "https://api.search.brave.com",
+		SourceAbbr: "yahoo",
+		URL:        "https://tw.news.yahoo.com",
 		Payload:    payloadBytes,
 		TraceID:    "trace-kw-123",
 	}).Marshal()
@@ -189,15 +189,16 @@ func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ack)
 	require.NotNil(t, sink.last)
-	require.Equal(t, "brave", sink.last.SourceAbbr)
+	require.Equal(t, "yahoo", sink.last.SourceAbbr)
 	require.Equal(t, repo.SourceTypeMedia, sink.last.SourceType)
 	require.Equal(t, "SEARCH", sink.last.IngestionMethod)
 	require.Equal(t, batchID, sink.last.BatchID)
 	require.Len(t, sink.last.Candidates, 2)
 	require.Equal(t, "TSMC expands", sink.last.Candidates[0].Title)
+	require.Equal(t, "brave", sink.last.Candidates[0].Metadata["search_provider"])
 }
 
-func TestHandlerHandleMessageKeywordSearchNoClient(t *testing.T) {
+func TestHandlerHandleMessageKeywordSearchNoProviders(t *testing.T) {
 	taskID := uuid.Must(uuid.NewV7())
 
 	scout := discoverymocks.NewMockScout(t)
@@ -228,6 +229,91 @@ func TestHandlerHandleMessageKeywordSearchNoClient(t *testing.T) {
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", sigPayload))
 	require.Error(t, err)
 	require.True(t, ack)
+}
+
+func TestHandlerHandleMessageKeywordSearchCompletesWhenOneProviderSucceeds(t *testing.T) {
+	taskID := uuid.Must(uuid.NewV7())
+	batchID := uuid.Must(uuid.NewV7())
+
+	scout := discoverymocks.NewMockScout(t)
+	braveClient := discoverymocks.NewMockSearchClient(t)
+	googleClient := discoverymocks.NewMockSearchClient(t)
+	scoutRepo := repomocks.NewMockScout(t)
+	scheduler := repomocks.NewMockScheduler(t)
+	sink := &stubCandidateSink{}
+
+	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, map[string]discovery.SearchClient{
+		"brave":      braveClient,
+		"google-cse": googleClient,
+	}, sink, scoutRepo, scheduler)
+	require.NoError(t, err)
+
+	braveClient.EXPECT().DiscoverNews(mock.Anything, "台灣半導體政策", "tw.news.yahoo.com").Return(nil, errors.New("rate limited"))
+	googleClient.EXPECT().DiscoverNews(mock.Anything, "台灣半導體政策", "tw.news.yahoo.com").Return([]model.Candidates{
+		{Title: "Yahoo article", URL: "https://tw.news.yahoo.com/a"},
+	}, nil)
+	scheduler.EXPECT().CompleteTask(mock.Anything, taskID).Return(nil)
+
+	payloadBytes, err := json.Marshal(planner.MediaTaskPayload{Query: "台灣半導體政策", Site: "tw.news.yahoo.com"})
+	require.NoError(t, err)
+	sigPayload, err := (&message.TaskSignal{
+		TaskID:     taskID,
+		BatchID:    batchID,
+		Kind:       repo.TaskKindKeywordSearch,
+		SourceType: repo.SourceTypeMedia,
+		SourceAbbr: "yahoo",
+		URL:        "https://tw.news.yahoo.com",
+		Payload:    payloadBytes,
+		TraceID:    "trace-kw-123",
+	}).Marshal()
+	require.NoError(t, err)
+
+	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", sigPayload))
+	require.NoError(t, err)
+	require.True(t, ack)
+	require.NotNil(t, sink.last)
+	require.Equal(t, "yahoo", sink.last.SourceAbbr)
+	require.Len(t, sink.last.Candidates, 1)
+	require.Equal(t, "google-cse", sink.last.Candidates[0].Metadata["search_provider"])
+}
+
+func TestHandlerHandleMessageDirectoryFetchMedia(t *testing.T) {
+	taskID := uuid.Must(uuid.NewV7())
+	batchID := uuid.Must(uuid.NewV7())
+
+	scout := discoverymocks.NewMockScout(t)
+	scoutRepo := repomocks.NewMockScout(t)
+	scheduler := repomocks.NewMockScheduler(t)
+	sink := &stubCandidateSink{}
+
+	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler)
+	require.NoError(t, err)
+
+	source := repo.Source{Abbr: "cna", Type: repo.SourceTypeMedia, BaseURL: "https://www.cna.com.tw"}
+	scoutRepo.EXPECT().GetSourceByAbbr(mock.Anything, "cna").Return(source, nil)
+	scout.EXPECT().Discover(mock.Anything, "https://www.cna.com.tw/rss/aipl.xml").Return([]model.Candidates{
+		{Title: "CNA article", URL: "https://www.cna.com.tw/news/aipl/1.aspx"},
+	}, nil)
+	scheduler.EXPECT().CompleteTask(mock.Anything, taskID).Return(nil)
+
+	payload, err := (&message.TaskSignal{
+		TaskID:     taskID,
+		BatchID:    batchID,
+		Kind:       repo.TaskKindDirectoryFetch,
+		SourceType: repo.SourceTypeMedia,
+		SourceAbbr: "cna",
+		URL:        "https://www.cna.com.tw/rss/aipl.xml",
+		TraceID:    "trace-media-dir",
+	}).Marshal()
+	require.NoError(t, err)
+
+	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", payload))
+	require.NoError(t, err)
+	require.True(t, ack)
+	require.NotNil(t, sink.last)
+	require.Equal(t, "cna", sink.last.SourceAbbr)
+	require.Equal(t, repo.SourceTypeMedia, sink.last.SourceType)
+	require.Equal(t, repo.IngestionMethodDirectory, sink.last.IngestionMethod)
 }
 
 func testLogger() *slog.Logger {

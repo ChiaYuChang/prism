@@ -13,6 +13,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/discovery/planner"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
 	"github.com/ChiaYuChang/prism/internal/message"
+	"github.com/ChiaYuChang/prism/internal/model"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	wm "github.com/ThreeDotsLabs/watermill/message"
@@ -33,20 +34,20 @@ var (
 )
 
 type Handler struct {
-	logger        *slog.Logger
-	tracer        trace.Tracer
-	scout         discovery.Scout
-	searchClients map[string]discovery.SearchClient
-	sink          discoverysink.CandidateSink
-	scoutRepo     repo.Scout
-	reporter      repo.TaskReporter
+	logger          *slog.Logger
+	tracer          trace.Tracer
+	scout           discovery.Scout
+	searchProviders map[string]discovery.SearchClient
+	sink            discoverysink.CandidateSink
+	scoutRepo       repo.Scout
+	reporter        repo.TaskReporter
 }
 
 func NewHandler(
 	logger *slog.Logger,
 	tracer trace.Tracer,
 	scout discovery.Scout,
-	searchClients map[string]discovery.SearchClient,
+	searchProviders map[string]discovery.SearchClient,
 	sink discoverysink.CandidateSink,
 	scoutRepo repo.Scout,
 	reporter repo.TaskReporter,
@@ -69,18 +70,18 @@ func NewHandler(
 	if reporter == nil {
 		return nil, fmt.Errorf("%w: task_reporter", ErrParamMissing)
 	}
-	if searchClients == nil {
-		searchClients = map[string]discovery.SearchClient{}
+	if searchProviders == nil {
+		searchProviders = map[string]discovery.SearchClient{}
 	}
 
 	return &Handler{
-		logger:        logger,
-		tracer:        tracer,
-		scout:         scout,
-		searchClients: searchClients,
-		sink:          sink,
-		scoutRepo:     scoutRepo,
-		reporter:      reporter,
+		logger:          logger,
+		tracer:          tracer,
+		scout:           scout,
+		searchProviders: searchProviders,
+		sink:            sink,
+		scoutRepo:       scoutRepo,
+		reporter:        reporter,
 	}, nil
 }
 
@@ -127,7 +128,7 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 
 func (h *Handler) process(ctx context.Context, sig message.TaskSignal) error {
 	switch {
-	case sig.Kind == repo.TaskKindDirectoryFetch && sig.SourceType == repo.SourceTypeParty:
+	case sig.Kind == repo.TaskKindDirectoryFetch && (sig.SourceType == repo.SourceTypeParty || sig.SourceType == repo.SourceTypeMedia):
 		return h.handleDirectoryFetch(ctx, sig)
 	case sig.Kind == repo.TaskKindKeywordSearch && sig.SourceType == repo.SourceTypeMedia:
 		return h.handleKeywordSearch(ctx, sig)
@@ -174,9 +175,8 @@ func (h *Handler) handleDirectoryFetch(ctx context.Context, sig message.TaskSign
 }
 
 func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSignal) error {
-	client, ok := h.searchClients[sig.SourceAbbr]
-	if !ok {
-		return fmt.Errorf("%w: no search client for source %q", ErrUnsupportedSourceType, sig.SourceAbbr)
+	if len(h.searchProviders) == 0 {
+		return fmt.Errorf("%w: no search providers enabled", ErrUnsupportedSourceType)
 	}
 
 	var payload planner.MediaTaskPayload
@@ -187,9 +187,36 @@ func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSigna
 		return fmt.Errorf("%w: empty query in payload", ErrInvalidTaskSignal)
 	}
 
-	candidates, err := client.DiscoverNews(ctx, payload.Query, payload.Site)
-	if err != nil {
-		return fmt.Errorf("search %q via %s: %w", payload.Query, sig.SourceAbbr, err)
+	var (
+		candidates []model.Candidates
+		failures   []error
+	)
+	for provider, client := range h.searchProviders {
+		found, err := client.DiscoverNews(ctx, payload.Query, payload.Site)
+		if err != nil {
+			h.logger.WarnContext(ctx, "search provider failed",
+				slog.String("provider", provider),
+				slog.String("source_abbr", sig.SourceAbbr),
+				slog.String("query", payload.Query),
+				slog.Any("error", err),
+			)
+			failures = append(failures, fmt.Errorf("%s: %w", provider, err))
+			continue
+		}
+		for i := range found {
+			if found[i].Metadata == nil {
+				found[i].Metadata = map[string]any{}
+			}
+			found[i].Metadata["search_provider"] = provider
+			found[i].Metadata["query"] = payload.Query
+			if payload.Site != "" {
+				found[i].Metadata["site_filter"] = payload.Site
+			}
+		}
+		candidates = append(candidates, found...)
+	}
+	if len(failures) == len(h.searchProviders) {
+		return fmt.Errorf("search %q via enabled providers: %w", payload.Query, errors.Join(failures...))
 	}
 
 	if err := h.sink.Handle(ctx, discoverysink.CandidateSinkRequest{
@@ -215,7 +242,7 @@ func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSigna
 }
 
 func ownsTask(sig message.TaskSignal) bool {
-	return (sig.Kind == repo.TaskKindDirectoryFetch && sig.SourceType == repo.SourceTypeParty) ||
+	return (sig.Kind == repo.TaskKindDirectoryFetch && (sig.SourceType == repo.SourceTypeParty || sig.SourceType == repo.SourceTypeMedia)) ||
 		(sig.Kind == repo.TaskKindKeywordSearch && sig.SourceType == repo.SourceTypeMedia)
 }
 

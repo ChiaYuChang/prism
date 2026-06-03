@@ -8,11 +8,8 @@ import (
 
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	"github.com/ChiaYuChang/prism/internal/message"
-	"github.com/ChiaYuChang/prism/internal/repo"
-	repomocks "github.com/ChiaYuChang/prism/internal/repo/mocks"
 	wm "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -23,19 +20,15 @@ func TestHandlerHandleMessagePlansMediaTasks(t *testing.T) {
 		plan: func(_ context.Context, req discovery.PlannerRequest) (discovery.PlannerResult, error) {
 			require.Equal(t, batchID, req.BatchID)
 			require.Equal(t, "trace-123", req.TraceID)
-			require.Len(t, req.Targets, 2)
-			require.Equal(t, "cna", req.Targets[0].SourceAbbr)
-			require.Equal(t, "news.example.com", req.Targets[0].Site)
+			require.Len(t, req.Targets, 1)
+			require.Equal(t, "yahoo", req.Targets[0].SourceAbbr)
+			require.Equal(t, "tw.news.yahoo.com", req.Targets[0].Site)
 			return discovery.PlannerResult{TasksCreated: 4}, nil
 		},
 	}
-	scout := repomocks.NewMockScout(t)
-	h, err := NewHandler(testPlannerWorkerLogger(), noop.NewTracerProvider().Tracer("test"), planner, scout)
+	targets := []discovery.PlannerTarget{{SourceAbbr: "yahoo", URL: "https://tw.news.yahoo.com", Site: "tw.news.yahoo.com"}}
+	h, err := NewHandler(testPlannerWorkerLogger(), noop.NewTracerProvider().Tracer("test"), planner, targets)
 	require.NoError(t, err)
-	scout.EXPECT().ListSourcesByType(mock.Anything, "MEDIA").Return([]repo.Source{
-		{Abbr: "cna", BaseURL: "https://news.example.com"},
-		{Abbr: "yahoo", BaseURL: "https://www.yahoo.com"},
-	}, nil)
 
 	payload, err := (&message.BatchCompletedSignal{
 		BatchID:    batchID,
@@ -51,23 +44,8 @@ func TestHandlerHandleMessagePlansMediaTasks(t *testing.T) {
 
 func TestHandlerHandleMessageReturnsNoTargets(t *testing.T) {
 	planner := &stubPlanner{}
-	scout := repomocks.NewMockScout(t)
-	h, err := NewHandler(testPlannerWorkerLogger(), noop.NewTracerProvider().Tracer("test"), planner, scout)
-	require.NoError(t, err)
-
-	batchID := uuid.Must(uuid.NewV7())
-	scout.EXPECT().ListSourcesByType(mock.Anything, "MEDIA").Return(nil, nil)
-
-	payload, err := (&message.BatchCompletedSignal{
-		BatchID:    batchID,
-		SourceType: "PARTY",
-		TraceID:    "trace-123",
-	}).Marshal()
-	require.NoError(t, err)
-
-	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", payload))
+	_, err := NewHandler(testPlannerWorkerLogger(), noop.NewTracerProvider().Tracer("test"), planner, nil)
 	require.ErrorIs(t, err, ErrNoPlannerTargets)
-	require.True(t, ack)
 }
 
 func testPlannerWorkerLogger() *slog.Logger {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	app "github.com/ChiaYuChang/prism/internal/appconfig"
+	searchconfig "github.com/ChiaYuChang/prism/internal/discovery/search/config"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -23,6 +24,7 @@ type Config struct {
 	Messenger     app.MessengerConfig `mapstructure:"-"`
 	LLM           app.LLMConfig       `mapstructure:"llm"`
 	PromptPath    string              `mapstructure:"prompt-path"    validate:"required"`
+	Search        searchconfig.Config `mapstructure:"search"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -61,6 +63,10 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Duration("llm-timeout", 30*time.Second, "LLM request timeout")
 
 	fs.String("prompt-path", DefaultPromptPath, "Path to the extractor prompt file")
+	fs.Bool("search-target-yahoo-enable", false, "Enable Yahoo News keyword-search target")
+	fs.String("search-target-yahoo-source-abbr", "yahoo", "Yahoo News source abbreviation for search candidates")
+	fs.String("search-target-yahoo-url", "https://tw.news.yahoo.com", "Yahoo News target URL")
+	fs.String("search-target-yahoo-site", "tw.news.yahoo.com", "Yahoo News site filter")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("failed to parse flags: %w", err)
@@ -76,6 +82,9 @@ func LoadConfig(args []string) (*Config, error) {
 
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
+	}
+	if err := bindSearchFlags(v, fs); err != nil {
+		return nil, err
 	}
 
 	var config Config
@@ -128,4 +137,19 @@ func LoadConfig(args []string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func bindSearchFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	bindings := map[string]string{
+		"search.targets.yahoo.enable":      "search-target-yahoo-enable",
+		"search.targets.yahoo.source_abbr": "search-target-yahoo-source-abbr",
+		"search.targets.yahoo.url":         "search-target-yahoo-url",
+		"search.targets.yahoo.site":        "search-target-yahoo-site",
+	}
+	for key, flag := range bindings {
+		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
+			return fmt.Errorf("failed to bind %s: %w", flag, err)
+		}
+	}
+	return nil
 }

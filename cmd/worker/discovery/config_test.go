@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -19,6 +20,54 @@ func TestLoadConfigDefaults(t *testing.T) {
 	assert.Equal(t, "localhost", cfg.Postgres.Host)
 	assert.Equal(t, "nats", cfg.MessengerType)
 	require.NotNil(t, cfg.Messenger)
+}
+
+func TestLoadConfigSearchProvidersFromYAML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := []byte(`
+search:
+  provider:
+    brave:
+      enable: true
+      api_key: brave-key
+      count: 7
+    google-cse:
+      enable: true
+      api_key: google-key
+      cx: cx-id
+      count: 5
+`)
+	require.NoError(t, os.WriteFile(path, body, 0600))
+
+	cfg, err := LoadConfig([]string{"--config", path})
+	require.NoError(t, err)
+	require.True(t, cfg.Search.Provider.Brave.Enable)
+	require.Equal(t, "brave-key", cfg.Search.Provider.Brave.APIKey)
+	require.Equal(t, 7, cfg.Search.Provider.Brave.Count)
+	require.True(t, cfg.Search.Provider.GoogleCSE.Enable)
+	require.Equal(t, "google-key", cfg.Search.Provider.GoogleCSE.APIKey)
+	require.Equal(t, "cx-id", cfg.Search.Provider.GoogleCSE.CX)
+	require.Equal(t, 5, cfg.Search.Provider.GoogleCSE.Count)
+}
+
+func TestLoadConfigSearchProvidersFromJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	body := []byte(`{
+  "search": {
+    "provider": {
+      "brave": {"enable": true, "api_key": "brave-key", "count": 8},
+      "google-cse": {"enable": true, "api_key": "google-key", "cx": "cx-id", "count": 6}
+    }
+  }
+}`)
+	require.NoError(t, os.WriteFile(path, body, 0600))
+
+	cfg, err := LoadConfig([]string{"--config", path})
+	require.NoError(t, err)
+	require.True(t, cfg.Search.Provider.Brave.Enable)
+	require.Equal(t, 8, cfg.Search.Provider.Brave.Count)
+	require.True(t, cfg.Search.Provider.GoogleCSE.Enable)
+	require.Equal(t, 6, cfg.Search.Provider.GoogleCSE.Count)
 }
 
 func TestLoadConfigFromFlags(t *testing.T) {
