@@ -284,3 +284,11 @@ Commit `5315cd4 feat(discovery): add configurable search providers` shipped the 
 * [x] Verified with `rtk go test -short -count=1 ./...`: 497 tests passed across 71 packages. Focused lint was clean for `./internal/dev ./internal/discovery/search/... ./cmd/worker/discovery ./cmd/worker/planner`.
 
 Deferred follow-ups: normalize Brave and Google CSE to named params maps only if multiple variants are needed; turn selected smoke captures into tracked replay tests if stable provider regression coverage is worth the fixture maintenance; resolve Google CSE `403 PERMISSION_DENIED` as a credential/project-access issue unless fixed credentials prove request params need adjustment.
+
+## Phase 2.9 — SeaweedFS S3 Test Stability (2026-06)
+
+* [x] Fixed the intermittent `internal/collector/archiver/s3_test.go` startup failure where SeaweedFS could pass the master `/cluster/status` check before the S3 API was ready for bucket creation.
+* [x] Testcontainers now waits for both the SeaweedFS master HTTP endpoint and the S3 listening port, then probes readiness with a real S3 `ListBuckets` call before creating the test bucket.
+* [x] Increased the test setup retry budget for S3 readiness and bucket creation; production `S3Archiver` behavior is unchanged.
+* [x] Cleaned up unchecked S3 response body closes in `internal/collector/archiver/s3.go` so package lint passes.
+* [x] Verified with `rtk go test -short -count=1 ./internal/collector/archiver`, `rtk golangci-lint run ./internal/collector/archiver`, and `rtk go test -short -count=1 ./...`.

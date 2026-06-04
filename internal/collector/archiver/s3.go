@@ -109,7 +109,7 @@ func (a *S3Archiver) Load(ctx context.Context, traceID string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("s3 get %s/%s: %w", a.bucket, dataKey, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -201,7 +201,7 @@ func (a *S3Archiver) Remove(ctx context.Context, traceID string) error {
 	if err != nil {
 		return fmt.Errorf("s3 get meta %s: %w", metaKey, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -273,7 +273,7 @@ func (a *S3Archiver) readMeta(ctx context.Context, metaKey string) (Meta, error)
 	if err != nil {
 		return Meta{}, fmt.Errorf("s3 get meta %s: %w", metaKey, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {

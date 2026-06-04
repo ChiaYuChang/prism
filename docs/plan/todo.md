@@ -28,9 +28,7 @@ Stages 1–4 complete; see `done.md` §"Phase 2.7 — User-Fetch Model" for the 
 
 ## Phase 2.9 — Layer 1 Tail (mostly shipped)
 
-Phase A (`ArticleParser` removal + tests for kept components) and the 2026-05 layer-1 tail closure (`parser/config` + `message` publisher path) are in `done.md`. The remaining open thread is the LLM-fallback parser (Immediate Next Steps #11), tracked in §"Immediate Next Steps".
-
-* [ ] **Fix `internal/collector/archiver/s3_test.go` flake** — fails intermittently with `StatusCode: 0, connection reset` on `CreateBucket`. Likely SeaweedFS 4.05 container readiness race (`wait.ForHTTP("/cluster/status")` returns before S3 listener accepts). Switch wait strategy or add retry on bucket creation. Bundles cleanly with the Phase 5 testcontainers track in `integration-test-plan.md`.
+Phase A (`ArticleParser` removal + tests for kept components), the 2026-05 layer-1 tail closure (`parser/config` + `message` publisher path), and the SeaweedFS S3 test readiness fix are in `done.md`. The remaining open thread is the LLM-fallback parser (Immediate Next Steps #11), tracked in §"Immediate Next Steps".
 
 ## Phase 3 — Analysis Assets
 

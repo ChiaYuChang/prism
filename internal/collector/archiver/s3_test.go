@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -37,7 +35,10 @@ func TestMain(m *testing.M) {
 			Image:        "chrislusf/seaweedfs:4.05",
 			ExposedPorts: []string{"8333/tcp", "9333/tcp"},
 			Cmd:          []string{"server", "-s3", "-s3.port=8333", "-dir=/data", "-ip.bind=0.0.0.0"},
-			WaitingFor:   wait.ForHTTP("/cluster/status").WithPort("9333/tcp"),
+			WaitingFor: wait.ForAll(
+				wait.ForHTTP("/cluster/status").WithPort("9333/tcp"),
+				wait.ForListeningPort("8333/tcp"),
+			),
 		},
 		Started: true,
 	})
@@ -52,9 +53,6 @@ func TestMain(m *testing.M) {
 	}
 
 	testEndpoint = fmt.Sprintf("http://localhost:%s", mappedPort.Port())
-	if err := waitForS3Endpoint(ctx, testEndpoint, 4); err != nil {
-		panic(fmt.Sprintf("seaweedfs s3 endpoint not ready at %s: %s", testEndpoint, err))
-	}
 
 	// Create the test bucket before running tests.
 	// SeaweedFS in test mode doesn't strictly check credentials unless configured.
@@ -66,7 +64,10 @@ func TestMain(m *testing.M) {
 		o.BaseEndpoint = aws.String(testEndpoint)
 		o.UsePathStyle = true
 	})
-	if err := createBucketWithRetry(ctx, client, testBucket, 4); err != nil {
+	if err := waitForS3API(ctx, client, 8); err != nil {
+		panic(fmt.Sprintf("seaweedfs s3 api not ready at %s: %s", testEndpoint, err))
+	}
+	if err := createBucketWithRetry(ctx, client, testBucket, 8); err != nil {
 		panic(fmt.Sprintf("failed to create test bucket %s: %s", testBucket, err))
 	}
 
@@ -81,20 +82,12 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func waitForS3Endpoint(ctx context.Context, endpoint string, maxFailures int) error {
-	client := &http.Client{Timeout: 2 * time.Second}
+func waitForS3API(ctx context.Context, client *s3.Client, maxFailures int) error {
 	return testutils.WithExponentialBackoff(ctx, maxFailures, 2*time.Second, func() error {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		_, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
 		if err != nil {
 			return err
 		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return err
-		}
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
 		return nil
 	})
 }
