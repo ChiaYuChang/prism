@@ -44,7 +44,7 @@ Selected candidates are fetched into full `contents` for parsing, archiving, ext
 
 ### 6. Embeddings
 
-Candidate insertion and content insertion each trigger their own embedding workers so that both `candidates` and `contents` can later be searched semantically. This includes party press release briefs as well as fetched full contents.
+Candidate and content embeddings are planned analysis assets. The schema, pgvector mapping, and provider interfaces exist; dedicated candidate/content embedding workers are still pending.
 
 ### 7. Analysis
 
@@ -106,6 +106,6 @@ This is commonly described as `F-T-(S||P)`.
 
 ## Status
 
-- Phase 1 foundation is complete
-- Scheduler and LLM infrastructure are in place
-- Discovery worker, candidate embedding worker, and content embedding worker are the next major milestones
+- Core infra, scheduler, discovery worker, collector worker, planner worker, and user-facing fetch API are in place.
+- Configurable search providers are wired for Brave, Google CSE, and SerpAPI.
+- Current finish-line work is plan/deployment hardening, SeaweedFS S3 test stability, and live-loop validation before larger TUI / analysis phases.

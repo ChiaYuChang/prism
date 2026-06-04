@@ -66,7 +66,7 @@ Phase A (`ArticleParser` removal + tests for kept components) and the 2026-05 la
 
 13. **Promote `S3Archiver` for production:** only after #11–#12 land. Deploy SeaweedFS or AWS S3, wire `--archive=s3://…`, configure lifecycle policy on `archives/` prefix per the retention plan in `future.md`.
 
-14. After collector intake is stable: candidate/content embedding workers; planner KEYWORD_SEARCH wiring.
+14. After collector intake and configurable search providers are stable: candidate/content embedding workers; optional search-provider hardening (Brave / Google CSE named params maps, tracked replay fixtures, Google CSE credential validation).
 
 15. **Secret-handling tail (per `docs/security.md` §5):** move `BRAVE_SEARCH_API` + `PGADMIN_PASSWORD` from env vars into `.secrets/`; resolve `migrate` / `psql` argv leak (dev-only, low priority); patch `secrets-bake.sh` to accept `SECRETS_DIR` env override (lets rotation-procedure validation use `.secrets-test/` without editing the script).
 

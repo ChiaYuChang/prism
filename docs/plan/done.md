@@ -269,3 +269,18 @@ secret handling formalized via `script/secrets-bake.sh` +
 * [x] Schema for 768-dimensional pgvector embeddings.
 * [x] `Embedder` interface and provider implementations.
 * [x] SQLC pgvector integration via `public.vector` mapping.
+
+## Configurable Search Providers (2026-06)
+
+Commit `5315cd4 feat(discovery): add configurable search providers` shipped the search-provider layer as a separate concern from persisted `sources`. Search providers find candidate URLs; real PARTY/MEDIA sources own the resulting candidates.
+
+* [x] `cmd/worker/discovery` now routes `KEYWORD_SEARCH + MEDIA` through enabled search-provider clients while preserving `DIRECTORY_FETCH + MEDIA` for direct media feeds.
+* [x] `cmd/worker/planner` now generates search tasks from configured search targets instead of assuming all MEDIA sources are search targets.
+* [x] `internal/discovery/search/config` centralizes provider config, search targets, secret resolution from `api_key_file`, and inline-key warnings.
+* [x] Brave News Search, Google Custom Search JSON API, and SerpAPI clients are implemented with focused request/response tests.
+* [x] SerpAPI supports provider-level shared credentials plus top-level `google_news`, `duckduckgo_news`, and `bing_news` engine blocks with named params maps.
+* [x] Discovery worker registers SerpAPI named variants as provider IDs such as `serpapi-google-news-recent` and `serpapi-duckduckgo-news-weekly`.
+* [x] Developer smoke capture was hardened: non-2xx bodies are captured, shared smoke harness lives in `internal/discovery/search/smoke_test.go`, and fixture paths redact API-key query params.
+* [x] Verified with `rtk go test -short -count=1 ./...`: 497 tests passed across 71 packages. Focused lint was clean for `./internal/dev ./internal/discovery/search/... ./cmd/worker/discovery ./cmd/worker/planner`.
+
+Deferred follow-ups: normalize Brave and Google CSE to named params maps only if multiple variants are needed; turn selected smoke captures into tracked replay tests if stable provider regression coverage is worth the fixture maintenance; resolve Google CSE `403 PERMISSION_DENIED` as a credential/project-access issue unless fixed credentials prove request params need adjustment.
