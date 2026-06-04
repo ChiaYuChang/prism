@@ -104,6 +104,23 @@ func WithHook(l *slog.Logger, hooks ...SLogHook) *slog.Logger {
 	})
 }
 
+// NewJSONHandler returns the standard JSON slog handler used by Prism logs.
+func NewJSONHandler(out io.Writer, level slog.Level) slog.Handler {
+	return slog.NewJSONHandler(out, &slog.HandlerOptions{Level: level})
+}
+
+// NewLoggerFromHandlers constructs a logger that fans out to all handlers while
+// preserving Prism slog hooks such as trace_id injection and service fields.
+func NewLoggerFromHandlers(handlers []slog.Handler, hooks ...SLogHook) *slog.Logger {
+	if len(handlers) == 0 {
+		handlers = []slog.Handler{NewJSONHandler(os.Stdout, slog.LevelInfo)}
+	}
+	return slog.New(&HandlerWithSlogHooks{
+		next:  slog.NewMultiHandler(handlers...),
+		hooks: hooks,
+	})
+}
+
 // InitLogger initializes a default slog.Logger.
 // If path is empty, it logs to stdout. Otherwise, it appends to the file.
 func InitLogger(path string, level slog.Level, hooks ...SLogHook) (*slog.Logger, *os.File, error) {
@@ -121,12 +138,7 @@ func InitLogger(path string, level slog.Level, hooks ...SLogHook) (*slog.Logger,
 	}
 
 	// 2. Create JSON Logger
-	logger := slog.New(
-		&HandlerWithSlogHooks{
-			next:  slog.NewJSONHandler(out, &slog.HandlerOptions{Level: level}),
-			hooks: hooks,
-		},
-	)
+	logger := NewLoggerFromHandlers([]slog.Handler{NewJSONHandler(out, level)}, hooks...)
 	slog.SetDefault(logger)
 
 	return logger, logFile, nil

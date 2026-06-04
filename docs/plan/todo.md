@@ -46,8 +46,13 @@ Phase A (`ArticleParser` removal + tests for kept components), the 2026-05 layer
 ## Phase 4 — Monitoring and Operations
 
 * [ ] 4.1 Operational Monitoring:
-  * [ ] VictoriaLogs integration.
-  * [ ] Grafana dashboards for throughput and failure visibility.
+  * [ ] **Victoria OTLP observability foundation:** Prism emits OTLP logs, traces, and metrics to an OpenTelemetry Collector; collector exports logs to VictoriaLogs, traces to VictoriaTraces, and metrics to VictoriaMetrics; Grafana visualizes all three.
+  * [ ] **Shared observability config in `internal/obs`:** every production/operator command reads the same redaction-safe OTEL config (`--otel-*` flags / env / config), instead of duplicating config loading in each `cmd` package.
+  * [ ] **Secret-safe observability logging:** never log plain passwords, API keys, tokens, secret keys, or OTLP headers; startup/config logs must use `SecretMask` or config types with `LogValue()` redaction.
+  * [ ] **Command telemetry bootstrap:** initialize telemetry in scheduler, API, discovery, collector, planner, batch detector/publisher, backfiller, recover, and RSS; dev-only tools can stay noop unless explicitly opted in.
+  * [ ] **Trace conventions:** root span per API request, scheduler tick, worker message, and recover run; child spans for fetch, parse, LLM/search provider calls, DB-heavy operations, and publish steps. Fix planner to inject propagated `trace_id` before starting its span.
+  * [ ] **Metrics conventions:** counters/histograms for task dispatched/completed/failed, worker handling duration, HTTP requests/duration/status, search provider requests/failures, and cache hits/misses; avoid high-cardinality URL/query/error labels.
+  * [ ] **Compose/Grafana wiring:** add `otel-collector`, VictoriaMetrics, VictoriaTraces, Grafana datasource provisioning, starter dashboards, and worker container healthchecks.
 * [ ] 4.2 Admin Operations:
   * [ ] Pause/resume discovery.
   * [ ] Replay failed tasks.
