@@ -14,10 +14,10 @@ import (
 
 const otelFlagPrefix = "otel-"
 
-// Config carries shared OpenTelemetry settings for Prism commands.
-// Commands should use RegisterFlags and BindFlags instead of duplicating
-// observability config loading locally.
-type Config struct {
+// TelemetryConfig carries shared OpenTelemetry settings for Prism commands.
+// Commands should use RegisterTelemetryFlags and BindTelemetryFlags instead of
+// duplicating observability config loading locally.
+type TelemetryConfig struct {
 	Enabled        bool              `mapstructure:"enabled"`
 	ServiceName    string            `mapstructure:"service-name"`
 	ServiceVersion string            `mapstructure:"service-version"`
@@ -30,9 +30,13 @@ type Config struct {
 	Timeout        time.Duration     `mapstructure:"timeout" validate:"min=0"`
 }
 
-// DefaultConfig returns safe local defaults for OTLP observability.
-func DefaultConfig(serviceName string) Config {
-	return Config{
+// Config is kept as a compatibility alias while commands migrate to the more
+// explicit TelemetryConfig name.
+type Config = TelemetryConfig
+
+// DefaultTelemetryConfig returns safe local defaults for OTLP observability.
+func DefaultTelemetryConfig(serviceName string) TelemetryConfig {
+	return TelemetryConfig{
 		ServiceName: serviceName,
 		Environment: "local",
 		Endpoint:    "otel-collector:4317",
@@ -42,8 +46,13 @@ func DefaultConfig(serviceName string) Config {
 	}
 }
 
-// RegisterFlags adds shared OTEL flags to fs. Call from command LoadConfig.
-func RegisterFlags(fs *pflag.FlagSet, defaults Config) {
+// DefaultConfig is a compatibility wrapper for DefaultTelemetryConfig.
+func DefaultConfig(serviceName string) Config {
+	return DefaultTelemetryConfig(serviceName)
+}
+
+// RegisterTelemetryFlags adds shared OTEL flags to fs. Call from command LoadConfig.
+func RegisterTelemetryFlags(fs *pflag.FlagSet, defaults TelemetryConfig) {
 	fs.Bool("otel-enabled", defaults.Enabled, "Enable OpenTelemetry OTLP export")
 	fs.String("otel-service-name", defaults.ServiceName, "OpenTelemetry service.name resource attribute")
 	fs.String("otel-service-version", defaults.ServiceVersion, "OpenTelemetry service.version resource attribute")
@@ -56,8 +65,13 @@ func RegisterFlags(fs *pflag.FlagSet, defaults Config) {
 	fs.Duration("otel-timeout", defaults.Timeout, "OTLP exporter timeout")
 }
 
-// BindFlags binds otel-* flags to viper keys under telemetry.*.
-func BindFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+// RegisterFlags is a compatibility wrapper for RegisterTelemetryFlags.
+func RegisterFlags(fs *pflag.FlagSet, defaults Config) {
+	RegisterTelemetryFlags(fs, defaults)
+}
+
+// BindTelemetryFlags binds otel-* flags to viper keys under telemetry.*.
+func BindTelemetryFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 	var bindErr error
 	fs.VisitAll(func(f *pflag.Flag) {
 		if bindErr != nil || !strings.HasPrefix(f.Name, otelFlagPrefix) {
@@ -71,9 +85,14 @@ func BindFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 	return bindErr
 }
 
-// LoadConfig unmarshals the shared telemetry config from viper.
-func LoadConfig(v *viper.Viper) (Config, error) {
-	return Config{
+// BindFlags is a compatibility wrapper for BindTelemetryFlags.
+func BindFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	return BindTelemetryFlags(v, fs)
+}
+
+// LoadTelemetryConfig loads the shared telemetry config from viper.
+func LoadTelemetryConfig(v *viper.Viper) (TelemetryConfig, error) {
+	return TelemetryConfig{
 		Enabled:        v.GetBool("telemetry.enabled"),
 		ServiceName:    v.GetString("telemetry.service-name"),
 		ServiceVersion: v.GetString("telemetry.service-version"),
@@ -87,16 +106,37 @@ func LoadConfig(v *viper.Viper) (Config, error) {
 	}, nil
 }
 
+// LoadConfig is a compatibility wrapper for LoadTelemetryConfig.
+func LoadConfig(v *viper.Viper) (Config, error) {
+	return LoadTelemetryConfig(v)
+}
+
+// SaveTelemetryConfig stores cfg under telemetry.* keys in viper. It is useful
+// when a command derives defaults such as service name before applying shared
+// initialization code.
+func SaveTelemetryConfig(v *viper.Viper, cfg TelemetryConfig) {
+	v.Set("telemetry.enabled", cfg.Enabled)
+	v.Set("telemetry.service-name", cfg.ServiceName)
+	v.Set("telemetry.service-version", cfg.ServiceVersion)
+	v.Set("telemetry.environment", cfg.Environment)
+	v.Set("telemetry.endpoint", cfg.Endpoint)
+	v.Set("telemetry.insecure", cfg.Insecure)
+	v.Set("telemetry.sample-ratio", cfg.SampleRatio)
+	v.Set("telemetry.headers", cfg.Headers)
+	v.Set("telemetry.headers-file", cfg.HeadersFile)
+	v.Set("telemetry.timeout", cfg.Timeout)
+}
+
 // String renders a redacted config summary. OTLP headers may contain API keys
 // or authorization tokens, so all header values are masked.
-func (c Config) String() string {
+func (c TelemetryConfig) String() string {
 	return fmt.Sprintf("enabled=%t service_name=%s service_version=%s environment=%s endpoint=%s insecure=%t sample_ratio=%g headers=%s headers_file=%s timeout=%s",
 		c.Enabled, c.ServiceName, c.ServiceVersion, c.Environment, c.Endpoint, c.Insecure,
 		c.SampleRatio, maskedHeadersString(c.Headers), c.HeadersFile, c.Timeout)
 }
 
 // LogValue redacts sensitive values when logged with slog.Any.
-func (c Config) LogValue() slog.Value {
+func (c TelemetryConfig) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.Bool("enabled", c.Enabled),
 		slog.String("service_name", c.ServiceName),

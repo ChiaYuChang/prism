@@ -39,7 +39,7 @@ func TestConfig_NoSecretLeak(t *testing.T) {
 
 func TestRegisterBindAndLoadConfig(t *testing.T) {
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	RegisterFlags(fs, DefaultConfig("prism.test"))
+	RegisterTelemetryFlags(fs, DefaultTelemetryConfig("prism.test"))
 	require.NoError(t, fs.Parse([]string{
 		"--otel-enabled",
 		"--otel-service-version=dev",
@@ -51,9 +51,9 @@ func TestRegisterBindAndLoadConfig(t *testing.T) {
 	}))
 
 	v := viper.New()
-	require.NoError(t, BindFlags(v, fs))
+	require.NoError(t, BindTelemetryFlags(v, fs))
 
-	cfg, err := LoadConfig(v)
+	cfg, err := LoadTelemetryConfig(v)
 	require.NoError(t, err)
 	assert.True(t, cfg.Enabled)
 	assert.Equal(t, "prism.test", cfg.ServiceName)
@@ -63,4 +63,27 @@ func TestRegisterBindAndLoadConfig(t *testing.T) {
 	assert.Equal(t, 0.25, cfg.SampleRatio)
 	assert.Equal(t, "masked-value", cfg.Headers["authorization"])
 	assert.Equal(t, 3*time.Second, cfg.Timeout)
+}
+
+func TestSaveTelemetryConfig(t *testing.T) {
+	v := viper.New()
+	want := TelemetryConfig{
+		Enabled:        true,
+		ServiceName:    "prism.worker.collector",
+		ServiceVersion: "dev",
+		Environment:    "test",
+		Endpoint:       "collector:4317",
+		Insecure:       true,
+		SampleRatio:    0.5,
+		Headers: map[string]string{
+			"authorization": "masked-value",
+		},
+		HeadersFile: "/run/secrets/otel-headers",
+		Timeout:     5 * time.Second,
+	}
+
+	SaveTelemetryConfig(v, want)
+	got, err := LoadTelemetryConfig(v)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
 }
