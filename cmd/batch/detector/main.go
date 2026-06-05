@@ -12,6 +12,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
+	prismlogger "github.com/ChiaYuChang/prism/pkg/logger"
 )
 
 const (
@@ -25,11 +26,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger, logFile, err := obs.InitLogger(config.Logger.Path, config.Logger.GetLogLevel())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	handlers, logFile, shutdownLogger, err := obs.BuildLoggingHandlers(ctx, config.Logger)
 	if err != nil {
 		slog.Error("failed to initialize logger", "error", err)
 		os.Exit(1)
 	}
+	logger := prismlogger.NewLoggerFromHandlers(handlers)
+	slog.SetDefault(logger)
+	defer func() {
+		if err := shutdownLogger(context.Background()); err != nil {
+			logger.Error("failed to shutdown logger", "error", err)
+		}
+	}()
 	if logFile != nil {
 		defer func() { _ = logFile.Close() }()
 	}
@@ -43,8 +54,6 @@ func main() {
 	tracer := infra.Tracer()
 
 	monitor := obs.NewHealthMonitor()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	repository, repositoryCloser, err := pg.NewRepositoryBuilder(config.Postgres).NewRepository(ctx)
 	if err != nil {

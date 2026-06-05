@@ -41,6 +41,26 @@ func TestLoadConfig_FromFlags(t *testing.T) {
 	assert.Equal(t, "gochannel", config.MessengerType)
 }
 
+func TestLoadConfig_LoggerFlags(t *testing.T) {
+	config, err := LoadConfig([]string{
+		"--log-level=debug",
+		"--log-path=/tmp/prism-scheduler.log",
+		"--log-console-enable=false",
+		"--log-otel-enable",
+		"--log-otel-url=collector:4317",
+		"--messenger-type=gochannel",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, "debug", config.Logger.Level)
+	assert.False(t, config.Logger.Console.Enable)
+	assert.True(t, config.Logger.File.Enable)
+	assert.Equal(t, "/tmp/prism-scheduler.log", config.Logger.File.File)
+	assert.True(t, config.Logger.OTEL.Enable)
+	assert.Equal(t, "collector:4317", config.Logger.OTEL.URL)
+	assert.Equal(t, "prism.scheduler", config.Logger.OTEL.ServiceName)
+}
+
 func TestLoadConfig_EnvironmentVariables(t *testing.T) {
 	err := os.Setenv("PRISM_SCHEDULER_INTERVAL", "15m")
 	require.NoError(t, err)

@@ -218,12 +218,22 @@ func main() {
 		config.LockKey = deriveLockKey(config.Kinds)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// 2. Initialize Logger
-	logger, logFile, err := obs.InitLogger(config.Logger.Path, config.Logger.GetLogLevel())
+	handlers, logFile, shutdownLogger, err := obs.BuildLoggingHandlers(ctx, config.Logger)
 	if err != nil {
 		slog.Error("failed to initialize logger", "error", err)
 		os.Exit(1)
 	}
+	logger := lg.NewLoggerFromHandlers(handlers)
+	slog.SetDefault(logger)
+	defer func() {
+		if err := shutdownLogger(context.Background()); err != nil {
+			logger.Error("failed to shutdown logger", "error", err)
+		}
+	}()
 	if logFile != nil {
 		defer func() {
 			if err := logFile.Close(); err != nil {
@@ -234,8 +244,6 @@ func main() {
 
 	// 3. Health Monitor
 	monitor := obs.NewHealthMonitor()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	obs.StartHealthServer(ctx, config.HealthPort, monitor)
 
 	// 4. Rate Limiter

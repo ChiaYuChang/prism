@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/appconfig"
+	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -13,7 +14,7 @@ import (
 
 type Config struct {
 	HealthPort        int                       `mapstructure:"health-port"         validate:"required,min=1024,max=65535"`
-	Logger            appconfig.LoggerConfig    `mapstructure:"logger"`
+	Logger            obs.LoggingConfig         `mapstructure:"logger"`
 	HTTPTimeout       time.Duration             `mapstructure:"http-timeout"        validate:"required,min=1s"`
 	MaxProcessingTime time.Duration             `mapstructure:"max-processing-time" validate:"required,min=1s"`
 	Postgres          appconfig.PostgresConfig  `mapstructure:"postgres"`
@@ -57,8 +58,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs := pflag.NewFlagSet("worker-collector", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Int("health-port", 8093, "The port for the health check server")
-	fs.String("log-path", "", "The file path for logs (empty for stdout)")
-	fs.String("log-level", "info", "The log level (debug, info, warn, error)")
+	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.collector"))
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
 	fs.Duration("http-timeout", 30*time.Second, "HTTP timeout for page fetch requests")
 	fs.Duration("max-processing-time", 2*time.Minute, "Maximum wall-clock time for handling a single message (ctx timeout passed to handler)")
@@ -117,12 +117,17 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := config.S3.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
-	if err := config.Logger.BindFlags(v, fs); err != nil {
+	if err := obs.BindLoggingFlags(v, fs); err != nil {
 		return nil, err
 	}
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	loggerCfg, err := obs.LoadLoggingConfig(v)
+	if err != nil {
+		return nil, err
+	}
+	config.Logger = loggerCfg
 
 	if err := config.Postgres.ResolveSecrets(); err != nil {
 		return nil, fmt.Errorf("postgres secrets: %w", err)

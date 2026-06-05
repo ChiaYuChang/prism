@@ -9,6 +9,7 @@ import (
 	"time"
 
 	prismlogger "github.com/ChiaYuChang/prism/pkg/logger"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,34 +18,34 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 )
 
-// LoggerConfig configures slog fan-out handlers. Console, file, and OTEL are
-// independent sinks combined with slog.NewMultiHandler.
-type LoggerConfig struct {
-	Level   string              `mapstructure:"level"`
-	Console ConsoleLoggerConfig `mapstructure:"console"`
-	File    FileLoggerConfig    `mapstructure:"file"`
-	OTEL    OTELLoggerConfig    `mapstructure:"otel"`
+// LoggingConfig configures slog handler fan-out. Console and file are JSON
+// handlers backed by io.Writer sinks; OTEL is a native slog.Handler sink.
+type LoggingConfig struct {
+	Level   string           `mapstructure:"level" validate:"oneof=debug info warn error"`
+	Console ConsoleLogConfig `mapstructure:"console"`
+	File    FileLogConfig    `mapstructure:"file"`
+	OTEL    OTELLogConfig    `mapstructure:"otel"`
 
 	// Path preserves the existing logger.path flag shape until commands migrate
 	// to logger.file.file. When set, file logging is enabled for this path.
 	Path string `mapstructure:"path"`
 }
 
-type ConsoleLoggerConfig struct {
+type ConsoleLogConfig struct {
 	Enable bool   `mapstructure:"enable"`
-	Level  string `mapstructure:"level"`
+	Level  string `mapstructure:"level"  validate:"omitempty,oneof=debug info warn error"`
 }
 
-type FileLoggerConfig struct {
+type FileLogConfig struct {
 	Enable bool   `mapstructure:"enable"`
-	File   string `mapstructure:"file"`
-	Level  string `mapstructure:"level"`
+	File   string `mapstructure:"file"   validate:"omitempty,filepath"`
+	Level  string `mapstructure:"level"  validate:"omitempty,oneof=debug info warn error"`
 }
 
-type OTELLoggerConfig struct {
+type OTELLogConfig struct {
 	Enable      bool              `mapstructure:"enable"`
 	URL         string            `mapstructure:"url"`
-	Level       string            `mapstructure:"level"`
+	Level       string            `mapstructure:"level" validate:"omitempty,oneof=debug info warn error"`
 	Insecure    bool              `mapstructure:"insecure"`
 	Headers     map[string]string `mapstructure:"headers"`
 	Timeout     time.Duration     `mapstructure:"timeout"`
@@ -52,24 +53,72 @@ type OTELLoggerConfig struct {
 	Environment string            `mapstructure:"environment"`
 }
 
-func DefaultLoggerConfig() LoggerConfig {
-	return LoggerConfig{
+func DefaultLoggingConfig(serviceName ...string) LoggingConfig {
+	cfg := LoggingConfig{
 		Level: "info",
-		Console: ConsoleLoggerConfig{
+		Console: ConsoleLogConfig{
 			Enable: true,
 		},
-		OTEL: OTELLoggerConfig{
+		OTEL: OTELLogConfig{
 			URL:      "otel-collector:4317",
 			Insecure: true,
 			Timeout:  10 * time.Second,
 		},
 	}
+	if len(serviceName) > 0 {
+		cfg.OTEL.ServiceName = serviceName[0]
+	}
+	return cfg
 }
 
-func LoadLoggerConfig(v *viper.Viper) (LoggerConfig, error) {
-	cfg := DefaultLoggerConfig()
-	if err := v.UnmarshalKey("logger", &cfg); err != nil {
-		return LoggerConfig{}, fmt.Errorf("unmarshal logger config: %w", err)
+// RegisterLoggingFlags adds shared logging fan-out flags. The legacy log-path
+// and log-level flags are preserved while commands migrate to nested config.
+func RegisterLoggingFlags(fs *pflag.FlagSet, defaults LoggingConfig) {
+	fs.String("log-path", defaults.Path, "Legacy file log path; empty disables file logging unless --log-file-enable is set")
+	fs.String("log-level", defaults.Level, "Global log level (debug, info, warn, error)")
+	fs.Bool("log-console-enable", defaults.Console.Enable, "Enable console JSON logging")
+	fs.String("log-console-level", defaults.Console.Level, "Console log level override (debug, info, warn, error)")
+	fs.Bool("log-file-enable", defaults.File.Enable, "Enable file JSON logging")
+	fs.String("log-file-file", defaults.File.File, "File log path")
+	fs.String("log-file-level", defaults.File.Level, "File log level override (debug, info, warn, error)")
+	fs.Bool("log-otel-enable", defaults.OTEL.Enable, "Enable OTLP log export")
+	fs.String("log-otel-url", defaults.OTEL.URL, "OTLP log exporter gRPC endpoint host:port")
+	fs.String("log-otel-level", defaults.OTEL.Level, "OTLP log level override (debug, info, warn, error)")
+	fs.Bool("log-otel-insecure", defaults.OTEL.Insecure, "Use insecure OTLP log transport")
+	fs.StringToString("log-otel-headers", defaults.OTEL.Headers, "OTLP log headers as key=value pairs; values are masked in logs")
+	fs.Duration("log-otel-timeout", defaults.OTEL.Timeout, "OTLP log exporter timeout")
+	fs.String("log-otel-service-name", defaults.OTEL.ServiceName, "OTLP log service.name resource attribute")
+	fs.String("log-otel-environment", defaults.OTEL.Environment, "OTLP log deployment.environment resource attribute")
+}
+
+// BindLoggingFlags binds log-* flags to nested viper keys under logger.*.
+func BindLoggingFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	return bindPrefixedFlags(v, fs, "log-", "logger.")
+}
+
+func LoadLoggingConfig(v *viper.Viper) (LoggingConfig, error) {
+	cfg := LoggingConfig{
+		Level: v.GetString("logger.level"),
+		Path:  v.GetString("logger.path"),
+		Console: ConsoleLogConfig{
+			Enable: v.GetBool("logger.console.enable"),
+			Level:  v.GetString("logger.console.level"),
+		},
+		File: FileLogConfig{
+			Enable: v.GetBool("logger.file.enable"),
+			File:   v.GetString("logger.file.file"),
+			Level:  v.GetString("logger.file.level"),
+		},
+		OTEL: OTELLogConfig{
+			Enable:      v.GetBool("logger.otel.enable"),
+			URL:         v.GetString("logger.otel.url"),
+			Level:       v.GetString("logger.otel.level"),
+			Insecure:    v.GetBool("logger.otel.insecure"),
+			Headers:     v.GetStringMapString("logger.otel.headers"),
+			Timeout:     v.GetDuration("logger.otel.timeout"),
+			ServiceName: firstString(v.GetString("logger.otel.service-name"), v.GetString("logger.otel.service.name")),
+			Environment: v.GetString("logger.otel.environment"),
+		},
 	}
 	if cfg.Path != "" && cfg.File.File == "" {
 		cfg.File.Enable = true
@@ -78,16 +127,39 @@ func LoadLoggerConfig(v *viper.Viper) (LoggerConfig, error) {
 	return cfg, nil
 }
 
-func (c LoggerConfig) LevelValue() slog.Level {
+func firstString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func bindPrefixedFlags(v *viper.Viper, fs *pflag.FlagSet, prefix, target string) error {
+	var bindErr error
+	fs.VisitAll(func(f *pflag.Flag) {
+		if bindErr != nil || !strings.HasPrefix(f.Name, prefix) {
+			return
+		}
+		key := target + strings.ReplaceAll(strings.TrimPrefix(f.Name, prefix), "-", ".")
+		if err := v.BindPFlag(key, f); err != nil {
+			bindErr = fmt.Errorf("bind %s: %w", key, err)
+		}
+	})
+	return bindErr
+}
+
+func (c LoggingConfig) LevelValue() slog.Level {
 	return parseSlogLevel(c.Level, slog.LevelInfo)
 }
 
-func (c LoggerConfig) String() string {
+func (c LoggingConfig) String() string {
 	return fmt.Sprintf("level=%s console={enable=%t level=%s} file={enable=%t file=%s level=%s} otel={%s}",
 		c.Level, c.Console.Enable, c.Console.Level, c.File.Enable, c.File.File, c.File.Level, c.OTEL.String())
 }
 
-func (c LoggerConfig) LogValue() slog.Value {
+func (c LoggingConfig) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("level", c.Level),
 		slog.Any("console", c.Console),
@@ -96,14 +168,14 @@ func (c LoggerConfig) LogValue() slog.Value {
 	)
 }
 
-func (c ConsoleLoggerConfig) LogValue() slog.Value {
+func (c ConsoleLogConfig) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.Bool("enable", c.Enable),
 		slog.String("level", c.Level),
 	)
 }
 
-func (c FileLoggerConfig) LogValue() slog.Value {
+func (c FileLogConfig) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.Bool("enable", c.Enable),
 		slog.String("file", c.File),
@@ -111,7 +183,7 @@ func (c FileLoggerConfig) LogValue() slog.Value {
 	)
 }
 
-func (c OTELLoggerConfig) LogValue() slog.Value {
+func (c OTELLogConfig) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.Bool("enable", c.Enable),
 		slog.String("url", c.URL),
@@ -127,15 +199,14 @@ func (c OTELLoggerConfig) LogValue() slog.Value {
 	return slog.GroupValue(attrs...)
 }
 
-func (c OTELLoggerConfig) String() string {
+func (c OTELLogConfig) String() string {
 	return fmt.Sprintf("enable=%t url=%s level=%s insecure=%t timeout=%s service_name=%s environment=%s headers=%s",
 		c.Enable, c.URL, c.Level, c.Insecure, c.Timeout, c.ServiceName, c.Environment, maskedHeadersString(c.Headers))
 }
 
-// InitConfiguredLogger builds console/file/OTEL handlers and combines them via
-// slog.NewMultiHandler. The returned shutdown flushes and stops the OTEL log
-// provider when OTEL logging is enabled.
-func InitConfiguredLogger(ctx context.Context, cfg LoggerConfig, hooks ...prismlogger.SLogHook) (*slog.Logger, *os.File, func(context.Context) error, error) {
+// BuildLoggingHandlers builds console/file/OTEL slog handlers. The caller owns
+// constructing the *slog.Logger, usually via pkg/logger.NewLoggerFromHandlers.
+func BuildLoggingHandlers(ctx context.Context, cfg LoggingConfig) ([]slog.Handler, *os.File, func(context.Context) error, error) {
 	globalLevel := cfg.LevelValue()
 	var handlers []slog.Handler
 	var file *os.File
@@ -156,7 +227,7 @@ func InitConfiguredLogger(ctx context.Context, cfg LoggerConfig, hooks ...prisml
 		handlers = append(handlers, prismlogger.NewJSONHandler(f, parseSlogLevel(cfg.File.Level, globalLevel)))
 	}
 	if cfg.OTEL.Enable {
-		h, stop, err := newOTELLogHandler(ctx, cfg.OTEL, globalLevel)
+		h, stop, err := NewOTELLogHandler(ctx, cfg.OTEL, globalLevel)
 		if err != nil {
 			if file != nil {
 				_ = file.Close()
@@ -171,12 +242,12 @@ func InitConfiguredLogger(ctx context.Context, cfg LoggerConfig, hooks ...prisml
 		handlers = append(handlers, prismlogger.NewJSONHandler(os.Stdout, globalLevel))
 	}
 
-	l := prismlogger.NewLoggerFromHandlers(handlers, hooks...)
-	slog.SetDefault(l)
-	return l, file, shutdown, nil
+	return handlers, file, shutdown, nil
 }
 
-func newOTELLogHandler(ctx context.Context, cfg OTELLoggerConfig, defaultLevel slog.Level) (slog.Handler, func(context.Context) error, error) {
+// NewOTELLogHandler builds a native OTEL slog.Handler. It does not serialize
+// logs as JSON bytes, preserving attributes for VictoriaLogs/Grafana queries.
+func NewOTELLogHandler(ctx context.Context, cfg OTELLogConfig, defaultLevel slog.Level) (slog.Handler, func(context.Context) error, error) {
 	if cfg.URL == "" {
 		return nil, nil, fmt.Errorf("otel logger enabled but url is empty")
 	}

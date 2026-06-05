@@ -6,6 +6,7 @@ import (
 	"time"
 
 	app "github.com/ChiaYuChang/prism/internal/appconfig"
+	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -16,7 +17,7 @@ type Config struct {
 	Once          bool                `mapstructure:"once"`
 	RecentLimit   int32               `mapstructure:"recent-limit"   validate:"required,min=1,max=500"`
 	HealthPort    int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	Logger        app.LoggerConfig    `mapstructure:"logger"`
+	Logger        obs.LoggingConfig   `mapstructure:"logger"`
 	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
 	MessengerType string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
 	Messenger     app.MessengerConfig `mapstructure:"-"`
@@ -35,8 +36,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int32("recent-limit", 100, "Maximum recent batches to inspect for completion")
 	fs.Int("health-port", 8084, "The port for the health check server")
 
-	fs.String("log-path", "", "The file path for logs (empty for stdout)")
-	fs.String("log-level", "info", "The log level (debug, info, warn, error)")
+	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.batch.publisher"))
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -74,12 +74,17 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := cfg.Postgres.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
-	if err := cfg.Logger.BindFlags(v, fs); err != nil {
+	if err := obs.BindLoggingFlags(v, fs); err != nil {
 		return nil, err
 	}
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	loggerCfg, err := obs.LoadLoggingConfig(v)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Logger = loggerCfg
 
 	switch cfg.MessengerType {
 	case "nats":
