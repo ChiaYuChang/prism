@@ -1,0 +1,26 @@
+receivers:
+  filelog/docker:
+    include:
+      - /logs/*.json
+    start_at: end
+    include_file_path: true
+    operators:
+      # Prism writes slog JSON to files mounted at /logs; parse each line into
+      # queryable log fields for VictoriaLogs/Grafana.
+      - type: json_parser
+        parse_from: body
+        parse_to: attributes
+
+processors:
+  batch:
+
+exporters:
+  otlphttp/victorialogs:
+    endpoint: http://victoria-logs:9428/insert/opentelemetry
+
+service:
+  pipelines:
+    logs:
+      receivers: [filelog/docker]
+      processors: [batch]
+      exporters: [otlphttp/victorialogs]

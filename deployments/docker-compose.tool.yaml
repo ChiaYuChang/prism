@@ -96,14 +96,14 @@ services:
       start_period: 15s
 
   # ===========================================================================
-  # obs profile — VictoriaLogs + Grafana for log ingestion / dashboards
+  # obs profile — JSON log files -> OTel Collector -> VictoriaLogs + Grafana
   # ===========================================================================
   victoria-logs:
     profiles: [ obs ]
     image: victoriametrics/victoria-logs:v1.43.1
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${VICTORIALOGS_PORT:-9428}:9428"
+      - "127.0.0.1:${VICTORIA_LOGS_PORT:-9428}:9428"
     volumes:
       - vl-data:/victoria-logs-data
     command:
@@ -111,6 +111,19 @@ services:
     healthcheck:
       test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:9428/health" ]
       start_period: 20s
+    networks:
+      - prism-net
+
+  otel-collector:
+    profiles: [ obs ]
+    image: otel/opentelemetry-collector-contrib:0.141.0
+    command: [ "--config=/etc/otelcol-contrib/logs.yaml" ]
+    depends_on:
+      victoria-logs:
+        condition: service_healthy
+    volumes:
+      - ./otel-collector/logs.yaml:/etc/otelcol-contrib/logs.yaml:ro
+      - worker_logs:/logs:ro
     networks:
       - prism-net
 
@@ -124,6 +137,7 @@ services:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
     environment:
       - GF_PLUGINS_PREINSTALL=victoriametrics-logs-datasource
     healthcheck:
@@ -159,3 +173,4 @@ volumes:
   vl-data:
   grafana_data:
   ollama_data:
+  worker_logs:

@@ -35,12 +35,16 @@ services:
       - --valkey-host=valkey
       - --valkey-port=6379
       - --valkey-username=${VALKEY_APP_USER:-prism}
+      - --log-file-enable
+      - --log-file-file=/logs/scheduler-slow.json
     environment:
       PRISM_SCHEDULER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_SCHEDULER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
       PRISM_SCHEDULER_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
     networks:
       - prism-net
+    volumes:
+      - worker_logs:/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,12 +75,16 @@ services:
       - --valkey-host=valkey
       - --valkey-port=6379
       - --valkey-username=${VALKEY_APP_USER:-prism}
+      - --log-file-enable
+      - --log-file-file=/logs/scheduler-fast.json
     environment:
       PRISM_SCHEDULER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_SCHEDULER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
       PRISM_SCHEDULER_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
     networks:
       - prism-net
+    volumes:
+      - worker_logs:/logs
     depends_on:
       scheduler-slow:
         condition: service_started
@@ -103,11 +111,15 @@ services:
       - --pg-port=5432
       - --pg-username=${POSTGRES_APP_USER:-prism}
       - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --log-file-enable
+      - --log-file-file=/logs/discovery.json
     environment:
       PRISM_DISCOVERY_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_DISCOVERY_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
     networks:
       - prism-net
+    volumes:
+      - worker_logs:/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,11 +150,14 @@ services:
       - --pg-port=5432
       - --pg-username=${POSTGRES_APP_USER:-prism}
       - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --log-file-enable
+      - --log-file-file=/logs/collector.json
     environment:
       PRISM_COLLECTOR_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_COLLECTOR_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
     volumes:
       - worker_archives:/app/archives
+      - worker_logs:/logs
     networks:
       - prism-net
     depends_on:
@@ -180,6 +195,8 @@ services:
       - --rate-limit-enabled
       - --rate-limit-rps=100
       - --rate-limit-burst=200
+      - --log-file-enable
+      - --log-file-file=/logs/api-server.json
     environment:
       PRISM_API_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
       PRISM_API_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
@@ -187,6 +204,8 @@ services:
       - "8090:8090"
     networks:
       - prism-net
+    volumes:
+      - worker_logs:/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -217,3 +236,4 @@ services:
 
 volumes:
   worker_archives:
+  worker_logs:

@@ -18,8 +18,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 )
 
-// LoggingConfig configures slog handler fan-out. Console and file are JSON
-// handlers backed by io.Writer sinks; OTEL is a native slog.Handler sink.
+// LoggingConfig configures slog handler fan-out. Console is human-readable text,
+// file is structured JSON, and OTEL is a native slog.Handler sink.
 type LoggingConfig struct {
 	Level   string           `mapstructure:"level" validate:"oneof=debug info warn error"`
 	Console ConsoleLogConfig `mapstructure:"console"`
@@ -76,7 +76,7 @@ func DefaultLoggingConfig(serviceName ...string) LoggingConfig {
 func RegisterLoggingFlags(fs *pflag.FlagSet, defaults LoggingConfig) {
 	fs.String("log-path", defaults.Path, "Legacy file log path; empty disables file logging unless --log-file-enable is set")
 	fs.String("log-level", defaults.Level, "Global log level (debug, info, warn, error)")
-	fs.Bool("log-console-enable", defaults.Console.Enable, "Enable console JSON logging")
+	fs.Bool("log-console-enable", defaults.Console.Enable, "Enable console text logging")
 	fs.String("log-console-level", defaults.Console.Level, "Console log level override (debug, info, warn, error)")
 	fs.Bool("log-file-enable", defaults.File.Enable, "Enable file JSON logging")
 	fs.String("log-file-file", defaults.File.File, "File log path")
@@ -213,7 +213,7 @@ func BuildLoggingHandlers(ctx context.Context, cfg LoggingConfig) ([]slog.Handle
 	shutdown := func(context.Context) error { return nil }
 
 	if cfg.Console.Enable {
-		handlers = append(handlers, prismlogger.NewJSONHandler(os.Stdout, parseSlogLevel(cfg.Console.Level, globalLevel)))
+		handlers = append(handlers, prismlogger.NewTextHandler(os.Stdout, parseSlogLevel(cfg.Console.Level, globalLevel)))
 	}
 	if cfg.File.Enable {
 		if cfg.File.File == "" {
@@ -239,7 +239,7 @@ func BuildLoggingHandlers(ctx context.Context, cfg LoggingConfig) ([]slog.Handle
 	}
 
 	if len(handlers) == 0 {
-		handlers = append(handlers, prismlogger.NewJSONHandler(os.Stdout, globalLevel))
+		handlers = append(handlers, prismlogger.NewTextHandler(os.Stdout, globalLevel))
 	}
 
 	return handlers, file, shutdown, nil

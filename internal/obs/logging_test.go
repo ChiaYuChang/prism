@@ -2,6 +2,7 @@ package obs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -58,6 +59,46 @@ func TestBuildLoggingHandlers_FileOnly(t *testing.T) {
 	contents := readTextFile(t, path)
 	assert.Contains(t, contents, "file-only")
 	assert.Contains(t, contents, "value")
+}
+
+func TestBuildLoggingHandlers_FileUsesJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prism.log")
+	handlers, file, shutdown, err := BuildLoggingHandlers(context.Background(), LoggingConfig{
+		Level: "info",
+		File:  FileLogConfig{Enable: true, File: path},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, file)
+	defer func() { _ = file.Close() }()
+	defer func() { _ = shutdown(context.Background()) }()
+	logger := prismlogger.NewLoggerFromHandlers(handlers)
+
+	logger.Info("json-file", slog.String("key", "value"))
+	require.NoError(t, file.Sync())
+
+	var record map[string]any
+	require.NoError(t, json.Unmarshal([]byte(readTextFile(t, path)), &record))
+	assert.Equal(t, "json-file", record["msg"])
+	assert.Equal(t, "value", record["key"])
+}
+
+func TestBuildLoggingHandlers_ConsoleAndFileLevelsCanDiffer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prism.log")
+	handlers, file, shutdown, err := BuildLoggingHandlers(context.Background(), LoggingConfig{
+		Level:   "info",
+		Console: ConsoleLogConfig{Enable: true, Level: "debug"},
+		File:    FileLogConfig{Enable: true, File: path, Level: "warn"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, file)
+	defer func() { _ = file.Close() }()
+	defer func() { _ = shutdown(context.Background()) }()
+	require.Len(t, handlers, 2)
+
+	ctx := context.Background()
+	assert.True(t, handlers[0].Enabled(ctx, slog.LevelDebug), "console should honor debug override")
+	assert.False(t, handlers[1].Enabled(ctx, slog.LevelInfo), "file should suppress info below warn override")
+	assert.True(t, handlers[1].Enabled(ctx, slog.LevelWarn), "file should allow warn override")
 }
 
 func TestRegisterBindAndLoadLoggingConfig(t *testing.T) {

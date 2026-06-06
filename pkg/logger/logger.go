@@ -109,11 +109,16 @@ func NewJSONHandler(out io.Writer, level slog.Level) slog.Handler {
 	return slog.NewJSONHandler(out, &slog.HandlerOptions{Level: level})
 }
 
+// NewTextHandler returns a human-readable slog handler for console output.
+func NewTextHandler(out io.Writer, level slog.Level) slog.Handler {
+	return slog.NewTextHandler(out, &slog.HandlerOptions{Level: level})
+}
+
 // NewLoggerFromHandlers constructs a logger that fans out to all handlers while
 // preserving Prism slog hooks such as trace_id injection and service fields.
 func NewLoggerFromHandlers(handlers []slog.Handler, hooks ...SLogHook) *slog.Logger {
 	if len(handlers) == 0 {
-		handlers = []slog.Handler{NewJSONHandler(os.Stdout, slog.LevelInfo)}
+		handlers = []slog.Handler{NewTextHandler(os.Stdout, slog.LevelInfo)}
 	}
 	return slog.New(&HandlerWithSlogHooks{
 		next:  slog.NewMultiHandler(handlers...),
