@@ -35,6 +35,9 @@ services:
       - --valkey-host=valkey
       - --valkey-port=6379
       - --valkey-username=${VALKEY_APP_USER:-prism}
+      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
+      - --otel-service-name=prism.scheduler.slow
+      - --otel-endpoint=otel-collector:4317
       - --log-file-enable
       - --log-file-file=/logs/scheduler-slow.json
     environment:
@@ -75,6 +78,9 @@ services:
       - --valkey-host=valkey
       - --valkey-port=6379
       - --valkey-username=${VALKEY_APP_USER:-prism}
+      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
+      - --otel-service-name=prism.scheduler.fast
+      - --otel-endpoint=otel-collector:4317
       - --log-file-enable
       - --log-file-file=/logs/scheduler-fast.json
     environment:

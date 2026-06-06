@@ -133,7 +133,12 @@ tasks:
       - task: compose:wait
 
   compose:wait:
-    desc: wait for core services to become healthy
+    desc: wait for core services, plus observability services when obs profile is active
+    summary: |
+      Waits for healthy/running containers in the currently baked compose stack.
+      Core services are always checked: postgres, nats, valkey, seaweedfs.
+      When COMPOSE_PROFILES includes obs, also checks the Victoria stack:
+      victoria-metrics, victoria-logs, victoria-traces, otel-collector, grafana.
     deps: [ compose:bake ]
     vars:
       TIMEOUT: "{{.TIMEOUT | default 30}}"
@@ -144,7 +149,12 @@ tasks:
       COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
     cmds:
       - |
-        for svc in postgres nats valkey seaweedfs; do
+        SERVICES=(postgres nats valkey seaweedfs)
+        PROFILES=",{{.COMPOSE_PROFILES}},"
+        if [[ "$PROFILES" == *",obs,"* ]]; then
+          SERVICES+=(victoria-metrics victoria-logs victoria-traces otel-collector grafana)
+        fi
+        for svc in "${SERVICES[@]}"; do
           CID=$(docker compose -f {{.COMPOSE_MERGED}} ps -q $svc)
           if [ -n "$CID" ]; then
             bash ./script/wait_for_healthy.sh "$CID" {{.TIMEOUT}}

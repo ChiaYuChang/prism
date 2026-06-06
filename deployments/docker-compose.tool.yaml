@@ -96,8 +96,24 @@ services:
       start_period: 15s
 
   # ===========================================================================
-  # obs profile — JSON log files -> OTel Collector -> VictoriaLogs + Grafana
+  # obs profile — JSON logs + OTLP traces/metrics -> Victoria + Grafana
   # ===========================================================================
+  victoria-metrics:
+    profiles: [ obs ]
+    image: victoriametrics/victoria-metrics:v1.130.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${VICTORIA_METRICS_PORT:-8428}:8428"
+    volumes:
+      - vm-data:/victoria-metrics-data
+    command:
+      - "--retentionPeriod=14d"
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:8428/health" ]
+      start_period: 20s
+    networks:
+      - prism-net
+
   victoria-logs:
     profiles: [ obs ]
     image: victoriametrics/victoria-logs:v1.43.1
@@ -114,16 +130,42 @@ services:
     networks:
       - prism-net
 
+  victoria-traces:
+    profiles: [ obs ]
+    image: victoriametrics/victoria-traces:v0.9.2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${VICTORIA_TRACES_PORT:-10428}:10428"
+    volumes:
+      - vt-data:/victoria-traces-data
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:10428/health" ]
+      start_period: 20s
+    networks:
+      - prism-net
+
   otel-collector:
     profiles: [ obs ]
     image: otel/opentelemetry-collector-contrib:0.141.0
     command: [ "--config=/etc/otelcol-contrib/logs.yaml" ]
     depends_on:
+      victoria-metrics:
+        condition: service_healthy
       victoria-logs:
         condition: service_healthy
+      victoria-traces:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${OTEL_COLLECTOR_GRPC_PORT:-4317}:4317"
+      - "127.0.0.1:${OTEL_COLLECTOR_HTTP_PORT:-4318}:4318"
     volumes:
       - ./otel-collector/logs.yaml:/etc/otelcol-contrib/logs.yaml:ro
       - worker_logs:/logs:ro
+    healthcheck:
+      test: [ "CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol-contrib/logs.yaml" ]
+      start_period: 10s
+      interval: 15s
+      retries: 5
     networks:
       - prism-net
 
@@ -131,7 +173,11 @@ services:
     profiles: [ obs ]
     image: grafana/grafana:12.3
     depends_on:
+      victoria-metrics:
+        condition: service_healthy
       victoria-logs:
+        condition: service_healthy
+      victoria-traces:
         condition: service_healthy
     ports:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
@@ -170,7 +216,9 @@ volumes:
   pgadmin_data:
   nui_data:
   redisinsight_data:
+  vm-data:
   vl-data:
+  vt-data:
   grafana_data:
   ollama_data:
   worker_logs:

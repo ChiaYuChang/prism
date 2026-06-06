@@ -10,17 +10,44 @@ receivers:
       - type: json_parser
         parse_from: body
         parse_to: attributes
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   batch:
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 exporters:
   otlphttp/victorialogs:
     endpoint: http://victoria-logs:9428/insert/opentelemetry
+  otlphttp/victoriametrics:
+    compression: gzip
+    encoding: proto
+    metrics_endpoint: http://victoria-metrics:8428/opentelemetry/v1/metrics
+  otlphttp/victoriatraces:
+    compression: gzip
+    encoding: proto
+    traces_endpoint: http://victoria-traces:10428/insert/opentelemetry/v1/traces
 
 service:
+  extensions: [health_check]
   pipelines:
     logs:
       receivers: [filelog/docker]
       processors: [batch]
       exporters: [otlphttp/victorialogs]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/victoriametrics]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/victoriatraces]
