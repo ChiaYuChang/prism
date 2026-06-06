@@ -256,6 +256,7 @@ func NewOTELLogHandler(ctx context.Context, cfg OTELLogConfig, defaultLevel slog
 		otlploggrpc.WithTimeout(cfg.Timeout),
 	}
 	if cfg.Insecure {
+		slog.Default().Warn("OTLP log export uses insecure transport; payloads and headers may travel as plaintext")
 		opts = append(opts, otlploggrpc.WithInsecure())
 	}
 	if len(cfg.Headers) > 0 {

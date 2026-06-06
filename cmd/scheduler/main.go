@@ -19,6 +19,9 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	lg "github.com/ChiaYuChang/prism/pkg/logger"
 
@@ -27,6 +30,8 @@ import (
 )
 
 const (
+	TracerName = "prism.scheduler"
+
 	// LockTTL ensures the lock is released if the scheduler crashes.
 	LockTTL = 30 * time.Second
 )
@@ -40,14 +45,16 @@ type TaskPublisher interface {
 // scheduler instance (e.g. scheduler-fast or scheduler-slow).
 type Scheduler struct {
 	logger    *slog.Logger
+	tracer    trace.Tracer
 	rl        infra.RateLimiter
 	scheduler repo.Scheduler
 	publisher TaskPublisher
 }
 
-func newScheduler(logger *slog.Logger, rl infra.RateLimiter, scheduler repo.Scheduler, publisher TaskPublisher) *Scheduler {
+func newScheduler(logger *slog.Logger, tracer trace.Tracer, rl infra.RateLimiter, scheduler repo.Scheduler, publisher TaskPublisher) *Scheduler {
 	return &Scheduler{
 		logger:    logger,
+		tracer:    tracer,
 		rl:        rl,
 		scheduler: scheduler,
 		publisher: publisher,
@@ -61,25 +68,48 @@ func newScheduler(logger *slog.Logger, rl infra.RateLimiter, scheduler repo.Sche
 // calls are made: MEDIA first (user-waiting), PARTY second (fills remainder).
 // Otherwise a single call claims all kinds without source_type filtering.
 func (s *Scheduler) RunTick(ctx context.Context, cfg *Config) []repo.Task {
+	ctx, span := s.tracer.Start(ctx, "scheduler.tick",
+		trace.WithAttributes(
+			attribute.String("scheduler.lock_key", cfg.LockKey),
+			attribute.StringSlice("scheduler.kinds", cfg.Kinds),
+			attribute.Int("scheduler.batch_size", cfg.BatchSize),
+		),
+	)
+	defer span.End()
+
 	n := cfg.BatchSize
 	buf := cfg.Buffer
 
+	var tasks []repo.Task
 	if cfg.MediaQuota > 0 && slices.Contains(cfg.Kinds, repo.TaskKindPageFetch) {
-		return s.runPriorityTick(ctx, n, cfg.MediaQuota, buf, cfg.Kinds)
+		tasks = s.runPriorityTick(ctx, n, cfg.MediaQuota, buf, cfg.Kinds)
+	} else {
+		tasks = s.runSimpleTick(ctx, n, buf, cfg.Kinds)
 	}
-	return s.runSimpleTick(ctx, n, buf, cfg.Kinds)
+	span.SetAttributes(attribute.Int("task.count.dispatching", len(tasks)))
+	return tasks
 }
 
 // runSimpleTick claims n+buffer tasks for all kinds and source types,
 // applies rate limiting, releases excess, and returns the approved list.
 func (s *Scheduler) runSimpleTick(ctx context.Context, n, buf int, kinds []string) []repo.Task {
+	ctx, span := s.tracer.Start(ctx, "scheduler.claim.simple")
+	defer span.End()
+
 	claimed, err := s.scheduler.ClaimTasks(ctx, int32(n+buf), kinds, nil)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "claim tasks")
 		s.logger.Error("failed to claim tasks", "error", err)
 		return nil
 	}
 	pass, toRelease := applyRateLimit(claimed, s.rl, n)
 	s.ReleaseAll(ctx, toRelease)
+	span.SetAttributes(
+		attribute.Int("task.count.claimed", len(claimed)),
+		attribute.Int("task.count.dispatching", len(pass)),
+		attribute.Int("task.count.released", len(toRelease)),
+	)
 	s.logger.Info("tick complete",
 		slog.Int("claimed", len(claimed)),
 		slog.Int("dispatching", len(pass)),
@@ -94,12 +124,17 @@ func (s *Scheduler) runSimpleTick(ctx context.Context, n, buf int, kinds []strin
 //
 // Rate limiting is applied to both groups; excess tasks are released.
 func (s *Scheduler) runPriorityTick(ctx context.Context, n, mdQuota, buf int, kinds []string) []repo.Task {
+	ctx, span := s.tracer.Start(ctx, "scheduler.claim.priority")
+	defer span.End()
+
 	// Step 1: MEDIA PAGE_FETCH — user-triggered, highest priority.
 	mdClaimed, err := s.scheduler.ClaimTasks(ctx, int32(mdQuota+buf),
 		[]string{repo.TaskKindPageFetch},
 		[]string{repo.SourceTypeMedia},
 	)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "claim media page fetch tasks")
 		s.logger.Error("failed to claim MEDIA PAGE_FETCH tasks", "error", err)
 		return nil
 	}
@@ -110,6 +145,8 @@ func (s *Scheduler) runPriorityTick(ctx context.Context, n, mdQuota, buf int, ki
 	remaining := n - len(mdPass)
 	bgClaimed, err := s.scheduler.ClaimTasks(ctx, int32(remaining+buf), kinds, []string{repo.SourceTypeParty})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "claim background tasks")
 		s.logger.Error("failed to claim background tasks", "error", err)
 		return mdPass // still dispatch approved MEDIA tasks
 	}
@@ -117,6 +154,13 @@ func (s *Scheduler) runPriorityTick(ctx context.Context, n, mdQuota, buf int, ki
 	s.ReleaseAll(ctx, bgRelease)
 
 	all := append(mdPass, bgPass...)
+	span.SetAttributes(
+		attribute.Int("task.count.media_claimed", len(mdClaimed)),
+		attribute.Int("task.count.media_dispatching", len(mdPass)),
+		attribute.Int("task.count.background_claimed", len(bgClaimed)),
+		attribute.Int("task.count.background_dispatching", len(bgPass)),
+		attribute.Int("task.count.dispatching", len(all)),
+	)
 	s.logger.Info("priority tick complete",
 		slog.Int("media_claimed", len(mdClaimed)),
 		slog.Int("media_pass", len(mdPass)),
@@ -140,6 +184,9 @@ func (s *Scheduler) ReleaseAll(ctx context.Context, ids []uuid.UUID) {
 // DispatchTasks publishes a TaskSignal for each task. If publishing fails the
 // task is marked failed so it can be retried on the next tick.
 func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error {
+	ctx, span := s.tracer.Start(ctx, "scheduler.dispatch_tasks", trace.WithAttributes(attribute.Int("task.count.dispatching", len(tasks))))
+	defer span.End()
+
 	for _, task := range tasks {
 		tLogger := lg.WithHook(s.logger,
 			lg.AttrHook("task_id", task.ID.String()),
@@ -163,6 +210,7 @@ func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error 
 
 		payload, err := sig.Marshal()
 		if err != nil {
+			span.RecordError(err)
 			tLogger.Error("failed to marshal task signal", "error", err)
 			continue
 		}
@@ -171,8 +219,10 @@ func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error 
 		msg.Metadata.Set("trace_id", task.TraceID)
 
 		if err := s.publisher.Publish(message.TaskTopic, msg); err != nil {
+			span.RecordError(err)
 			tLogger.Error("failed to publish task signal", "error", err)
 			if failErr := s.scheduler.FailTask(ctx, task.ID); failErr != nil {
+				span.RecordError(failErr)
 				tLogger.Error("failed to mark task as failed", "error", failErr)
 			}
 			continue
@@ -241,6 +291,20 @@ func main() {
 			}
 		}()
 	}
+	logger.Info("telemetry configured", slog.Any("telemetry", config.Telemetry))
+
+	telemetry, err := obs.InitTelemetry(ctx, config.Telemetry)
+	if err != nil {
+		logger.Error("failed to initialize telemetry", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := telemetry.Shutdown(context.Background()); err != nil {
+			logger.Error("failed to shutdown telemetry", "error", err)
+		}
+	}()
+	tracer := telemetry.Tracer(TracerName)
+	infra.SetTracer(tracer)
 
 	// 3. Health Monitor
 	monitor := obs.NewHealthMonitor()
@@ -312,7 +376,7 @@ func main() {
 		lg.ServiceHook("scheduler"),
 	)
 
-	svc := newScheduler(logger, rl, dbRepo.Scheduler(), msgr)
+	svc := newScheduler(logger, tracer, rl, dbRepo.Scheduler(), msgr)
 
 	logger.Info("Scheduler starting",
 		"lock_key", config.LockKey,
@@ -336,7 +400,13 @@ func main() {
 		case t := <-ticker.C:
 			logger.Info("Tick triggered", "time", t)
 
-			secret, err := locker.TryLock(ctx, config.LockKey, LockTTL)
+			lockCtx, lockSpan := tracer.Start(ctx, "scheduler.lock.acquire", trace.WithAttributes(attribute.String("scheduler.lock_key", config.LockKey)))
+			secret, err := locker.TryLock(lockCtx, config.LockKey, LockTTL)
+			if err != nil {
+				lockSpan.RecordError(err)
+				lockSpan.SetStatus(codes.Error, "acquire lock")
+			}
+			lockSpan.End()
 			if err != nil {
 				logger.Error("failed to acquire lock", "error", err)
 				continue

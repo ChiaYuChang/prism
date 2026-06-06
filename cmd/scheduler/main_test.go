@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 type stubTaskPublisher struct {
@@ -55,7 +56,7 @@ func TestDispatchTasksPublishesTaskSignal(t *testing.T) {
 		},
 	}
 
-	svc := newScheduler(testSchedulerLogger(), infra.NoOpRateLimiter{}, scheduler, publisher)
+	svc := newScheduler(testSchedulerLogger(), noop.NewTracerProvider().Tracer("test"), infra.NoOpRateLimiter{}, scheduler, publisher)
 	err := svc.DispatchTasks(context.Background(), tasks)
 	require.NoError(t, err)
 	require.Equal(t, message.TaskTopic, gotTopic)
@@ -85,7 +86,7 @@ func TestDispatchTasksMarksTaskFailedWhenPublishFails(t *testing.T) {
 		},
 	}
 
-	svc := newScheduler(testSchedulerLogger(), infra.NoOpRateLimiter{}, scheduler, publisher)
+	svc := newScheduler(testSchedulerLogger(), noop.NewTracerProvider().Tracer("test"), infra.NoOpRateLimiter{}, scheduler, publisher)
 	err := svc.DispatchTasks(context.Background(), tasks)
 	require.NoError(t, err)
 }

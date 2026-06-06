@@ -61,6 +61,29 @@ func TestLoadConfig_LoggerFlags(t *testing.T) {
 	assert.Equal(t, "prism.scheduler", config.Logger.OTEL.ServiceName)
 }
 
+func TestLoadConfig_TelemetryFlags(t *testing.T) {
+	config, err := LoadConfig([]string{
+		"--otel-enabled",
+		"--otel-service-version=dev",
+		"--otel-environment=test",
+		"--otel-endpoint=collector:4317",
+		"--otel-sample-ratio=0.25",
+		"--otel-headers=authorization=masked-value",
+		"--otel-timeout=3s",
+		"--messenger-type=gochannel",
+	})
+	require.NoError(t, err)
+
+	assert.True(t, config.Telemetry.Enabled)
+	assert.Equal(t, "prism.scheduler", config.Telemetry.ServiceName)
+	assert.Equal(t, "dev", config.Telemetry.ServiceVersion)
+	assert.Equal(t, "test", config.Telemetry.Environment)
+	assert.Equal(t, "collector:4317", config.Telemetry.Endpoint)
+	assert.Equal(t, 0.25, config.Telemetry.SampleRatio)
+	assert.Equal(t, "masked-value", config.Telemetry.Headers["authorization"])
+	assert.Equal(t, 3*time.Second, config.Telemetry.Timeout)
+}
+
 func TestLoadConfig_EnvironmentVariables(t *testing.T) {
 	err := os.Setenv("PRISM_SCHEDULER_INTERVAL", "15m")
 	require.NoError(t, err)

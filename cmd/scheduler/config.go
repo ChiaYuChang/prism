@@ -18,6 +18,7 @@ type Config struct {
 	HealthPort    int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
 	Valkey        app.ValkeyConfig    `mapstructure:"valkey"`
 	Logger        obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry     obs.TelemetryConfig `mapstructure:"telemetry"`
 	BatchSize     int                 `mapstructure:"batch-size"     validate:"required,min=1,max=200"`
 	Kinds         []string            `mapstructure:"kinds"          validate:"required,min=1,dive,oneof=DIRECTORY_FETCH KEYWORD_SEARCH PAGE_FETCH"`
 	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
@@ -85,6 +86,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int64("channel-buffer", 100, "GoChannel output buffer size")
 	fs.Bool("persistent", true, "Whether GoChannel should persist messages in memory")
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.scheduler"))
+	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.scheduler"))
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel, default: nats)")
 	fs.Int("batch-size", 100, "Number of tasks to claim per tick (max: 200, default: 100)")
 	fs.StringSlice("kinds", []string{"DIRECTORY_FETCH", "KEYWORD_SEARCH"}, "Task kinds this scheduler instance will claim (comma-separated)")
@@ -121,6 +123,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := obs.BindLoggingFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := obs.BindTelemetryFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
@@ -129,6 +134,11 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	config.Logger = loggerCfg
+	telemetryCfg, err := obs.LoadTelemetryConfig(v)
+	if err != nil {
+		return nil, err
+	}
+	config.Telemetry = telemetryCfg
 
 	// Resolve file-based secrets before validation so the required-Password
 	// check sees the file-derived value when running under prod overlay.
