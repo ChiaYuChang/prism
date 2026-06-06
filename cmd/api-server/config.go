@@ -29,16 +29,17 @@ type RateLimitConfig struct {
 
 // Config is the runtime configuration for the API server.
 type Config struct {
-	Port            int                `mapstructure:"port"              validate:"required,min=1024,max=65535"`
-	ReadTimeout     time.Duration      `mapstructure:"read-timeout"      validate:"required,min=1s"`
-	WriteTimeout    time.Duration      `mapstructure:"write-timeout"     validate:"required,min=1s"`
-	ShutdownTimeout time.Duration      `mapstructure:"shutdown-timeout"  validate:"required,min=1s"`
-	CORSOrigins     []string           `mapstructure:"cors-origins"`
-	Logger          obs.LoggingConfig  `mapstructure:"logger"`
-	Postgres        app.PostgresConfig `mapstructure:"postgres"`
-	Valkey          app.ValkeyConfig   `mapstructure:"valkey"`
-	Cache           CacheConfig        `mapstructure:"cache"`
-	RateLimit       RateLimitConfig    `mapstructure:"rate-limit"`
+	Port            int                 `mapstructure:"port"              validate:"required,min=1024,max=65535"`
+	ReadTimeout     time.Duration       `mapstructure:"read-timeout"      validate:"required,min=1s"`
+	WriteTimeout    time.Duration       `mapstructure:"write-timeout"     validate:"required,min=1s"`
+	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout"  validate:"required,min=1s"`
+	CORSOrigins     []string            `mapstructure:"cors-origins"`
+	Logger          obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
+	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
+	Valkey          app.ValkeyConfig    `mapstructure:"valkey"`
+	Cache           CacheConfig         `mapstructure:"cache"`
+	RateLimit       RateLimitConfig     `mapstructure:"rate-limit"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -57,6 +58,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.StringSlice("cors-origins", []string{}, "Allowed CORS origins (comma-separated; empty disables CORS)")
 
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.api-server"))
+	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.api-server"))
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -102,6 +104,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := obs.BindLoggingFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := obs.BindTelemetryFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := cfg.Valkey.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
@@ -119,6 +124,11 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Logger = loggerCfg
+	telemetryCfg, err := obs.LoadTelemetryConfig(v)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Telemetry = telemetryCfg
 
 	if cfg.Cache.Enabled {
 		if err := cfg.Valkey.ResolveSecrets(); err != nil {

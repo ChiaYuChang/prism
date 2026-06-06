@@ -57,12 +57,17 @@ func main() {
 		defer func() { _ = logFile.Close() }()
 	}
 
-	shutdownTracer := infra.InitAndSetTracer(TracerName)
+	telemetry, err := obs.InitTelemetry(ctx, config.Telemetry)
+	if err != nil {
+		logger.Error("failed to initialize telemetry", "error", err)
+		os.Exit(1)
+	}
 	defer func() {
-		if err := shutdownTracer(context.Background()); err != nil {
-			logger.Error("failed to shutdown tracer", "error", err)
+		if err := telemetry.Shutdown(context.Background()); err != nil {
+			logger.Error("failed to shutdown telemetry", "error", err)
 		}
 	}()
+	infra.SetTracer(telemetry.Tracer(TracerName))
 
 	monitor := obs.NewHealthMonitor()
 

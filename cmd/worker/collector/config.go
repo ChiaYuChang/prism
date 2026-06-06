@@ -15,6 +15,7 @@ import (
 type Config struct {
 	HealthPort        int                       `mapstructure:"health-port"         validate:"required,min=1024,max=65535"`
 	Logger            obs.LoggingConfig         `mapstructure:"logger"`
+	Telemetry         obs.TelemetryConfig       `mapstructure:"telemetry"`
 	HTTPTimeout       time.Duration             `mapstructure:"http-timeout"        validate:"required,min=1s"`
 	MaxProcessingTime time.Duration             `mapstructure:"max-processing-time" validate:"required,min=1s"`
 	Postgres          appconfig.PostgresConfig  `mapstructure:"postgres"`
@@ -59,6 +60,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Int("health-port", 8093, "The port for the health check server")
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.collector"))
+	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.collector"))
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
 	fs.Duration("http-timeout", 30*time.Second, "HTTP timeout for page fetch requests")
 	fs.Duration("max-processing-time", 2*time.Minute, "Maximum wall-clock time for handling a single message (ctx timeout passed to handler)")
@@ -120,6 +122,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := obs.BindLoggingFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := obs.BindTelemetryFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
@@ -128,6 +133,11 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	config.Logger = loggerCfg
+	telemetryCfg, err := obs.LoadTelemetryConfig(v)
+	if err != nil {
+		return nil, err
+	}
+	config.Telemetry = telemetryCfg
 
 	if err := config.Postgres.ResolveSecrets(); err != nil {
 		return nil, fmt.Errorf("postgres secrets: %w", err)

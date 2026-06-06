@@ -89,6 +89,28 @@ func TestLoadConfigFromFlags(t *testing.T) {
 	assert.Equal(t, "gochannel", cfg.MessengerType)
 }
 
+func TestLoadConfigTelemetryFlags(t *testing.T) {
+	cfg, err := LoadConfig([]string{
+		"--otel-enabled",
+		"--otel-service-name=prism.discovery.test",
+		"--otel-service-version=dev",
+		"--otel-environment=test",
+		"--otel-endpoint=collector:4317",
+		"--otel-sample-ratio=0.25",
+		"--otel-timeout=3s",
+		"--messenger-type=gochannel",
+	})
+	require.NoError(t, err)
+
+	assert.True(t, cfg.Telemetry.Enabled)
+	assert.Equal(t, "prism.discovery.test", cfg.Telemetry.ServiceName)
+	assert.Equal(t, "dev", cfg.Telemetry.ServiceVersion)
+	assert.Equal(t, "test", cfg.Telemetry.Environment)
+	assert.Equal(t, "collector:4317", cfg.Telemetry.Endpoint)
+	assert.Equal(t, 0.25, cfg.Telemetry.SampleRatio)
+	assert.Equal(t, 3*time.Second, cfg.Telemetry.Timeout)
+}
+
 func TestLoadConfigFromEnvironment(t *testing.T) {
 	require.NoError(t, os.Setenv("PRISM_DISCOVERY_WORKER_HTTP_TIMEOUT", "40s"))
 	require.NoError(t, os.Setenv("PRISM_DISCOVERY_WORKER_POSTGRES_USERNAME", "tester"))

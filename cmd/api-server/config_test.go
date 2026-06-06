@@ -48,6 +48,27 @@ func TestLoadConfig_FromFlags(t *testing.T) {
 	assert.Equal(t, "debug", cfg.Logger.Level)
 }
 
+func TestLoadConfig_TelemetryFlags(t *testing.T) {
+	cfg, err := LoadConfig([]string{
+		"--otel-enabled",
+		"--otel-service-name=prism.api.test",
+		"--otel-service-version=dev",
+		"--otel-environment=test",
+		"--otel-endpoint=collector:4317",
+		"--otel-sample-ratio=0.25",
+		"--otel-timeout=3s",
+	})
+	require.NoError(t, err)
+
+	assert.True(t, cfg.Telemetry.Enabled)
+	assert.Equal(t, "prism.api.test", cfg.Telemetry.ServiceName)
+	assert.Equal(t, "dev", cfg.Telemetry.ServiceVersion)
+	assert.Equal(t, "test", cfg.Telemetry.Environment)
+	assert.Equal(t, "collector:4317", cfg.Telemetry.Endpoint)
+	assert.Equal(t, 0.25, cfg.Telemetry.SampleRatio)
+	assert.Equal(t, 3*time.Second, cfg.Telemetry.Timeout)
+}
+
 func TestLoadConfig_EnvironmentVariables(t *testing.T) {
 	t.Setenv("PRISM_API_PORT", "9100")
 	t.Setenv("PRISM_API_POSTGRES_USERNAME", "envuser")

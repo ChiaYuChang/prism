@@ -117,6 +117,9 @@ services:
       - --pg-port=5432
       - --pg-username=${POSTGRES_APP_USER:-prism}
       - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
+      - --otel-service-name=prism.discovery
+      - --otel-endpoint=otel-collector:4317
       - --log-file-enable
       - --log-file-file=/logs/discovery.json
     environment:
@@ -156,6 +159,9 @@ services:
       - --pg-port=5432
       - --pg-username=${POSTGRES_APP_USER:-prism}
       - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
+      - --otel-service-name=prism.collector
+      - --otel-endpoint=otel-collector:4317
       - --log-file-enable
       - --log-file-file=/logs/collector.json
     environment:
@@ -201,6 +207,9 @@ services:
       - --rate-limit-enabled
       - --rate-limit-rps=100
       - --rate-limit-burst=200
+      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
+      - --otel-service-name=prism.api
+      - --otel-endpoint=otel-collector:4317
       - --log-file-enable
       - --log-file-file=/logs/api-server.json
     environment:

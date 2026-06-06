@@ -26,8 +26,8 @@ app OTLP/gRPC traces -> OTel Collector -> VictoriaTraces -> Grafana Jaeger datas
 app OTLP/gRPC metrics -> OTel Collector -> VictoriaMetrics -> Grafana Prometheus datasource
 ```
 
-The scheduler worker containers are the first proof-point for this path. They
-send OTLP to `otel-collector:4317` and use distinct service names:
+The containerized scheduler, discovery, collector, and API services send OTLP to
+`otel-collector:4317`. Scheduler instances use distinct service names:
 `prism.scheduler.slow` and `prism.scheduler.fast`.
 
 Set `PRISM_WORKER_OTEL_ENABLED=false` for worker-only runs without the `obs`

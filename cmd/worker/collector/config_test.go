@@ -43,6 +43,28 @@ func TestLoadConfigFromFlags(t *testing.T) {
 	assert.Equal(t, "file:///tmp/archives", cfg.Archive)
 }
 
+func TestLoadConfigTelemetryFlags(t *testing.T) {
+	cfg, err := LoadConfig([]string{
+		"--otel-enabled",
+		"--otel-service-name=prism.collector.test",
+		"--otel-service-version=dev",
+		"--otel-environment=test",
+		"--otel-endpoint=collector:4317",
+		"--otel-sample-ratio=0.25",
+		"--otel-timeout=3s",
+		"--messenger-type=gochannel",
+	})
+	require.NoError(t, err)
+
+	assert.True(t, cfg.Telemetry.Enabled)
+	assert.Equal(t, "prism.collector.test", cfg.Telemetry.ServiceName)
+	assert.Equal(t, "dev", cfg.Telemetry.ServiceVersion)
+	assert.Equal(t, "test", cfg.Telemetry.Environment)
+	assert.Equal(t, "collector:4317", cfg.Telemetry.Endpoint)
+	assert.Equal(t, 0.25, cfg.Telemetry.SampleRatio)
+	assert.Equal(t, 3*time.Second, cfg.Telemetry.Timeout)
+}
+
 func TestLoadConfigS3FromFlags(t *testing.T) {
 	cfg, err := LoadConfig([]string{
 		"--archive=s3://mybucket/errors",
