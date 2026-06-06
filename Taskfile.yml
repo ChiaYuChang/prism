@@ -77,6 +77,7 @@ vars:
   PROJECT: "{{.NAME}}-{{.MODE}}"
   TASK_DIR: .task
   MODE_FILE: "{{.TASK_DIR}}/mode"
+  PROFILES_FILE: "{{.TASK_DIR}}/profiles"
 
 tasks:
   default:
@@ -130,6 +131,7 @@ tasks:
       - mkdir -p {{.TASK_DIR}}
       - docker compose -f {{.COMPOSE_MERGED}} up -d
       - "echo {{.MODE}} > {{.MODE_FILE}}"
+      - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"
       - task: compose:wait
 
   compose:wait:
@@ -169,24 +171,38 @@ tasks:
     vars:
       EFFECTIVE_MODE:
         sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROFILES:
+        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
+      PROFILES_SLUG:
+        sh: 'echo "{{.EFFECTIVE_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
       EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
       COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down
       - rm -f {{.MODE_FILE}}
+      - rm -f {{.PROFILES_FILE}}
 
   compose:clean:
     desc: stop and remove all services + volumes (honors .task/mode if present)
     vars:
       EFFECTIVE_MODE:
         sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+      EFFECTIVE_PROFILES:
+        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
+      PROFILES_SLUG:
+        sh: 'echo "{{.EFFECTIVE_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
       EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
       COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down -v --remove-orphans
       - rm -f {{.MODE_FILE}}
+      - rm -f {{.PROFILES_FILE}}
 
   compose:logs:
     desc: list all service logs
@@ -242,6 +258,7 @@ tasks:
         collector prism-api fixture-server
       - docker compose -f {{.COMPOSE_MERGED}} up -d scheduler-slow scheduler-fast
         discovery collector prism-api fixture-server
+      - "echo {{.WORKER_PROFILES}} > {{.PROFILES_FILE}}"
 
   compose:worker:down:
     desc: stop containerized workers (leaves infra stack running)
@@ -265,6 +282,7 @@ tasks:
         discovery collector prism-api fixture-server
       - docker compose -f {{.COMPOSE_MERGED}} rm -f scheduler-slow scheduler-fast
         discovery collector prism-api fixture-server
+      - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"
 
   compose:worker:logs:
     desc: tail logs from containerized workers
