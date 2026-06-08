@@ -20,6 +20,7 @@ const (
 type Config struct {
 	HealthPort    int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
 	Logger        obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry     obs.TelemetryConfig `mapstructure:"telemetry"`
 	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
 	MessengerType string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
 	Messenger     app.MessengerConfig `mapstructure:"-"`
@@ -39,6 +40,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("health-port", 8094, "The port for the health check server")
 
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.planner"))
+	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.planner"))
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -94,6 +96,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := obs.BindLoggingFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := obs.BindTelemetryFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := config.LLM.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
@@ -106,6 +111,11 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	config.Logger = loggerCfg
+	telemetryCfg, err := obs.LoadTelemetryConfig(v)
+	if err != nil {
+		return nil, err
+	}
+	config.Telemetry = telemetryCfg
 
 	switch config.MessengerType {
 	case "nats":

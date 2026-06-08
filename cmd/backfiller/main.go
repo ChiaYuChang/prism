@@ -43,6 +43,7 @@ type cliOptions struct {
 	messengerType        string
 	natsCfg              appconfig.NatsConfig
 	goChannelCfg         appconfig.GoChannelConfig
+	telemetry            obs.TelemetryConfig
 }
 
 func main() {
@@ -64,12 +65,18 @@ func main() {
 			_ = logFile.Close()
 		}()
 	}
-	shutdownTracer := infra.InitAndSetTracer(TracerName)
+	telemetry, err := obs.InitTelemetry(context.Background(), opts.telemetry)
+	if err != nil {
+		logger.Error("failed to initialize telemetry", "error", err)
+		os.Exit(1)
+	}
 	defer func() {
-		if err := shutdownTracer(context.Background()); err != nil {
-			logger.Error("failed to shutdown tracer", "error", err)
+		if err := telemetry.Shutdown(context.Background()); err != nil {
+			logger.Error("failed to shutdown telemetry", "error", err)
 		}
 	}()
+	tracer := telemetry.Tracer(TracerName)
+	infra.SetTracer(tracer)
 
 	var messengerConfig appconfig.MessengerConfig
 	switch opts.messengerType {
@@ -143,7 +150,6 @@ func main() {
 		"base_url", srcSpec.BaseURL,
 	)
 
-	tracer := infra.Tracer()
 	var repositoryFactory repo.Factory = pg.NewRepositoryBuilder(opts.postgres)
 	repository, repositoryCloser, err := repositoryFactory.NewRepository(context.Background())
 	if err != nil {
@@ -216,6 +222,8 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 	fs := pflag.NewFlagSet(CommandName, pflag.ContinueOnError)
 	fs.SetOutput(output)
 	fs.StringVar(&opts.source, "source", "", "backfill source name, e.g. dpp, tpp, kmt")
+	telemetryDefaults := obs.DefaultTelemetryConfig(TracerName)
+	opts.telemetry = telemetryDefaults
 	untilRaw := ""
 	fs.StringVar(&untilRaw, "until", "", "stop when listing items become older than this date (YYYY-MM-DD)")
 	fs.IntVar(&opts.maxPages, "max-pages", 0, "maximum number of listing pages to visit (0 means unlimited)")
@@ -237,6 +245,16 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 	fs.DurationVar(&opts.natsCfg.AckWaitTimeout, "ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscriber")
 	fs.Int64Var(&opts.goChannelCfg.ChannelBuffer, "channel-buffer", 100, "GoChannel output buffer size")
 	fs.BoolVar(&opts.goChannelCfg.Persistent, "persistent", true, "Whether GoChannel should persist messages in memory")
+	fs.BoolVar(&opts.telemetry.Enabled, "otel-enabled", telemetryDefaults.Enabled, "Enable OpenTelemetry OTLP export")
+	fs.StringVar(&opts.telemetry.ServiceName, "otel-service-name", telemetryDefaults.ServiceName, "OpenTelemetry service.name resource attribute")
+	fs.StringVar(&opts.telemetry.ServiceVersion, "otel-service-version", telemetryDefaults.ServiceVersion, "OpenTelemetry service.version resource attribute")
+	fs.StringVar(&opts.telemetry.Environment, "otel-environment", telemetryDefaults.Environment, "OpenTelemetry deployment.environment resource attribute")
+	fs.StringVar(&opts.telemetry.Endpoint, "otel-endpoint", telemetryDefaults.Endpoint, "OTLP gRPC endpoint host:port")
+	fs.BoolVar(&opts.telemetry.Insecure, "otel-insecure", telemetryDefaults.Insecure, "Use insecure OTLP transport")
+	fs.Float64Var(&opts.telemetry.SampleRatio, "otel-sample-ratio", telemetryDefaults.SampleRatio, "Trace sample ratio between 0 and 1")
+	fs.StringToStringVar(&opts.telemetry.Headers, "otel-headers", telemetryDefaults.Headers, "OTLP headers as key=value pairs; values are treated as secrets in logs")
+	fs.StringVar(&opts.telemetry.HeadersFile, "otel-headers-file", telemetryDefaults.HeadersFile, "Path to OTLP headers file; values are treated as secrets in logs")
+	fs.DurationVar(&opts.telemetry.Timeout, "otel-timeout", telemetryDefaults.Timeout, "OTLP exporter timeout")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintf(fs.Output(), "Usage: %s --source <name> --until <YYYY-MM-DD> [flags]\n\n", CommandName)
 		_, _ = fmt.Fprintln(fs.Output(), "Examples:")

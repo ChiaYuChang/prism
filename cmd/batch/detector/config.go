@@ -13,12 +13,13 @@ import (
 )
 
 type Config struct {
-	Interval    time.Duration      `mapstructure:"interval"       validate:"required,min=10s"`
-	Once        bool               `mapstructure:"once"`
-	RecentLimit int32              `mapstructure:"recent-limit"   validate:"required,min=1,max=500"`
-	HealthPort  int                `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	Logger      obs.LoggingConfig  `mapstructure:"logger"`
-	Postgres    app.PostgresConfig `mapstructure:"postgres"`
+	Interval    time.Duration       `mapstructure:"interval"       validate:"required,min=10s"`
+	Once        bool                `mapstructure:"once"`
+	RecentLimit int32               `mapstructure:"recent-limit"   validate:"required,min=1,max=500"`
+	HealthPort  int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
+	Logger      obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry   obs.TelemetryConfig `mapstructure:"telemetry"`
+	Postgres    app.PostgresConfig  `mapstructure:"postgres"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -35,6 +36,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("health-port", 8083, "The port for the health check server")
 
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.batch.detector"))
+	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.batch.detector"))
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -65,6 +67,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := obs.BindLoggingFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := obs.BindTelemetryFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
@@ -73,6 +78,11 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Logger = loggerCfg
+	telemetryCfg, err := obs.LoadTelemetryConfig(v)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Telemetry = telemetryCfg
 
 	validate := validator.New()
 	if err := validate.Struct(&cfg); err != nil {

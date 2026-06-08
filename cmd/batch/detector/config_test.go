@@ -34,6 +34,9 @@ func TestLoadConfig_FromFlags(t *testing.T) {
 		"--pg-password=secret",
 		"--pg-db=prismtest",
 		"--log-level=debug",
+		"--otel-enabled",
+		"--otel-service-version=dev",
+		"--otel-endpoint=collector:4317",
 	}
 
 	cfg, err := LoadConfig(args)
@@ -48,6 +51,10 @@ func TestLoadConfig_FromFlags(t *testing.T) {
 	assert.Equal(t, "tester", cfg.Postgres.Username)
 	assert.Equal(t, "secret", cfg.Postgres.Password)
 	assert.Equal(t, "prismtest", cfg.Postgres.DB)
+	assert.True(t, cfg.Telemetry.Enabled)
+	assert.Equal(t, "prism.batch.detector", cfg.Telemetry.ServiceName)
+	assert.Equal(t, "dev", cfg.Telemetry.ServiceVersion)
+	assert.Equal(t, "collector:4317", cfg.Telemetry.Endpoint)
 }
 
 func TestLoadConfig_EnvironmentVariables(t *testing.T) {

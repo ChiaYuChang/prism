@@ -38,6 +38,8 @@ func TestLoadConfig_FromFlags_Gochannel(t *testing.T) {
 		"--pg-host=10.0.0.1",
 		"--pg-username=u",
 		"--pg-password=p",
+		"--otel-enabled",
+		"--otel-environment=test",
 	}
 
 	cfg, err := LoadConfig(args)
@@ -51,6 +53,9 @@ func TestLoadConfig_FromFlags_Gochannel(t *testing.T) {
 	goCfg, ok := cfg.Messenger.(*app.GoChannelConfig)
 	require.True(t, ok, "messenger should be *GoChannelConfig")
 	assert.Equal(t, int64(256), goCfg.ChannelBuffer)
+	assert.True(t, cfg.Telemetry.Enabled)
+	assert.Equal(t, "prism.batch.publisher", cfg.Telemetry.ServiceName)
+	assert.Equal(t, "test", cfg.Telemetry.Environment)
 }
 
 func TestLoadConfig_FromFlags_Nats(t *testing.T) {

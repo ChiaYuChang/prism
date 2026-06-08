@@ -19,6 +19,9 @@ func TestParseCLIParsesRequiredArguments(t *testing.T) {
 		"--pg-host=127.0.0.1",
 		"--pg-username=postgres",
 		"--messenger-type=gochannel",
+		"--otel-enabled",
+		"--otel-service-version=dev",
+		"--otel-endpoint=collector:4317",
 	}, &out)
 	require.NoError(t, err)
 
@@ -26,6 +29,10 @@ func TestParseCLIParsesRequiredArguments(t *testing.T) {
 	assert.Equal(t, 5, opts.maxPages)
 	assert.Equal(t, "127.0.0.1", opts.postgres.Host)
 	assert.Equal(t, "gochannel", opts.messengerType)
+	assert.True(t, opts.telemetry.Enabled)
+	assert.Equal(t, "prism.backfiller", opts.telemetry.ServiceName)
+	assert.Equal(t, "dev", opts.telemetry.ServiceVersion)
+	assert.Equal(t, "collector:4317", opts.telemetry.Endpoint)
 	assert.Equal(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local), opts.until)
 }
 
