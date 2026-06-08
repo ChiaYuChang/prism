@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"sort"
 	"syscall"
+	"time"
 
 	"github.com/ChiaYuChang/prism/internal/dev"
 	"github.com/ChiaYuChang/prism/internal/discovery"
@@ -70,6 +71,11 @@ func main() {
 		}
 	}()
 	tracer := telemetry.Tracer(TracerName)
+	metrics, err := newMetrics(telemetry.Meter(TracerName))
+	if err != nil {
+		logger.Error("failed to initialize discovery metrics", "error", err)
+		os.Exit(1)
+	}
 	infra.SetTracer(tracer)
 
 	monitor := obs.NewHealthMonitor()
@@ -151,6 +157,7 @@ func main() {
 		sink,
 		dbRepo.Scout(),
 		dbRepo.Scheduler(),
+		metrics,
 	)
 	if err != nil {
 		logger.Error("failed to build discovery handler", "error", err)
@@ -165,13 +172,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	started := time.Now()
 	logger.Info(
 		"discovery worker started",
 		"topic", message.TaskTopic,
 		"messenger", config.MessengerType,
 		"scout_config", config.ScoutConfigPath,
 		"http_timeout", config.HTTPTimeout,
+		"started_at", started,
 	)
+	defer func() {
+		logger.Info("discovery worker stopped", "uptime", time.Since(started))
+	}()
 	monitor.OK()
 
 	for {

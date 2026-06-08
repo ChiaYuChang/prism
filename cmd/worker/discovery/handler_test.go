@@ -20,6 +20,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
@@ -75,7 +78,14 @@ func TestHandlerHandleMessageIgnoresUnsupportedTask(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := &stubCandidateSink{}
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler)
+	h, err := NewHandler(
+		testLogger(),
+		noop.NewTracerProvider().Tracer("test"),
+		scout,
+		nil,
+		sink,
+		scoutRepo,
+		scheduler)
 	require.NoError(t, err)
 
 	payload, err := (&message.TaskSignal{
@@ -104,7 +114,15 @@ func TestHandlerHandleMessageNacksWhenCompleteFails(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := &stubCandidateSink{}
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler)
+	h, err := NewHandler(
+		testLogger(),
+		noop.NewTracerProvider().Tracer("test"),
+		scout,
+		nil,
+		sink,
+		scoutRepo,
+		scheduler,
+	)
 	require.NoError(t, err)
 
 	source := repo.Source{
@@ -112,9 +130,18 @@ func TestHandlerHandleMessageNacksWhenCompleteFails(t *testing.T) {
 		Type:    repo.SourceTypeParty,
 		BaseURL: "https://www.dpp.org.tw",
 	}
-	scoutRepo.EXPECT().GetSourceByAbbr(mock.Anything, "dpp").Return(source, nil)
-	scout.EXPECT().Discover(mock.Anything, "https://www.dpp.org.tw/media/00").Return([]model.Candidates{}, nil)
-	scheduler.EXPECT().CompleteTask(mock.Anything, taskID).Return(errors.New("db down"))
+
+	scoutRepo.EXPECT().
+		GetSourceByAbbr(mock.Anything, "dpp").
+		Return(source, nil)
+
+	scout.EXPECT().
+		Discover(mock.Anything, "https://www.dpp.org.tw/media/00").
+		Return([]model.Candidates{}, nil)
+
+	scheduler.EXPECT().
+		CompleteTask(mock.Anything, taskID).
+		Return(errors.New("db down"))
 
 	payload, err := (&message.TaskSignal{
 		TaskID:     taskID,
@@ -156,7 +183,15 @@ func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 		"brave": searchClient,
 	}
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, searchProviders, sink, scoutRepo, scheduler)
+	h, err := NewHandler(
+		testLogger(),
+		noop.NewTracerProvider().Tracer("test"),
+		scout,
+		searchProviders,
+		sink,
+		scoutRepo,
+		scheduler,
+	)
 	require.NoError(t, err)
 
 	searchClient.EXPECT().
@@ -206,7 +241,15 @@ func TestHandlerHandleMessageKeywordSearchNoProviders(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := &stubCandidateSink{}
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler)
+	h, err := NewHandler(
+		testLogger(),
+		noop.NewTracerProvider().Tracer("test"),
+		scout,
+		nil,
+		sink,
+		scoutRepo,
+		scheduler,
+	)
 	require.NoError(t, err)
 
 	payloadBytes, err := json.Marshal(planner.MediaTaskPayload{Query: "test"})
@@ -224,7 +267,9 @@ func TestHandlerHandleMessageKeywordSearchNoProviders(t *testing.T) {
 	}).Marshal()
 	require.NoError(t, err)
 
-	scheduler.EXPECT().FailTask(mock.Anything, taskID).Return(nil)
+	scheduler.EXPECT().
+		FailTask(mock.Anything, taskID).
+		Return(nil)
 
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", sigPayload))
 	require.Error(t, err)
@@ -242,17 +287,33 @@ func TestHandlerHandleMessageKeywordSearchCompletesWhenOneProviderSucceeds(t *te
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := &stubCandidateSink{}
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, map[string]discovery.SearchClient{
-		"brave":      braveClient,
-		"google-cse": googleClient,
-	}, sink, scoutRepo, scheduler)
+	h, err := NewHandler(
+		testLogger(),
+		noop.NewTracerProvider().Tracer("test"),
+		scout,
+		map[string]discovery.SearchClient{
+			"brave":      braveClient,
+			"google-cse": googleClient,
+		},
+		sink,
+		scoutRepo,
+		scheduler,
+	)
 	require.NoError(t, err)
 
-	braveClient.EXPECT().DiscoverNews(mock.Anything, "台灣半導體政策", "tw.news.yahoo.com").Return(nil, errors.New("rate limited"))
-	googleClient.EXPECT().DiscoverNews(mock.Anything, "台灣半導體政策", "tw.news.yahoo.com").Return([]model.Candidates{
-		{Title: "Yahoo article", URL: "https://tw.news.yahoo.com/a"},
-	}, nil)
-	scheduler.EXPECT().CompleteTask(mock.Anything, taskID).Return(nil)
+	braveClient.EXPECT().
+		DiscoverNews(mock.Anything, "台灣半導體政策", "tw.news.yahoo.com").
+		Return(nil, errors.New("rate limited"))
+
+	googleClient.EXPECT().
+		DiscoverNews(mock.Anything, "台灣半導體政策", "tw.news.yahoo.com").
+		Return([]model.Candidates{
+			{Title: "Yahoo article", URL: "https://tw.news.yahoo.com/a"},
+		}, nil)
+
+	scheduler.EXPECT().
+		CompleteTask(mock.Anything, taskID).
+		Return(nil)
 
 	payloadBytes, err := json.Marshal(planner.MediaTaskPayload{Query: "台灣半導體政策", Site: "tw.news.yahoo.com"})
 	require.NoError(t, err)
@@ -314,6 +375,175 @@ func TestHandlerHandleMessageDirectoryFetchMedia(t *testing.T) {
 	require.Equal(t, "cna", sink.last.SourceAbbr)
 	require.Equal(t, repo.SourceTypeMedia, sink.last.SourceType)
 	require.Equal(t, repo.IngestionMethodDirectory, sink.last.IngestionMethod)
+}
+
+func TestHandlerHandleMessageRecordsMetrics(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { require.NoError(t, meterProvider.Shutdown(context.Background())) })
+	metrics, err := newMetrics(meterProvider.Meter("test"))
+	require.NoError(t, err)
+
+	scout := discoverymocks.NewMockScout(t)
+	scoutRepo := repomocks.NewMockScout(t)
+	scheduler := repomocks.NewMockScheduler(t)
+	sink := &stubCandidateSink{}
+
+	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, metrics)
+	require.NoError(t, err)
+
+	okTaskID := uuid.Must(uuid.NewV7())
+	failTaskID := uuid.Must(uuid.NewV7())
+	failedErr := errors.New("site down")
+	source := repo.Source{Abbr: "dpp", Type: repo.SourceTypeParty, BaseURL: "https://www.dpp.org.tw"}
+	scoutRepo.EXPECT().GetSourceByAbbr(mock.Anything, "dpp").Return(source, nil).Twice()
+	scout.EXPECT().Discover(mock.Anything, "https://www.dpp.org.tw/media/ok").Return([]model.Candidates{}, nil)
+	scout.EXPECT().Discover(mock.Anything, "https://www.dpp.org.tw/media/fail").Return(nil, failedErr)
+	scheduler.EXPECT().CompleteTask(mock.Anything, okTaskID).Return(nil)
+	scheduler.EXPECT().FailTask(mock.Anything, failTaskID).Return(nil)
+
+	tcs := []struct {
+		name        string
+		taskID      uuid.UUID
+		kind        string
+		sourceType  string
+		rawURL      string
+		expectedAck bool
+		expectedErr error
+	}{
+		{
+			name:        "ok",
+			taskID:      okTaskID,
+			kind:        repo.TaskKindDirectoryFetch,
+			sourceType:  repo.SourceTypeParty,
+			rawURL:      "https://www.dpp.org.tw/media/ok",
+			expectedAck: true,
+			expectedErr: nil,
+		},
+		{
+			name:        "ignored",
+			taskID:      uuid.Must(uuid.NewV7()),
+			kind:        repo.TaskKindPageFetch,
+			sourceType:  repo.SourceTypeParty,
+			rawURL:      "https://www.dpp.org.tw/media/ignored",
+			expectedAck: true,
+			expectedErr: nil,
+		},
+		{
+			name:        "failed",
+			taskID:      failTaskID,
+			kind:        repo.TaskKindDirectoryFetch,
+			sourceType:  repo.SourceTypeParty,
+			rawURL:      "https://www.dpp.org.tw/media/fail",
+			expectedAck: true,
+			expectedErr: failedErr,
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := discoveryTaskPayload(t, tc.taskID, tc.kind, tc.sourceType, tc.rawURL)
+			ack, err := h.HandleMessage(context.Background(), wm.NewMessage(tc.name, payload))
+			require.Equal(t, tc.expectedAck, ack)
+			if tc.expectedErr != nil {
+				require.Error(t, err)
+				require.ErrorIs(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
+	rm := collectDiscoveryMetrics(t, reader)
+	for _, tc := range tcs {
+		require.Equal(t, int64(1), discoveryCounterValue(t, rm, "result", tc.name))
+	}
+	require.Equal(t, int64(len(tcs)), discoveryCounterTotal(t, rm))
+	require.Equal(t, uint64(len(tcs)), discoveryHistogramCount(t, rm, "prism.discovery.task.duration"))
+}
+
+// discoveryTaskPayload returns a marshaled TaskSignal payload for testing.
+func discoveryTaskPayload(t *testing.T, taskID uuid.UUID, kind, sourceType, rawURL string) []byte {
+	t.Helper()
+	payload, err := (&message.TaskSignal{
+		TaskID:     taskID,
+		BatchID:    uuid.Must(uuid.NewV7()),
+		Kind:       kind,
+		SourceType: sourceType,
+		SourceAbbr: "dpp",
+		URL:        rawURL,
+		TraceID:    "trace-metrics",
+	}).Marshal()
+	require.NoError(t, err)
+	return payload
+}
+
+// collectDiscoveryMetrics collects discovery task metrics from the reader.
+func collectDiscoveryMetrics(t *testing.T, reader *sdkmetric.ManualReader) metricdata.ResourceMetrics {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+	return rm
+}
+
+// discoveryCounterValue returns the value of the discovery task counter metric with the given attributes.
+func discoveryCounterValue(t *testing.T, rm metricdata.ResourceMetrics, attrKey, attrValue string) int64 {
+	t.Helper()
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "prism.discovery.tasks" {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+			for _, dp := range sum.DataPoints {
+				value, found := dp.Attributes.Value(attribute.Key(attrKey))
+				if found && value.AsString() == attrValue {
+					return dp.Value
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// discoveryCounterTotal returns the total value of the discovery task counter metric.
+func discoveryCounterTotal(t *testing.T, rm metricdata.ResourceMetrics) int64 {
+	t.Helper()
+	var total int64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "prism.discovery.tasks" {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+			for _, dp := range sum.DataPoints {
+				total += dp.Value
+			}
+		}
+	}
+	return total
+}
+
+// discoveryHistogramCount returns the count of the discovery task histogram metric with the given name.
+func discoveryHistogramCount(t *testing.T, rm metricdata.ResourceMetrics, name string) uint64 {
+	t.Helper()
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			histogram, ok := m.Data.(metricdata.Histogram[float64])
+			require.True(t, ok)
+			var count uint64
+			for _, dp := range histogram.DataPoints {
+				count += dp.Count
+			}
+			return count
+		}
+	}
+	return 0
 }
 
 func testLogger() *slog.Logger {

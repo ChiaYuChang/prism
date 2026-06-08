@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	"github.com/ChiaYuChang/prism/internal/discovery/planner"
@@ -18,6 +19,8 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo"
 	wm "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -34,13 +37,52 @@ var (
 )
 
 type Handler struct {
-	logger          *slog.Logger
-	tracer          trace.Tracer
-	scout           discovery.Scout
-	searchProviders map[string]discovery.SearchClient
-	sink            discoverysink.CandidateSink
-	scoutRepo       repo.Scout
-	reporter        repo.TaskReporter
+	logger    *slog.Logger
+	tracer    trace.Tracer
+	scout     discovery.Scout
+	providers map[string]discovery.SearchClient
+	sink      discoverysink.CandidateSink
+	scoutRepo repo.Scout
+	reporter  repo.TaskReporter
+	metrics   *metrics
+}
+
+type metrics struct {
+	tasks        otelmetric.Int64Counter
+	taskDuration otelmetric.Float64Histogram
+}
+
+func newMetrics(meter otelmetric.Meter) (*metrics, error) {
+	tasks, err := meter.Int64Counter(
+		"prism.discovery.tasks",
+		otelmetric.WithDescription("Count of discovery task outcomes."),
+		otelmetric.WithUnit("{task}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create discovery task counter: %w", err)
+	}
+	taskDuration, err := meter.Float64Histogram(
+		"prism.discovery.task.duration",
+		otelmetric.WithDescription("Discovery task handling duration."),
+		otelmetric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create discovery task duration histogram: %w", err)
+	}
+	return &metrics{tasks: tasks, taskDuration: taskDuration}, nil
+}
+
+func (m *metrics) recordTask(ctx context.Context, sig message.TaskSignal, result string, started time.Time) {
+	if m == nil {
+		return
+	}
+	attrs := otelmetric.WithAttributes(
+		attribute.String("task.kind", labelValue(sig.Kind)),
+		attribute.String("source.type", labelValue(sig.SourceType)),
+		attribute.String("result", result),
+	)
+	m.tasks.Add(ctx, 1, attrs)
+	m.taskDuration.Record(ctx, time.Since(started).Seconds(), attrs)
 }
 
 func NewHandler(
@@ -51,6 +93,7 @@ func NewHandler(
 	sink discoverysink.CandidateSink,
 	scoutRepo repo.Scout,
 	reporter repo.TaskReporter,
+	metricsOpt ...*metrics,
 ) (*Handler, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
@@ -73,27 +116,37 @@ func NewHandler(
 	if searchProviders == nil {
 		searchProviders = map[string]discovery.SearchClient{}
 	}
+	var metrics *metrics
+	if len(metricsOpt) > 0 {
+		metrics = metricsOpt[0]
+	}
 
 	return &Handler{
-		logger:          logger,
-		tracer:          tracer,
-		scout:           scout,
-		searchProviders: searchProviders,
-		sink:            sink,
-		scoutRepo:       scoutRepo,
-		reporter:        reporter,
+		logger:    logger,
+		tracer:    tracer,
+		scout:     scout,
+		providers: searchProviders,
+		sink:      sink,
+		scoutRepo: scoutRepo,
+		reporter:  reporter,
+		metrics:   metrics,
 	}, nil
 }
 
 func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, error) {
+	started := time.Now()
 	var sig message.TaskSignal
 	if err := json.Unmarshal(msg.Payload, &sig); err != nil {
+		h.metrics.recordTask(ctx, sig, "invalid", started)
 		return true, fmt.Errorf("%w: decode task signal: %w", ErrInvalidTaskSignal, err)
 	}
 	if sig.TaskID == uuid.Nil {
+		h.metrics.recordTask(ctx, sig, "invalid", started)
 		return true, fmt.Errorf("%w: task_id is empty", ErrInvalidTaskSignal)
 	}
 	if !ownsTask(sig) {
+		h.metrics.recordTask(ctx, sig, "ignored", started)
+		h.logger.WarnContext(ctx, fmt.Sprintf("ignoring task %s: kind=%s source_type=%s", sig.TaskID, sig.Kind, sig.SourceType))
 		return true, nil
 	}
 
@@ -113,17 +166,28 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	if err := h.process(ctx, sig); err != nil {
 		logger.ErrorContext(ctx, "discovery task failed", "error", err)
 		if failErr := h.reporter.FailTask(ctx, sig.TaskID); failErr != nil {
+			h.metrics.recordTask(ctx, sig, "nacked", started)
 			return false, fmt.Errorf("process task %s: %w; mark failed: %w", sig.TaskID, err, failErr)
 		}
+		h.metrics.recordTask(ctx, sig, "failed", started)
 		return true, err
 	}
 
 	if err := h.reporter.CompleteTask(ctx, sig.TaskID); err != nil {
+		h.metrics.recordTask(ctx, sig, "nacked", started)
 		return false, fmt.Errorf("complete task %s: %w", sig.TaskID, err)
 	}
 
+	h.metrics.recordTask(ctx, sig, "ok", started)
 	logger.InfoContext(ctx, "discovery task completed")
 	return true, nil
+}
+
+func labelValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "unknown"
+	}
+	return value
 }
 
 func (h *Handler) process(ctx context.Context, sig message.TaskSignal) error {
@@ -175,7 +239,7 @@ func (h *Handler) handleDirectoryFetch(ctx context.Context, sig message.TaskSign
 }
 
 func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSignal) error {
-	if len(h.searchProviders) == 0 {
+	if len(h.providers) == 0 {
 		return fmt.Errorf("%w: no search providers enabled", ErrUnsupportedSourceType)
 	}
 
@@ -191,7 +255,7 @@ func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSigna
 		candidates []model.Candidates
 		failures   []error
 	)
-	for provider, client := range h.searchProviders {
+	for provider, client := range h.providers {
 		found, err := client.DiscoverNews(ctx, payload.Query, payload.Site)
 		if err != nil {
 			h.logger.WarnContext(ctx, "search provider failed",
@@ -215,7 +279,7 @@ func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSigna
 		}
 		candidates = append(candidates, found...)
 	}
-	if len(failures) == len(h.searchProviders) {
+	if len(failures) == len(h.providers) {
 		return fmt.Errorf("search %q via enabled providers: %w", payload.Query, errors.Join(failures...))
 	}
 
@@ -241,9 +305,20 @@ func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSigna
 	return nil
 }
 
+// ownsTask returns true if the (task kind, source type) combination is owned by this worker, false otherwise.
+// valid combinations are:
+//
+// - TaskKindDirectoryFetch:
+//   - SourceTypeParty
+//   - SourceTypeMedia
+//
+// - TaskKindKeywordSearch:
+//   - SourceTypeMedia
 func ownsTask(sig message.TaskSignal) bool {
-	return (sig.Kind == repo.TaskKindDirectoryFetch && (sig.SourceType == repo.SourceTypeParty || sig.SourceType == repo.SourceTypeMedia)) ||
-		(sig.Kind == repo.TaskKindKeywordSearch && sig.SourceType == repo.SourceTypeMedia)
+	if sig.Kind == repo.TaskKindDirectoryFetch {
+		return sig.SourceType == repo.SourceTypeParty || sig.SourceType == repo.SourceTypeMedia
+	}
+	return sig.Kind == repo.TaskKindKeywordSearch && sig.SourceType == repo.SourceTypeMedia
 }
 
 func validateTaskURL(baseURL, rawURL string) error {
