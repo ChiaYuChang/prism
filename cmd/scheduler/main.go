@@ -18,9 +18,12 @@ import (
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
+
 	"github.com/google/uuid"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	lg "github.com/ChiaYuChang/prism/pkg/logger"
@@ -46,15 +49,87 @@ type TaskPublisher interface {
 type Scheduler struct {
 	logger    *slog.Logger
 	tracer    trace.Tracer
+	metrics   *schedulerMetrics
 	rl        infra.RateLimiter
 	scheduler repo.Scheduler
 	publisher TaskPublisher
 }
 
-func newScheduler(logger *slog.Logger, tracer trace.Tracer, rl infra.RateLimiter, scheduler repo.Scheduler, publisher TaskPublisher) *Scheduler {
+type schedulerMetrics struct {
+	tasks            metric.Int64Counter
+	tickDuration     metric.Float64Histogram
+	dispatchDuration metric.Float64Histogram
+}
+
+func newSchedulerMetrics(meter metric.Meter) (*schedulerMetrics, error) {
+	tasks, err := meter.Int64Counter(
+		"prism.scheduler.tasks",
+		metric.WithDescription("Count of scheduler task dispatch outcomes."),
+		metric.WithUnit("{task}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create scheduler task counter: %w", err)
+	}
+
+	tickDuration, err := meter.Float64Histogram(
+		"prism.scheduler.tick.duration",
+		metric.WithDescription("Scheduler tick duration."),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create scheduler tick duration histogram: %w", err)
+	}
+
+	dispatchDuration, err := meter.Float64Histogram(
+		"prism.scheduler.dispatch.duration",
+		metric.WithDescription("Scheduler dispatch loop duration."),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create scheduler dispatch duration histogram: %w", err)
+	}
+
+	return &schedulerMetrics{tasks: tasks, tickDuration: tickDuration, dispatchDuration: dispatchDuration}, nil
+}
+
+func (m *schedulerMetrics) recordTask(ctx context.Context, task repo.Task, result string) {
+	if m == nil {
+		return
+	}
+	m.tasks.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("task.kind", task.Kind),
+		attribute.String("source.type", task.SourceType),
+		attribute.String("result", result),
+	))
+}
+
+func (m *schedulerMetrics) recordTickDuration(ctx context.Context, started time.Time, result string) {
+	if m == nil {
+		return
+	}
+	m.tickDuration.Record(
+		ctx,
+		time.Since(started).Seconds(),
+		metric.WithAttributes(attribute.String("result", result)),
+	)
+}
+
+func (m *schedulerMetrics) recordDispatchDuration(ctx context.Context, started time.Time, result string) {
+	if m == nil {
+		return
+	}
+	m.dispatchDuration.Record(
+		ctx,
+		time.Since(started).Seconds(),
+		metric.WithAttributes(attribute.String("result", result)),
+	)
+}
+
+func newScheduler(logger *slog.Logger, tracer trace.Tracer, metrics *schedulerMetrics, rl infra.RateLimiter, scheduler repo.Scheduler, publisher TaskPublisher) *Scheduler {
 	return &Scheduler{
 		logger:    logger,
 		tracer:    tracer,
+		metrics:   metrics,
 		rl:        rl,
 		scheduler: scheduler,
 		publisher: publisher,
@@ -68,6 +143,8 @@ func newScheduler(logger *slog.Logger, tracer trace.Tracer, rl infra.RateLimiter
 // calls are made: MEDIA first (user-waiting), PARTY second (fills remainder).
 // Otherwise a single call claims all kinds without source_type filtering.
 func (s *Scheduler) RunTick(ctx context.Context, cfg *Config) []repo.Task {
+	started := time.Now()
+	result := "ok"
 	ctx, span := s.tracer.Start(ctx, "scheduler.tick",
 		trace.WithAttributes(
 			attribute.String("scheduler.lock_key", cfg.LockKey),
@@ -75,7 +152,10 @@ func (s *Scheduler) RunTick(ctx context.Context, cfg *Config) []repo.Task {
 			attribute.Int("scheduler.batch_size", cfg.BatchSize),
 		),
 	)
-	defer span.End()
+	defer func() {
+		s.metrics.recordTickDuration(ctx, started, result)
+		span.End()
+	}()
 
 	n := cfg.BatchSize
 	buf := cfg.Buffer
@@ -184,8 +264,13 @@ func (s *Scheduler) ReleaseAll(ctx context.Context, ids []uuid.UUID) {
 // DispatchTasks publishes a TaskSignal for each task. If publishing fails the
 // task is marked failed so it can be retried on the next tick.
 func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error {
+	started := time.Now()
+	result := "ok"
 	ctx, span := s.tracer.Start(ctx, "scheduler.dispatch_tasks", trace.WithAttributes(attribute.Int("task.count.dispatching", len(tasks))))
-	defer span.End()
+	defer func() {
+		s.metrics.recordDispatchDuration(ctx, started, result)
+		span.End()
+	}()
 
 	for _, task := range tasks {
 		tLogger := lg.WithHook(s.logger,
@@ -211,6 +296,8 @@ func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error 
 		payload, err := sig.Marshal()
 		if err != nil {
 			span.RecordError(err)
+			result = "error"
+			s.metrics.recordTask(ctx, task, "marshal_failed")
 			tLogger.Error("failed to marshal task signal", "error", err)
 			continue
 		}
@@ -220,14 +307,19 @@ func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error 
 
 		if err := s.publisher.Publish(message.TaskTopic, msg); err != nil {
 			span.RecordError(err)
+			result = "error"
 			tLogger.Error("failed to publish task signal", "error", err)
 			if failErr := s.scheduler.FailTask(ctx, task.ID); failErr != nil {
 				span.RecordError(failErr)
+				s.metrics.recordTask(ctx, task, "mark_failed_error")
 				tLogger.Error("failed to mark task as failed", "error", failErr)
+			} else {
+				s.metrics.recordTask(ctx, task, "marked_failed")
 			}
 			continue
 		}
 
+		s.metrics.recordTask(ctx, task, "published")
 		tLogger.Debug("dispatched task")
 	}
 
@@ -304,6 +396,11 @@ func main() {
 		}
 	}()
 	tracer := telemetry.Tracer(TracerName)
+	metrics, err := newSchedulerMetrics(telemetry.Meter(TracerName))
+	if err != nil {
+		logger.Error("failed to initialize scheduler metrics", "error", err)
+		os.Exit(1)
+	}
 	infra.SetTracer(tracer)
 
 	// 3. Health Monitor
@@ -376,7 +473,14 @@ func main() {
 		lg.ServiceHook("scheduler"),
 	)
 
-	svc := newScheduler(logger, tracer, rl, dbRepo.Scheduler(), msgr)
+	svc := Scheduler{
+		logger:    logger,
+		tracer:    tracer,
+		metrics:   metrics,
+		rl:        rl,
+		scheduler: dbRepo.Scheduler(),
+		publisher: msgr,
+	}
 
 	logger.Info("Scheduler starting",
 		"lock_key", config.LockKey,
