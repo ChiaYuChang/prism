@@ -26,3 +26,6 @@ packages:
   github.com/ChiaYuChang/prism/internal/repo:
     config:
       all: true
+  github.com/ChiaYuChang/prism/internal/discovery/sink:
+    config:
+      all: true

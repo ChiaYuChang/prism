@@ -65,9 +65,15 @@ func main() {
 		}
 	}()
 	tracer := telemetry.Tracer(TracerName)
+	metrics, err := newMetrics(telemetry.Meter(TracerName))
+	if err != nil {
+		logger.Error("failed to initialize collector metrics", "error", err)
+		os.Exit(1)
+	}
 	infra.SetTracer(tracer)
 
 	monitor := obs.NewHealthMonitor()
+
 	obs.StartHealthServer(ctx, config.HealthPort, monitor)
 
 	msgr, err := config.Messenger.NewMessenger(logger)
@@ -84,7 +90,13 @@ func main() {
 
 	dbRepo, dbRepoCloser, err := pg.NewRepositoryBuilder(config.Postgres).NewRepository(ctx)
 	if err != nil {
-		logger.Error("failed to initialize repository", "backend", "postgres", "host", config.Postgres.Host, "error", err)
+		logger.ErrorContext(
+			ctx,
+			"failed to initialize repository",
+			"backend", "postgres",
+			"host", config.Postgres.Host,
+			"error", err,
+		)
 		monitor.SetStatus(obs.LevelError, "Failed to connect to Postgres")
 		os.Exit(1)
 	}
@@ -111,9 +123,9 @@ func main() {
 		Handle(http.StatusForbidden, fetcher.FailFastHandler).
 		Handle(http.StatusUnauthorized, fetcher.FailFastHandler)
 
-	// Wire Archiver as errorSaver when Archive URI is set.
+	// Wire Archiver as errSaver when Archive URI is set.
 	// When empty, raw content is not archived on Minify failures.
-	var errorSaver collector.Saver
+	var errSaver collector.Saver
 	if config.Archive != "" {
 		arch, err := openArchiver(ctx, config.Archive, config.S3, logger)
 		if err != nil {
@@ -121,13 +133,17 @@ func main() {
 			monitor.SetStatus(obs.LevelError, "Failed to initialize archiver")
 			os.Exit(1)
 		}
-		errorSaver = arch
+		errSaver = arch
 		logger.Info("archive enabled", "archive", config.Archive)
 	}
 
 	pCfg, err := parserconfig.LoadConfig(config.ParsersConfigPath)
 	if err != nil {
-		logger.Error("failed to load parsers config", "path", config.ParsersConfigPath, "error", err)
+		logger.Error(
+			"failed to load parsers config",
+			"path", config.ParsersConfigPath,
+			"error", err,
+		)
 		monitor.SetStatus(obs.LevelError, "Failed to load parsers config")
 		os.Exit(1)
 	}
@@ -139,15 +155,21 @@ func main() {
 		}
 		prompt, perr := parserconfig.LoadFallbackPrompt(pCfg.Fallback)
 		if perr != nil {
-			logger.Error("failed to load fallback prompt",
-				"path", pCfg.Fallback.PromptFile, "error", perr)
+			logger.Error(
+				"failed to load fallback prompt",
+				"path", pCfg.Fallback.PromptFile,
+				"error", perr,
+			)
 			monitor.SetStatus(obs.LevelError, "Failed to load fallback prompt")
 			os.Exit(1)
 		}
 		gen, gerr := llmfactory.NewGenerator(ctx, pCfg.Fallback.LLM, logger)
 		if gerr != nil {
-			logger.Error("failed to initialize fallback LLM generator",
-				"provider", pCfg.Fallback.LLM.Provider, "error", gerr)
+			logger.Error(
+				"failed to initialize fallback LLM generator",
+				"provider", pCfg.Fallback.LLM.Provider,
+				"error", gerr,
+			)
 			monitor.SetStatus(obs.LevelError, "Failed to initialize fallback LLM generator")
 			os.Exit(1)
 		}
@@ -191,10 +213,11 @@ func main() {
 		logger,
 		tracer,
 		dispatcher,
-		errorSaver,
+		errSaver,
 		msgr, // archivePublisher wired up to send messages to the archive topic
 		dbRepo.Pipeline(),
 		dbRepo.Scheduler(),
+		metrics,
 	)
 	if err != nil {
 		logger.Error("failed to build collector handler", "error", err)
@@ -209,11 +232,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	started := time.Now()
 	logger.Info("collector worker started",
 		"topic", message.TaskTopic,
 		"messenger", config.MessengerType,
+		"health_port", config.HealthPort,
 		"http_timeout", config.HTTPTimeout,
+		"started", started,
 	)
+	defer func() {
+		logger.Info(
+			"collector worker stopped",
+			"started", started,
+			"uptime", time.Since(started),
+		)
+	}()
+
 	monitor.OK()
 
 	for {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	collector "github.com/ChiaYuChang/prism/internal/collector"
@@ -16,6 +17,8 @@ import (
 	"github.com/ChiaYuChang/prism/pkg/archivecodec"
 	wm "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -45,6 +48,55 @@ type Handler struct {
 	archivePublisher ArchivePublisher // optional: nil = skip archive
 	pipeline         repo.Pipeline
 	reporter         repo.TaskReporter
+	metrics          *metrics
+}
+
+type metrics struct {
+	tasks        metric.Int64Counter
+	taskDuration metric.Float64Histogram
+}
+
+func newMetrics(meter metric.Meter) (*metrics, error) {
+	tasks, err := meter.Int64Counter(
+		"prism.collector.tasks",
+		metric.WithDescription("Count of collector task outcomes."),
+		metric.WithUnit("{task}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create collector task counter: %w", err)
+	}
+	taskDuration, err := meter.Float64Histogram(
+		"prism.collector.task.duration",
+		metric.WithDescription("Collector task handling duration."),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create collector task duration histogram: %w", err)
+	}
+	return &metrics{tasks: tasks, taskDuration: taskDuration}, nil
+}
+
+func (m *metrics) recordTask(ctx context.Context, sig message.TaskSignal, result string, started time.Time) {
+	if m == nil {
+		return
+	}
+
+	kind := strings.TrimSpace(sig.Kind)
+	if kind == "" {
+		kind = "unknown"
+	}
+	stype := strings.TrimSpace(sig.SourceType)
+	if stype == "" {
+		stype = "unknown"
+	}
+
+	attrs := metric.WithAttributes(
+		attribute.String("task.kind", kind),
+		attribute.String("source.type", stype),
+		attribute.String("result", result),
+	)
+	m.tasks.Add(ctx, 1, attrs)
+	m.taskDuration.Record(ctx, time.Since(started).Seconds(), attrs)
 }
 
 func NewHandler(
@@ -55,6 +107,7 @@ func NewHandler(
 	archivePublisher ArchivePublisher,
 	pipeline repo.Pipeline,
 	reporter repo.TaskReporter,
+	metrics *metrics,
 ) (*Handler, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
@@ -79,18 +132,23 @@ func NewHandler(
 		archivePublisher: archivePublisher,
 		pipeline:         pipeline,
 		reporter:         reporter,
+		metrics:          metrics,
 	}, nil
 }
 
 func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, error) {
+	started := time.Now()
 	var sig message.TaskSignal
 	if err := json.Unmarshal(msg.Payload, &sig); err != nil {
+		h.metrics.recordTask(ctx, sig, "invalid", started)
 		return true, fmt.Errorf("%w: decode task signal: %w", ErrInvalidTaskSignal, err)
 	}
 	if sig.TaskID == uuid.Nil {
+		h.metrics.recordTask(ctx, sig, "invalid", started)
 		return true, fmt.Errorf("%w: task_id is empty", ErrInvalidTaskSignal)
 	}
 	if sig.Kind != repo.TaskKindPageFetch {
+		h.metrics.recordTask(ctx, sig, "ignored", started)
 		return true, nil
 	}
 
@@ -109,45 +167,78 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	if err := h.process(ctx, logger, sig); err != nil {
 		logger.ErrorContext(ctx, "collector task failed", "error", err)
 		if failErr := h.reporter.FailTask(ctx, sig.TaskID); failErr != nil {
+			h.metrics.recordTask(ctx, sig, "nacked", started)
 			return false, fmt.Errorf("process task %s: %w; mark failed: %w", sig.TaskID, err, failErr)
 		}
+
+		h.metrics.recordTask(ctx, sig, collectorResult(err), started)
 		return true, err
 	}
 
 	if err := h.reporter.CompleteTask(ctx, sig.TaskID); err != nil {
+		h.metrics.recordTask(ctx, sig, "nacked", started)
 		return false, fmt.Errorf("complete task %s: %w", sig.TaskID, err)
 	}
 
+	h.metrics.recordTask(ctx, sig, "ok", started)
 	logger.InfoContext(ctx, "collector task completed")
 	return true, nil
+}
+
+func collectorResult(err error) string {
+	for _, stage := range []collector.PipelineStage{
+		collector.PipelineStageFetch,
+		collector.PipelineStageMinify,
+		collector.PipelineStageTransform,
+		collector.PipelineStageParse,
+	} {
+		if errors.Is(err, &collector.StageError{Stage: stage}) {
+			return stage.String() + "_failed"
+		}
+	}
+	return "failed"
 }
 
 func (h *Handler) process(ctx context.Context, logger *slog.Logger, sig message.TaskSignal) error {
 	candidateID := extractCandidateID(sig.Meta)
 
+	// Skip if content already exists for this candidate ID.
 	if candidateID != uuid.Nil {
 		if _, err := h.pipeline.GetContentByCandidateID(ctx, candidateID); err == nil {
-			logger.InfoContext(ctx, "content already exists by candidate ID, skipping", "candidate_id", candidateID.String(), "url", sig.URL)
+			logger.InfoContext(
+				ctx,
+				"content already exists by candidate ID, skipping",
+				"candidate_id", candidateID.String(),
+				"url", sig.URL,
+			)
 			return nil
 		}
 	}
 
 	// Skip if content already exists for this URL.
 	if _, err := h.pipeline.GetContentByURL(ctx, sig.URL); err == nil {
-		logger.InfoContext(ctx, "content already exists by url, skipping", "url", sig.URL)
+		logger.InfoContext(
+			ctx,
+			"content already exists by url, skipping",
+			"url", sig.URL,
+		)
 		return nil
 	}
 
+	// Dispatch the URL to the collector.
 	result, err := h.dispatcher.Dispatch(ctx, sig.SourceAbbr, sig.URL)
 	if err != nil {
 		if stageErr, ok := errors.AsType[*collector.StageError](err); ok {
 			switch stageErr.Stage {
 			case collector.PipelineStageMinify:
-				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err, archiver.PayloadKindRaw, collector.PipelineStageMinify)
+				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err,
+					archiver.PayloadKindRaw, collector.PipelineStageMinify)
 			case collector.PipelineStageTransform:
-				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err, archiver.PayloadKindMinified, collector.PipelineStageTransform)
+				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err,
+					archiver.PayloadKindMinified, collector.PipelineStageTransform)
 			case collector.PipelineStageParse:
-				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err, archiver.PayloadKindCanonical, collector.PipelineStageParse)
+				h.saveErrorArchive(ctx, sig, stageErr.Intermediate, stageErr.Err,
+					archiver.PayloadKindCanonical, collector.PipelineStageParse)
 			}
 		}
 		return fmt.Errorf("dispatch %s: %w", sig.URL, err)

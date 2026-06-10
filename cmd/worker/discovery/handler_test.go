@@ -12,6 +12,7 @@ import (
 	discoverymocks "github.com/ChiaYuChang/prism/internal/discovery/mocks"
 	"github.com/ChiaYuChang/prism/internal/discovery/planner"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
+	sinkmocks "github.com/ChiaYuChang/prism/internal/discovery/sink/mocks"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/model"
 	"github.com/ChiaYuChang/prism/internal/repo"
@@ -33,9 +34,20 @@ func TestHandlerHandleMessageCompletesTask(t *testing.T) {
 	scout := discoverymocks.NewMockScout(t)
 	scoutRepo := repomocks.NewMockScout(t)
 	scheduler := repomocks.NewMockScheduler(t)
-	sink := &stubCandidateSink{}
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler)
+	sink := sinkmocks.NewMockCandidateSink(t)
+
+	h, err := NewHandler(
+		testLogger(),
+		noop.NewTracerProvider().Tracer("test"),
+		scout,
+		nil,
+		sink,
+		scoutRepo,
+		scheduler,
+		nil,
+	)
+
 	require.NoError(t, err)
 
 	source := repo.Source{
@@ -47,6 +59,13 @@ func TestHandlerHandleMessageCompletesTask(t *testing.T) {
 
 	scoutRepo.EXPECT().GetSourceByAbbr(mock.Anything, "dpp").Return(source, nil)
 	scout.EXPECT().Discover(mock.Anything, "https://www.dpp.org.tw/media/00").Return(candidates, nil)
+
+	var last *discoverysink.CandidateSinkRequest
+	sink.EXPECT().Handle(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, req discoverysink.CandidateSinkRequest) {
+			last = &req
+		}).Return(nil)
+
 	scheduler.EXPECT().CompleteTask(mock.Anything, taskID).Return(nil)
 
 	payload, err := (&message.TaskSignal{
@@ -63,11 +82,11 @@ func TestHandlerHandleMessageCompletesTask(t *testing.T) {
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", payload))
 	require.NoError(t, err)
 	require.True(t, ack)
-	require.NotNil(t, sink.last)
-	require.Equal(t, "dpp", sink.last.SourceAbbr)
-	require.Equal(t, repo.SourceTypeParty, sink.last.SourceType)
-	require.Equal(t, "DIRECTORY", sink.last.IngestionMethod)
-	require.Equal(t, batchID, sink.last.BatchID)
+	require.NotNil(t, last)
+	require.Equal(t, "dpp", last.SourceAbbr)
+	require.Equal(t, repo.SourceTypeParty, last.SourceType)
+	require.Equal(t, "DIRECTORY", last.IngestionMethod)
+	require.Equal(t, batchID, last.BatchID)
 }
 
 func TestHandlerHandleMessageIgnoresUnsupportedTask(t *testing.T) {
@@ -76,7 +95,7 @@ func TestHandlerHandleMessageIgnoresUnsupportedTask(t *testing.T) {
 	scout := discoverymocks.NewMockScout(t)
 	scoutRepo := repomocks.NewMockScout(t)
 	scheduler := repomocks.NewMockScheduler(t)
-	sink := &stubCandidateSink{}
+	sink := sinkmocks.NewMockCandidateSink(t)
 
 	h, err := NewHandler(
 		testLogger(),
@@ -85,7 +104,9 @@ func TestHandlerHandleMessageIgnoresUnsupportedTask(t *testing.T) {
 		nil,
 		sink,
 		scoutRepo,
-		scheduler)
+		scheduler,
+		nil,
+	)
 	require.NoError(t, err)
 
 	payload, err := (&message.TaskSignal{
@@ -102,7 +123,6 @@ func TestHandlerHandleMessageIgnoresUnsupportedTask(t *testing.T) {
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", payload))
 	require.NoError(t, err)
 	require.True(t, ack)
-	require.Nil(t, sink.last)
 }
 
 func TestHandlerHandleMessageNacksWhenCompleteFails(t *testing.T) {
@@ -112,7 +132,7 @@ func TestHandlerHandleMessageNacksWhenCompleteFails(t *testing.T) {
 	scout := discoverymocks.NewMockScout(t)
 	scoutRepo := repomocks.NewMockScout(t)
 	scheduler := repomocks.NewMockScheduler(t)
-	sink := &stubCandidateSink{}
+	sink := sinkmocks.NewMockCandidateSink(t)
 
 	h, err := NewHandler(
 		testLogger(),
@@ -122,6 +142,7 @@ func TestHandlerHandleMessageNacksWhenCompleteFails(t *testing.T) {
 		sink,
 		scoutRepo,
 		scheduler,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -138,6 +159,7 @@ func TestHandlerHandleMessageNacksWhenCompleteFails(t *testing.T) {
 	scout.EXPECT().
 		Discover(mock.Anything, "https://www.dpp.org.tw/media/00").
 		Return([]model.Candidates{}, nil)
+	sink.EXPECT().Handle(mock.Anything, mock.Anything).Return(nil)
 
 	scheduler.EXPECT().
 		CompleteTask(mock.Anything, taskID).
@@ -159,16 +181,6 @@ func TestHandlerHandleMessageNacksWhenCompleteFails(t *testing.T) {
 	require.False(t, ack)
 }
 
-type stubCandidateSink struct {
-	last *discoverysink.CandidateSinkRequest
-	err  error
-}
-
-func (s *stubCandidateSink) Handle(_ context.Context, req discoverysink.CandidateSinkRequest) error {
-	s.last = &req
-	return s.err
-}
-
 func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 	taskID := uuid.Must(uuid.NewV7())
 	batchID := uuid.Must(uuid.NewV7())
@@ -177,7 +189,7 @@ func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 	searchClient := discoverymocks.NewMockSearchClient(t)
 	scoutRepo := repomocks.NewMockScout(t)
 	scheduler := repomocks.NewMockScheduler(t)
-	sink := &stubCandidateSink{}
+	sink := sinkmocks.NewMockCandidateSink(t)
 
 	searchProviders := map[string]discovery.SearchClient{
 		"brave": searchClient,
@@ -191,6 +203,7 @@ func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 		sink,
 		scoutRepo,
 		scheduler,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -200,6 +213,10 @@ func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 			{Title: "TSMC expands", URL: "https://example.com/tsmc"},
 			{Title: "Chip policy", URL: "https://example.com/chip"},
 		}, nil)
+	var last *discoverysink.CandidateSinkRequest
+	sink.EXPECT().Handle(mock.Anything, mock.Anything).Run(func(_ context.Context, req discoverysink.CandidateSinkRequest) {
+		last = &req
+	}).Return(nil)
 	scheduler.EXPECT().CompleteTask(mock.Anything, taskID).Return(nil)
 
 	payloadBytes, err := json.Marshal(planner.MediaTaskPayload{
@@ -223,14 +240,14 @@ func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", sigPayload))
 	require.NoError(t, err)
 	require.True(t, ack)
-	require.NotNil(t, sink.last)
-	require.Equal(t, "yahoo", sink.last.SourceAbbr)
-	require.Equal(t, repo.SourceTypeMedia, sink.last.SourceType)
-	require.Equal(t, "SEARCH", sink.last.IngestionMethod)
-	require.Equal(t, batchID, sink.last.BatchID)
-	require.Len(t, sink.last.Candidates, 2)
-	require.Equal(t, "TSMC expands", sink.last.Candidates[0].Title)
-	require.Equal(t, "brave", sink.last.Candidates[0].Metadata["search_provider"])
+	require.NotNil(t, last)
+	require.Equal(t, "yahoo", last.SourceAbbr)
+	require.Equal(t, repo.SourceTypeMedia, last.SourceType)
+	require.Equal(t, "SEARCH", last.IngestionMethod)
+	require.Equal(t, batchID, last.BatchID)
+	require.Len(t, last.Candidates, 2)
+	require.Equal(t, "TSMC expands", last.Candidates[0].Title)
+	require.Equal(t, "brave", last.Candidates[0].Metadata["search_provider"])
 }
 
 func TestHandlerHandleMessageKeywordSearchNoProviders(t *testing.T) {
@@ -239,7 +256,7 @@ func TestHandlerHandleMessageKeywordSearchNoProviders(t *testing.T) {
 	scout := discoverymocks.NewMockScout(t)
 	scoutRepo := repomocks.NewMockScout(t)
 	scheduler := repomocks.NewMockScheduler(t)
-	sink := &stubCandidateSink{}
+	sink := sinkmocks.NewMockCandidateSink(t)
 
 	h, err := NewHandler(
 		testLogger(),
@@ -249,6 +266,7 @@ func TestHandlerHandleMessageKeywordSearchNoProviders(t *testing.T) {
 		sink,
 		scoutRepo,
 		scheduler,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -285,7 +303,7 @@ func TestHandlerHandleMessageKeywordSearchCompletesWhenOneProviderSucceeds(t *te
 	googleClient := discoverymocks.NewMockSearchClient(t)
 	scoutRepo := repomocks.NewMockScout(t)
 	scheduler := repomocks.NewMockScheduler(t)
-	sink := &stubCandidateSink{}
+	sink := sinkmocks.NewMockCandidateSink(t)
 
 	h, err := NewHandler(
 		testLogger(),
@@ -298,6 +316,7 @@ func TestHandlerHandleMessageKeywordSearchCompletesWhenOneProviderSucceeds(t *te
 		sink,
 		scoutRepo,
 		scheduler,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -310,6 +329,10 @@ func TestHandlerHandleMessageKeywordSearchCompletesWhenOneProviderSucceeds(t *te
 		Return([]model.Candidates{
 			{Title: "Yahoo article", URL: "https://tw.news.yahoo.com/a"},
 		}, nil)
+	var last *discoverysink.CandidateSinkRequest
+	sink.EXPECT().Handle(mock.Anything, mock.Anything).Run(func(_ context.Context, req discoverysink.CandidateSinkRequest) {
+		last = &req
+	}).Return(nil)
 
 	scheduler.EXPECT().
 		CompleteTask(mock.Anything, taskID).
@@ -332,10 +355,10 @@ func TestHandlerHandleMessageKeywordSearchCompletesWhenOneProviderSucceeds(t *te
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", sigPayload))
 	require.NoError(t, err)
 	require.True(t, ack)
-	require.NotNil(t, sink.last)
-	require.Equal(t, "yahoo", sink.last.SourceAbbr)
-	require.Len(t, sink.last.Candidates, 1)
-	require.Equal(t, "google-cse", sink.last.Candidates[0].Metadata["search_provider"])
+	require.NotNil(t, last)
+	require.Equal(t, "yahoo", last.SourceAbbr)
+	require.Len(t, last.Candidates, 1)
+	require.Equal(t, "google-cse", last.Candidates[0].Metadata["search_provider"])
 }
 
 func TestHandlerHandleMessageDirectoryFetchMedia(t *testing.T) {
@@ -345,9 +368,9 @@ func TestHandlerHandleMessageDirectoryFetchMedia(t *testing.T) {
 	scout := discoverymocks.NewMockScout(t)
 	scoutRepo := repomocks.NewMockScout(t)
 	scheduler := repomocks.NewMockScheduler(t)
-	sink := &stubCandidateSink{}
+	sink := sinkmocks.NewMockCandidateSink(t)
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler)
+	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, nil)
 	require.NoError(t, err)
 
 	source := repo.Source{Abbr: "cna", Type: repo.SourceTypeMedia, BaseURL: "https://www.cna.com.tw"}
@@ -355,6 +378,10 @@ func TestHandlerHandleMessageDirectoryFetchMedia(t *testing.T) {
 	scout.EXPECT().Discover(mock.Anything, "https://www.cna.com.tw/rss/aipl.xml").Return([]model.Candidates{
 		{Title: "CNA article", URL: "https://www.cna.com.tw/news/aipl/1.aspx"},
 	}, nil)
+	var last *discoverysink.CandidateSinkRequest
+	sink.EXPECT().Handle(mock.Anything, mock.Anything).Run(func(_ context.Context, req discoverysink.CandidateSinkRequest) {
+		last = &req
+	}).Return(nil)
 	scheduler.EXPECT().CompleteTask(mock.Anything, taskID).Return(nil)
 
 	payload, err := (&message.TaskSignal{
@@ -371,10 +398,10 @@ func TestHandlerHandleMessageDirectoryFetchMedia(t *testing.T) {
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", payload))
 	require.NoError(t, err)
 	require.True(t, ack)
-	require.NotNil(t, sink.last)
-	require.Equal(t, "cna", sink.last.SourceAbbr)
-	require.Equal(t, repo.SourceTypeMedia, sink.last.SourceType)
-	require.Equal(t, repo.IngestionMethodDirectory, sink.last.IngestionMethod)
+	require.NotNil(t, last)
+	require.Equal(t, "cna", last.SourceAbbr)
+	require.Equal(t, repo.SourceTypeMedia, last.SourceType)
+	require.Equal(t, repo.IngestionMethodDirectory, last.IngestionMethod)
 }
 
 func TestHandlerHandleMessageRecordsMetrics(t *testing.T) {
@@ -387,7 +414,7 @@ func TestHandlerHandleMessageRecordsMetrics(t *testing.T) {
 	scout := discoverymocks.NewMockScout(t)
 	scoutRepo := repomocks.NewMockScout(t)
 	scheduler := repomocks.NewMockScheduler(t)
-	sink := &stubCandidateSink{}
+	sink := sinkmocks.NewMockCandidateSink(t)
 
 	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, metrics)
 	require.NoError(t, err)
@@ -399,6 +426,7 @@ func TestHandlerHandleMessageRecordsMetrics(t *testing.T) {
 	scoutRepo.EXPECT().GetSourceByAbbr(mock.Anything, "dpp").Return(source, nil).Twice()
 	scout.EXPECT().Discover(mock.Anything, "https://www.dpp.org.tw/media/ok").Return([]model.Candidates{}, nil)
 	scout.EXPECT().Discover(mock.Anything, "https://www.dpp.org.tw/media/fail").Return(nil, failedErr)
+	sink.EXPECT().Handle(mock.Anything, mock.Anything).Return(nil).Once()
 	scheduler.EXPECT().CompleteTask(mock.Anything, okTaskID).Return(nil)
 	scheduler.EXPECT().FailTask(mock.Anything, failTaskID).Return(nil)
 

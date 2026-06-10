@@ -29,11 +29,12 @@ const (
 )
 
 var (
-	ErrParamMissing          = errors.New("param missing")
-	ErrInvalidTaskSignal     = errors.New("invalid task signal")
-	ErrUnsupportedTaskKind   = errors.New("unsupported task kind")
-	ErrUnsupportedSourceType = errors.New("unsupported source type")
-	ErrSourceMismatch        = errors.New("source mismatch")
+	ErrParamMissing                             = errors.New("param missing")
+	ErrInvalidTaskSignal                        = errors.New("invalid task signal")
+	ErrUnsupportedTaskKind                      = errors.New("unsupported task kind")
+	ErrUnsupportedSourceType                    = errors.New("unsupported source type")
+	ErrUnsupportedTaskKindSourceTypeCombination = errors.New("unsupported task kind/source type combination")
+	ErrSourceMismatch                           = errors.New("source mismatch")
 )
 
 type Handler struct {
@@ -76,9 +77,19 @@ func (m *metrics) recordTask(ctx context.Context, sig message.TaskSignal, result
 	if m == nil {
 		return
 	}
+
+	kind := strings.TrimSpace(sig.Kind)
+	if kind == "" {
+		kind = "unknown"
+	}
+	stype := strings.TrimSpace(sig.SourceType)
+	if stype == "" {
+		stype = "unknown"
+	}
+
 	attrs := otelmetric.WithAttributes(
-		attribute.String("task.kind", labelValue(sig.Kind)),
-		attribute.String("source.type", labelValue(sig.SourceType)),
+		attribute.String("task.kind", kind),
+		attribute.String("source.type", stype),
 		attribute.String("result", result),
 	)
 	m.tasks.Add(ctx, 1, attrs)
@@ -93,7 +104,7 @@ func NewHandler(
 	sink discoverysink.CandidateSink,
 	scoutRepo repo.Scout,
 	reporter repo.TaskReporter,
-	metricsOpt ...*metrics,
+	metrics *metrics,
 ) (*Handler, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
@@ -116,11 +127,6 @@ func NewHandler(
 	if searchProviders == nil {
 		searchProviders = map[string]discovery.SearchClient{}
 	}
-	var metrics *metrics
-	if len(metricsOpt) > 0 {
-		metrics = metricsOpt[0]
-	}
-
 	return &Handler{
 		logger:    logger,
 		tracer:    tracer,
@@ -133,6 +139,7 @@ func NewHandler(
 	}, nil
 }
 
+// HandleMessage handles incoming task signals for discovery tasks.
 func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, error) {
 	started := time.Now()
 	var sig message.TaskSignal
@@ -146,7 +153,9 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	}
 	if !ownsTask(sig) {
 		h.metrics.recordTask(ctx, sig, "ignored", started)
-		h.logger.WarnContext(ctx, fmt.Sprintf("ignoring task %s: kind=%s source_type=%s", sig.TaskID, sig.Kind, sig.SourceType))
+		h.logger.WarnContext(ctx,
+			fmt.Sprintf("ignoring task %s: kind=%s source_type=%s",
+				sig.TaskID, sig.Kind, sig.SourceType))
 		return true, nil
 	}
 
@@ -167,7 +176,9 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 		logger.ErrorContext(ctx, "discovery task failed", "error", err)
 		if failErr := h.reporter.FailTask(ctx, sig.TaskID); failErr != nil {
 			h.metrics.recordTask(ctx, sig, "nacked", started)
-			return false, fmt.Errorf("process task %s: %w; mark failed: %w", sig.TaskID, err, failErr)
+			return false, fmt.Errorf(
+				"process task %s: %w; mark failed: %w",
+				sig.TaskID, err, failErr)
 		}
 		h.metrics.recordTask(ctx, sig, "failed", started)
 		return true, err
@@ -183,21 +194,16 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	return true, nil
 }
 
-func labelValue(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "unknown"
-	}
-	return value
-}
-
 func (h *Handler) process(ctx context.Context, sig message.TaskSignal) error {
 	switch {
-	case sig.Kind == repo.TaskKindDirectoryFetch && (sig.SourceType == repo.SourceTypeParty || sig.SourceType == repo.SourceTypeMedia):
+	case sig.Kind == repo.TaskKindDirectoryFetch &&
+		(sig.SourceType == repo.SourceTypeParty || sig.SourceType == repo.SourceTypeMedia):
 		return h.handleDirectoryFetch(ctx, sig)
 	case sig.Kind == repo.TaskKindKeywordSearch && sig.SourceType == repo.SourceTypeMedia:
 		return h.handleKeywordSearch(ctx, sig)
 	default:
-		return fmt.Errorf("%w: kind=%s source_type=%s", ErrUnsupportedTaskKind, sig.Kind, sig.SourceType)
+		return fmt.Errorf("%w: kind=%s source_type=%s",
+			ErrUnsupportedTaskKindSourceTypeCombination, sig.Kind, sig.SourceType)
 	}
 }
 
@@ -207,7 +213,8 @@ func (h *Handler) handleDirectoryFetch(ctx context.Context, sig message.TaskSign
 		return fmt.Errorf("get source by abbr %s: %w", sig.SourceAbbr, err)
 	}
 	if source.Type != sig.SourceType {
-		return fmt.Errorf("%w: db source type %s != signal source type %s", ErrSourceMismatch, source.Type, sig.SourceType)
+		return fmt.Errorf("%w: db source type %s != signal source type %s",
+			ErrSourceMismatch, source.Type, sig.SourceType)
 	}
 	if err := validateTaskURL(source.BaseURL, sig.URL); err != nil {
 		return err
