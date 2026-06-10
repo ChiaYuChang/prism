@@ -198,13 +198,13 @@ func runList(ctx context.Context, arch archiver.Archiver, opts cliOptions) error
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "TRACE_ID\tURL\tKIND\tSOURCE\tCREATED\tERROR")
+	_, _ = fmt.Fprintln(w, "TRACE_ID\tURL\tKIND\tSOURCE\tCREATED\tERROR")
 	for _, m := range metas {
 		errStr := m.Error
 		if len(errStr) > 60 {
 			errStr = errStr[:57] + "..."
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			m.TraceID,
 			truncate(m.URL, 60),
 			m.PayloadKind,
@@ -307,7 +307,7 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 	fs := pflag.NewFlagSet(CommandName+" "+subcmd, pflag.ContinueOnError)
 	fs.SetOutput(output)
 	fs.Usage = func() {
-		fmt.Fprintf(output, "Usage: %s %s --archive <URI> [flags]\n\n", CommandName, subcmd)
+		_, _ = fmt.Fprintf(output, "Usage: %s %s --archive <URI> [flags]\n\n", CommandName, subcmd)
 		fs.PrintDefaults()
 	}
 
@@ -358,17 +358,17 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintf(w, "Usage: %s <subcommand> --archive <URI> [flags]\n\n", CommandName)
-	fmt.Fprintln(w, "Subcommands:")
-	fmt.Fprintln(w, "  status    Show archive summary (no DB required)")
-	fmt.Fprintln(w, "  list      List archive entries (no DB required)")
-	fmt.Fprintln(w, "  run       Replay archived content through Minify→Transform→Parse→DB")
-	fmt.Fprintln(w, "  clean     Soft-delete archives whose content exists in DB")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Examples:")
-	fmt.Fprintf(w, "  %s status --archive ./data/archives\n", CommandName)
-	fmt.Fprintf(w, "  %s list --archive ./data/archives --since 2026-04-01\n", CommandName)
-	fmt.Fprintf(w, "  %s run --archive ./data/archives --dry-run\n", CommandName)
-	fmt.Fprintf(w, "  %s run --archive ./data/archives --trace-id abc123\n", CommandName)
-	fmt.Fprintf(w, "  %s clean --archive ./data/archives --purge\n", CommandName)
+	_, _ = fmt.Fprintf(w, "Usage: %s <subcommand> --archive <URI> [flags]\n\n", CommandName)
+	_, _ = fmt.Fprintln(w, "Subcommands:")
+	_, _ = fmt.Fprintln(w, "  status    Show archive summary (no DB required)")
+	_, _ = fmt.Fprintln(w, "  list      List archive entries (no DB required)")
+	_, _ = fmt.Fprintln(w, "  run       Replay archived content through Minify→Transform→Parse→DB")
+	_, _ = fmt.Fprintln(w, "  clean     Soft-delete archives whose content exists in DB")
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Examples:")
+	_, _ = fmt.Fprintf(w, "  %s status --archive ./data/archives\n", CommandName)
+	_, _ = fmt.Fprintf(w, "  %s list --archive ./data/archives --since 2026-04-01\n", CommandName)
+	_, _ = fmt.Fprintf(w, "  %s run --archive ./data/archives --dry-run\n", CommandName)
+	_, _ = fmt.Fprintf(w, "  %s run --archive ./data/archives --trace-id abc123\n", CommandName)
+	_, _ = fmt.Fprintf(w, "  %s clean --archive ./data/archives --purge\n", CommandName)
 }

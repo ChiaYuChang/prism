@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -162,8 +163,7 @@ func emit(w io.Writer, format string, results map[string]Result) error {
 	case "yaml":
 		enc := yaml.NewEncoder(w)
 		enc.SetIndent(2)
-		defer enc.Close()
-		return enc.Encode(results)
+		return errors.Join(enc.Encode(results), enc.Close())
 	case "plaintext", "":
 		return emitPlaintext(w, results)
 	default:
@@ -172,19 +172,39 @@ func emit(w io.Writer, format string, results map[string]Result) error {
 }
 
 func emitPlaintext(w io.Writer, results map[string]Result) error {
+	writef := func(format string, args ...any) error {
+		_, err := fmt.Fprintf(w, format, args...)
+		return err
+	}
 	for name, r := range results {
-		fmt.Fprintf(w, "=== %s ===\n", name)
+		if err := writef("=== %s ===\n", name); err != nil {
+			return err
+		}
 		if r.Error != "" {
-			fmt.Fprintf(w, "ERROR: %s\n\n", r.Error)
+			if err := writef("ERROR: %s\n\n", r.Error); err != nil {
+				return err
+			}
 			continue
 		}
 		a := r.Article
-		fmt.Fprintf(w, "URL:          %s\n", a.URL)
-		fmt.Fprintf(w, "Title:        %s\n", a.Title)
-		fmt.Fprintf(w, "Author:       %s\n", a.Author)
-		fmt.Fprintf(w, "PublishedAt:  %s\n", a.PublishedAt.Format(time.RFC3339))
-		fmt.Fprintf(w, "Content len:  %d bytes\n", len(a.Content))
-		fmt.Fprintf(w, "Content head: %s\n\n", headRunes(a.Content, 200))
+		if err := writef("URL:          %s\n", a.URL); err != nil {
+			return err
+		}
+		if err := writef("Title:        %s\n", a.Title); err != nil {
+			return err
+		}
+		if err := writef("Author:       %s\n", a.Author); err != nil {
+			return err
+		}
+		if err := writef("PublishedAt:  %s\n", a.PublishedAt.Format(time.RFC3339)); err != nil {
+			return err
+		}
+		if err := writef("Content len:  %d bytes\n", len(a.Content)); err != nil {
+			return err
+		}
+		if err := writef("Content head: %s\n\n", headRunes(a.Content, 200)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
