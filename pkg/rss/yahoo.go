@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/httpclient"
 	"github.com/gorilla/feeds"
 )
 
@@ -44,7 +45,7 @@ func YahooNews(category string) (string, error) {
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpclient.NewPublicClient(15 * time.Second).Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to get page: %w", err)
 	}

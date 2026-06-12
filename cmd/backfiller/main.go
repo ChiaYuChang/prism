@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	backfiller "github.com/ChiaYuChang/prism/internal/discovery/backfiller/config"
 	scout "github.com/ChiaYuChang/prism/internal/discovery/scout/config"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
+	"github.com/ChiaYuChang/prism/internal/httpclient"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
@@ -26,6 +26,7 @@ import (
 const (
 	DefaultScoutConfigPath      = "internal/discovery/scout/config/scouts.yaml"
 	DefaultBackfillerConfigPath = "internal/discovery/backfiller/config/backfillers.yaml"
+	DefaultHTTPTimeout          = 30 * time.Second
 	CommandName                 = "backfiller"
 	TracerName                  = "prism.backfiller"
 )
@@ -168,7 +169,7 @@ func main() {
 		os.Exit(1)
 	}
 	backfiller, err := backfiller.BuildBackfiller(
-		srcSpec, scoutRepo, logger, tracer, http.DefaultClient, sink)
+		srcSpec, scoutRepo, logger, tracer, httpclient.NewPublicClient(DefaultHTTPTimeout), sink)
 
 	if err != nil {
 		logger.Error("failed to build backfiller", "source", opts.source, "error", err)

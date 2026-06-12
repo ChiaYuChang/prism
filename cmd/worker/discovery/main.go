@@ -19,6 +19,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/discovery/search/googlecse"
 	"github.com/ChiaYuChang/prism/internal/discovery/search/serpapi"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
+	"github.com/ChiaYuChang/prism/internal/httpclient"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
@@ -118,8 +119,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	httpClientOptions := []httpclient.Option(nil)
+	if config.FixtureBase != "" {
+		httpClientOptions = append(httpClientOptions, httpclient.WithPrivateNetworks())
+	}
 	httpClient, err := dev.WrapClientReplay(
-		dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger),
+		dev.WrapClient(httpclient.NewPublicClient(config.HTTPTimeout, httpClientOptions...), config.CaptureDir, logger),
 		config.FixtureBase,
 	)
 	if err != nil {

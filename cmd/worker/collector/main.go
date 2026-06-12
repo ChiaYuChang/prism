@@ -16,6 +16,7 @@ import (
 	parserllm "github.com/ChiaYuChang/prism/internal/collector/parser/llm"
 	"github.com/ChiaYuChang/prism/internal/collector/transformer"
 	"github.com/ChiaYuChang/prism/internal/dev"
+	"github.com/ChiaYuChang/prism/internal/httpclient"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	llmfactory "github.com/ChiaYuChang/prism/internal/llm/factory"
 	"github.com/ChiaYuChang/prism/internal/message"
@@ -106,8 +107,12 @@ func main() {
 		}
 	}()
 
+	httpClientOptions := []httpclient.Option(nil)
+	if config.FixtureBase != "" {
+		httpClientOptions = append(httpClientOptions, httpclient.WithPrivateNetworks())
+	}
 	httpClient, err := dev.WrapClientReplay(
-		dev.WrapClient(&http.Client{Timeout: config.HTTPTimeout}, config.CaptureDir, logger),
+		dev.WrapClient(httpclient.NewPublicClient(config.HTTPTimeout, httpClientOptions...), config.CaptureDir, logger),
 		config.FixtureBase,
 	)
 	if err != nil {

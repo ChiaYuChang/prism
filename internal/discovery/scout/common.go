@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/httpclient"
 	"golang.org/x/net/html"
 )
 
 func Fetch(ctx context.Context, client *http.Client, rawURL string) (io.ReadCloser, error) {
 	if client == nil {
-		client = http.DefaultClient
+		client = httpclient.NewPublicClient(httpclient.DefaultTimeout)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)

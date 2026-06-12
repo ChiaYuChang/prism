@@ -13,6 +13,7 @@ import (
 
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	rootscout "github.com/ChiaYuChang/prism/internal/discovery/scout"
+	"github.com/ChiaYuChang/prism/internal/httpclient"
 	"github.com/ChiaYuChang/prism/internal/model"
 	"github.com/PuerkitoBio/goquery"
 	"go.opentelemetry.io/otel/trace"
@@ -295,7 +296,7 @@ func (r RuleConfig) Validate(i int) error {
 
 func Fetch(ctx context.Context, client *http.Client, rawURL string, headers map[string]string) (io.ReadCloser, error) {
 	if client == nil {
-		client = http.DefaultClient
+		client = httpclient.NewPublicClient(httpclient.DefaultTimeout)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
