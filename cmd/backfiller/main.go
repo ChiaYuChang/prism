@@ -14,7 +14,7 @@ import (
 	backfiller "github.com/ChiaYuChang/prism/internal/discovery/backfiller/config"
 	scout "github.com/ChiaYuChang/prism/internal/discovery/scout/config"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
-	"github.com/ChiaYuChang/prism/internal/httpclient"
+	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"

@@ -13,7 +13,7 @@ import (
 
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	rootscout "github.com/ChiaYuChang/prism/internal/discovery/scout"
-	"github.com/ChiaYuChang/prism/internal/httpclient"
+	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/model"
 	"github.com/PuerkitoBio/goquery"
 	"go.opentelemetry.io/otel/trace"

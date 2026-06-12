@@ -16,7 +16,7 @@ import (
 	parserllm "github.com/ChiaYuChang/prism/internal/collector/parser/llm"
 	"github.com/ChiaYuChang/prism/internal/collector/transformer"
 	"github.com/ChiaYuChang/prism/internal/dev"
-	"github.com/ChiaYuChang/prism/internal/httpclient"
+	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	llmfactory "github.com/ChiaYuChang/prism/internal/llm/factory"
 	"github.com/ChiaYuChang/prism/internal/message"

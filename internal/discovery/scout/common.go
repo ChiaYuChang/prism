@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ChiaYuChang/prism/internal/httpclient"
+	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"golang.org/x/net/html"
 )
 

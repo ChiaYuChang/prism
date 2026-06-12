@@ -19,7 +19,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/discovery/search/googlecse"
 	"github.com/ChiaYuChang/prism/internal/discovery/search/serpapi"
 	discoverysink "github.com/ChiaYuChang/prism/internal/discovery/sink"
-	"github.com/ChiaYuChang/prism/internal/httpclient"
+	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"

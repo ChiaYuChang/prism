@@ -1,4 +1,4 @@
-package httpclient_test
+package client_test
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ChiaYuChang/prism/internal/httpclient"
+	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/stretchr/testify/require"
 )
 

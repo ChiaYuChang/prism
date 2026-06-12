@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ChiaYuChang/prism/internal/httpclient"
+	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/gorilla/feeds"
 )
 
