@@ -4,13 +4,7 @@ package middleware
 
 import (
 	"context"
-	"crypto/subtle"
-	"fmt"
-	"log/slog"
 	"net/http"
-	"runtime/debug"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -25,13 +19,6 @@ const (
 // RequestIDHeader is the HTTP header that carries the request identifier.
 // Clients may supply one; otherwise the middleware generates a UUIDv7.
 const RequestIDHeader = "X-Request-Id"
-
-// TokenAuthHeader is the HTTP header used by operator clients to authenticate
-// to protected API routes.
-const TokenAuthHeader = "X-PRISM-TOKEN"
-
-// AuthTokenHeader is the HTTP header used for token-list authentication.
-const AuthTokenHeader = "X-AUTH-TOKEN"
 
 // Middleware is a decorator applied to http.Handler.
 type Middleware func(http.Handler) http.Handler
@@ -73,53 +60,6 @@ func RequestIDFromContext(ctx context.Context) string {
 	return id
 }
 
-// TokenAuth requires callers to provide TokenAuthHeader with the configured
-// token. Empty configured token disables the check so callers can compose it
-// unconditionally while auth configuration is still optional.
-func TokenAuth(token string) Middleware {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return func(next http.Handler) http.Handler { return next }
-	}
-	expected := []byte(token)
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			got := []byte(r.Header.Get(TokenAuthHeader))
-			if subtle.ConstantTimeCompare(got, expected) != 1 {
-				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-// TokenListAuth requires callers to provide AuthTokenHeader with a token that
-// exists in tokens. Empty tokens are ignored; an empty set denies all requests.
-func TokenListAuth(tokens map[string]struct{}) Middleware {
-	allowed := make(map[string]struct{}, len(tokens))
-	for token := range tokens {
-		token = strings.TrimSpace(token)
-		if token == "" {
-			continue
-		}
-		allowed[token] = struct{}{}
-	}
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := strings.TrimSpace(r.Header.Get(AuthTokenHeader))
-			if _, ok := allowed[token]; token == "" || !ok {
-				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 // statusRecorder captures the response status code for logging.
 type statusRecorder struct {
 	http.ResponseWriter
@@ -149,100 +89,4 @@ func (s *statusRecorder) statusCode() int {
 		return http.StatusOK
 	}
 	return s.status
-}
-
-// Logger logs one structured line per request: method, path, status, bytes, elapsed.
-func Logger(logger *slog.Logger) Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			rec := &statusRecorder{ResponseWriter: w}
-			next.ServeHTTP(rec, r)
-			logger.LogAttrs(r.Context(), slog.LevelInfo, "http_request",
-				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
-				slog.Int("status", rec.statusCode()),
-				slog.Int("bytes", rec.bytes),
-				slog.Duration("elapsed", time.Since(start)),
-				slog.String("request_id", RequestIDFromContext(r.Context())),
-				slog.String("remote", r.RemoteAddr),
-			)
-		})
-	}
-}
-
-// Recoverer catches panics in downstream handlers, logs a stack trace, and
-// returns a 500 so a single bad request does not crash the server.
-func Recoverer(logger *slog.Logger) Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
-				if rec := recover(); rec != nil {
-					logger.ErrorContext(r.Context(), "panic in handler",
-						slog.Any("panic", rec),
-						slog.String("request_id", RequestIDFromContext(r.Context())),
-						slog.String("stack", string(debug.Stack())),
-					)
-					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				}
-			}()
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-// CORSOptions configures the CORS middleware. Empty AllowOrigins means no CORS
-// headers are emitted (browser will block cross-origin requests by default).
-type CORSOptions struct {
-	AllowOrigins []string // exact match; "*" allows any origin
-	AllowMethods []string // e.g. GET, POST, PUT, DELETE
-	AllowHeaders []string // e.g. Content-Type, Authorization
-	MaxAgeSecs   int      // preflight cache
-}
-
-// CORS applies Access-Control-Allow-* headers. Preflight (OPTIONS) short-circuits
-// with 204 when the Origin matches; other methods fall through to the handler.
-func CORS(opts CORSOptions) Middleware {
-	allowed := make(map[string]bool, len(opts.AllowOrigins))
-	allowAny := false
-	for _, o := range opts.AllowOrigins {
-		if o == "*" {
-			allowAny = true
-		}
-		allowed[o] = true
-	}
-	methods := strings.Join(opts.AllowMethods, ", ")
-	headers := strings.Join(opts.AllowHeaders, ", ")
-	maxAge := ""
-	if opts.MaxAgeSecs > 0 {
-		maxAge = fmt.Sprintf("%d", opts.MaxAgeSecs)
-	}
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			origin := r.Header.Get("Origin")
-			if origin != "" && (allowAny || allowed[origin]) {
-				if allowAny {
-					w.Header().Set("Access-Control-Allow-Origin", "*")
-				} else {
-					w.Header().Set("Access-Control-Allow-Origin", origin)
-					w.Header().Add("Vary", "Origin")
-				}
-				if methods != "" {
-					w.Header().Set("Access-Control-Allow-Methods", methods)
-				}
-				if headers != "" {
-					w.Header().Set("Access-Control-Allow-Headers", headers)
-				}
-				if maxAge != "" {
-					w.Header().Set("Access-Control-Max-Age", maxAge)
-				}
-			}
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
 }
