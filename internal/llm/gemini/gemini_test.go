@@ -132,8 +132,8 @@ func TestGeminiGenerate_Text(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Text)
-	require.Greater(t, resp.Usage.TotalTokenCount, 0)
-	t.Logf("model=%s text_len=%d total_tokens=%d", resp.Model, len(resp.Text), resp.Usage.TotalTokenCount)
+	require.Greater(t, resp.Usage.Total, 0)
+	t.Logf("model=%s text_len=%d total_tokens=%d", resp.Model, len(resp.Text), resp.Usage.Total)
 }
 
 // TestGeminiGenerate_JSONSchema exercises structured output + schema
@@ -169,7 +169,7 @@ func TestGeminiGenerate_JSONSchema(t *testing.T) {
 	require.NotEmpty(t, out.Greeting)
 	require.NotEmpty(t, out.Language)
 	t.Logf("model=%s greeting_len=%d language=%s total_tokens=%d",
-		resp.Model, len(out.Greeting), out.Language, resp.Usage.TotalTokenCount)
+		resp.Model, len(out.Greeting), out.Language, resp.Usage.Total)
 }
 
 func TestGeminiEmbed(t *testing.T) {

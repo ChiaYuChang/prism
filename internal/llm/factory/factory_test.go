@@ -23,6 +23,20 @@ func TestNewGenerator_UnsupportedProvider(t *testing.T) {
 	assert.ErrorContains(t, err, "unsupported LLM provider")
 }
 
+func TestNewEmbedder_UnsupportedProvider(t *testing.T) {
+	cfg := appconfig.LLMConfig{Provider: "not-a-real-provider", Model: "x", Key: "y"}
+	_, err := llmfactory.NewEmbedder(context.Background(), cfg, discardLogger())
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "unsupported LLM provider")
+}
+
+func TestNewProvider_UnsupportedProvider(t *testing.T) {
+	cfg := appconfig.LLMConfig{Provider: "not-a-real-provider", Model: "x", Key: "y"}
+	_, err := llmfactory.NewProvider(context.Background(), cfg, discardLogger())
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "unsupported LLM provider")
+}
+
 // Provider construction success paths are covered by the per-provider
 // unit tests in internal/llm/{gemini,openai,ollama}. This file only guards
 // the dispatch / unsupported-provider branch — the actual provider code

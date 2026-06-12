@@ -30,10 +30,14 @@ const (
 	ResponseFormatJsonSchema ResponseFormat = "json_schema"
 )
 
-type Usage struct {
-	InputTokenCount  int `json:"input_token_count"`
-	OutputTokenCount int `json:"output_token_count"`
-	TotalTokenCount  int `json:"total_token_count"`
+type TokenUsage struct {
+	Input     int `json:"input"`
+	Output    int `json:"output"`
+	Total     int `json:"total"`
+	Cached    int `json:"cached,omitempty"`
+	Tool      int `json:"tool,omitempty"`
+	Reasoning int `json:"reasoning,omitempty"`
+	Thought   int `json:"thought,omitempty"`
 }
 
 // Generator defines the interface for text generation (LLMs).

@@ -42,7 +42,7 @@ func NewGenerateRequest(model, instruction, prompt string) *GenerateRequest {
 type GenerateResponse struct {
 	Model      string               `json:"model"`
 	Text       string               `json:"text"`
-	Usage      Usage                `json:"usage"`
+	Usage      TokenUsage           `json:"usage"`
 	Raw        any                  `json:"raw"`
 	JsonSchema pkgschema.JSONSchema `json:"jsonschema"`
 }

@@ -58,7 +58,7 @@ func TestGeminiReplay_GenerateText(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Text)
-	require.Greater(t, resp.Usage.TotalTokenCount, 0)
+	require.Greater(t, resp.Usage.Total, 0)
 }
 
 func TestGeminiReplay_GenerateJSONSchema(t *testing.T) {

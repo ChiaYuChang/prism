@@ -168,10 +168,12 @@ func (p *Provider) Generate(ctx context.Context, req *llm.GenerateRequest) (*llm
 	return &llm.GenerateResponse{
 		Model: resp.Model,
 		Text:  resp.OutputText(),
-		Usage: llm.Usage{
-			InputTokenCount:  int(resp.Usage.InputTokens),
-			OutputTokenCount: int(resp.Usage.OutputTokens),
-			TotalTokenCount:  int(resp.Usage.TotalTokens),
+		Usage: llm.TokenUsage{
+			Input:     int(resp.Usage.InputTokens),
+			Output:    int(resp.Usage.OutputTokens),
+			Total:     int(resp.Usage.TotalTokens),
+			Cached:    int(resp.Usage.InputTokensDetails.CachedTokens),
+			Reasoning: int(resp.Usage.OutputTokensDetails.ReasoningTokens),
 		},
 		Raw:        resp,
 		JsonSchema: req.JSONSchema,

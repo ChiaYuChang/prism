@@ -163,16 +163,14 @@ func (p *Provider) Generate(ctx context.Context, req *llm.GenerateRequest) (*llm
 
 	resp := strings.Builder{}
 	var raws []api.ChatResponse
-	usage := llm.Usage{}
+	usage := llm.TokenUsage{}
 	fn := func(r api.ChatResponse) error {
 		_, _ = resp.WriteString(r.Message.Content)
-		usage.InputTokenCount += r.PromptEvalCount
-		usage.OutputTokenCount += r.EvalCount
+		usage.Input += r.PromptEvalCount
+		usage.Output += r.EvalCount
 		raws = append(raws, r)
 		return nil
 	}
-	usage.TotalTokenCount = usage.InputTokenCount + usage.OutputTokenCount
-
 	if err := p.client.Chat(ctx, cReq, fn); err != nil {
 		l.LogAttrs(ctx, slog.LevelError,
 			"ollama generate error",
@@ -180,11 +178,12 @@ func (p *Provider) Generate(ctx context.Context, req *llm.GenerateRequest) (*llm
 			slog.String("model", req.Model))
 		return nil, fmt.Errorf("ollama %w: %s", llm.ErrGenAPIError, err.Error())
 	}
+	usage.Total = usage.Input + usage.Output
 
 	l.LogAttrs(ctx, slog.LevelInfo,
 		"ollama generate success",
 		slog.String("model", req.Model),
-		slog.Int("total_tokens", int(usage.TotalTokenCount)))
+		slog.Int("total_tokens", int(usage.Total)))
 
 	return &llm.GenerateResponse{
 		Model:      req.Model,

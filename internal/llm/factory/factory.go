@@ -1,4 +1,4 @@
-// Package factory builds an llm.Generator from an appconfig.LLMConfig.
+// Package factory builds LLM providers from an appconfig.LLMConfig.
 // Lives in a subpackage so it can import the concrete provider packages
 // (gemini / openai / ollama) without creating an import cycle on the
 // parent llm package.
@@ -19,6 +19,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/llm/openai"
 	"github.com/go-playground/mold/v4"
 	"github.com/go-playground/validator/v10"
+	"go.opentelemetry.io/otel"
 )
 
 const defaultTimeout = 30 * time.Second
@@ -28,6 +29,28 @@ const defaultTimeout = 30 * time.Second
 // by every command that needs a generator (planner, collector fallback,
 // recover, parse-probe).
 func NewGenerator(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logger) (llm.Generator, error) {
+	return NewProvider(ctx, cfg, logger)
+}
+
+// NewEmbedder instantiates an instrumented llm.Embedder from the supplied LLMConfig.
+func NewEmbedder(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logger) (llm.Embedder, error) {
+	return NewProvider(ctx, cfg, logger)
+}
+
+// NewProvider instantiates an instrumented llm.Provider from the supplied LLMConfig.
+func NewProvider(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logger) (llm.Provider, error) {
+	provider, err := newProvider(ctx, cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	metrics, err := llm.NewMetrics(otel.Meter("prism.llm"))
+	if err != nil {
+		return nil, fmt.Errorf("create LLM metrics: %w", err)
+	}
+	return llm.InstrumentProvider(provider, metrics, "llm."+cfg.Provider), nil
+}
+
+func newProvider(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logger) (llm.Provider, error) {
 	timeout := cfg.Timeout
 	if timeout == 0 {
 		timeout = defaultTimeout

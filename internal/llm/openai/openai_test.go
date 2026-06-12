@@ -8,11 +8,12 @@
 // Run with `go test -tags=manual -count=1 -run OpenAI ./internal/llm/openai/...`.
 //
 // Env knobs:
-//   PRISM_OPENAI_RECORD=1               capture cassettes
-//   PRISM_OPENAI_BASE_URL=...           override base URL
-//   PRISM_OPENAI_KEY_FILE=path / PRISM_OPENAI_KEY=raw
-//   PRISM_OPENAI_GENERATE_MODEL=...     default gemma-4-E4B-it:Q4_K_M
-//   PRISM_OPENAI_EMBED_MODEL=...        unset → embed test skipped
+//
+//	PRISM_OPENAI_RECORD=1               capture cassettes
+//	PRISM_OPENAI_BASE_URL=...           override base URL
+//	PRISM_OPENAI_KEY_FILE=path / PRISM_OPENAI_KEY=raw
+//	PRISM_OPENAI_GENERATE_MODEL=...     default gemma-4-E4B-it:Q4_K_M
+//	PRISM_OPENAI_EMBED_MODEL=...        unset → embed test skipped
 package openai_test
 
 import (
@@ -118,7 +119,7 @@ func TestOpenAIGenerate_Text(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Text)
-	t.Logf("model=%s text_len=%d total_tokens=%d", resp.Model, len(resp.Text), resp.Usage.TotalTokenCount)
+	t.Logf("model=%s text_len=%d total_tokens=%d", resp.Model, len(resp.Text), resp.Usage.Total)
 }
 
 // TestOpenAIGenerate_JSONSchema exercises Responses API structured

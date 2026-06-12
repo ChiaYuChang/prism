@@ -55,14 +55,12 @@ testdata/fixtures/
 **/testdata/fixtures/
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
 
 # support files
 SESSION_SUMMARY.md
 CLAUDE.md
-.codex
-.claude
 .task/*
 build/ok*
 opencode.json
@@ -72,6 +70,7 @@ pyproject.toml
 uv.lock
 docs/why
 
+# build infrastructure configs
 build/infra/nats/nats.conf
 build/infra/otel/otel.yaml
 build/infra/valkey/valkey.conf
@@ -80,4 +79,8 @@ build/infra/valkey/valkey_acl
 # build binaries
 bin/
 NOTE.md
-.claude/scheduled_tasks.lock
+
+# coding agents settings
+.claude
+.agents
+.codex

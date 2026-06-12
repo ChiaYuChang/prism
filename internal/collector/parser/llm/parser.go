@@ -73,8 +73,8 @@ func (p *Parser) Parse(ctx context.Context, url string, data string) (*collector
 		slog.String("url", url),
 		slog.Int("title_nodes", len(out.Title)),
 		slog.Int("content_nodes", len(out.Content)),
-		slog.Int("input_tokens", resp.Usage.InputTokenCount),
-		slog.Int("output_tokens", resp.Usage.OutputTokenCount),
+		slog.Int("input_tokens", resp.Usage.Input),
+		slog.Int("output_tokens", resp.Usage.Output),
 	)
 
 	return out.ToArticleContent(url), nil

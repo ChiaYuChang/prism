@@ -146,10 +146,13 @@ func (p *Provider) Generate(ctx context.Context, req *llm.GenerateRequest) (*llm
 	return &llm.GenerateResponse{
 		Model: fmt.Sprintf("%s:%s", req.Model, resp.ModelVersion),
 		Text:  resp.Text(),
-		Usage: llm.Usage{
-			InputTokenCount:  int(resp.UsageMetadata.PromptTokenCount),
-			OutputTokenCount: int(resp.UsageMetadata.CandidatesTokenCount),
-			TotalTokenCount:  int(resp.UsageMetadata.TotalTokenCount),
+		Usage: llm.TokenUsage{
+			Input:   int(resp.UsageMetadata.PromptTokenCount),
+			Output:  int(resp.UsageMetadata.CandidatesTokenCount),
+			Total:   int(resp.UsageMetadata.TotalTokenCount),
+			Cached:  int(resp.UsageMetadata.CachedContentTokenCount),
+			Tool:    int(resp.UsageMetadata.ToolUsePromptTokenCount),
+			Thought: int(resp.UsageMetadata.ThoughtsTokenCount),
 		},
 		JsonSchema: req.JSONSchema,
 		Raw:        resp,
