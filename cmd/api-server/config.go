@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -27,6 +28,62 @@ type RateLimitConfig struct {
 	IPCacheSize int     `mapstructure:"ip-cache-size"  validate:"min=0"`
 }
 
+// AuthConfig groups API authentication methods. JWT can be added alongside
+// token auth without changing middleware wiring.
+type AuthConfig struct {
+	Token TokenAuthConfig `mapstructure:"token"`
+}
+
+// TokenAuthConfig configures X-AUTH-TOKEN allow-list authentication.
+type TokenAuthConfig struct {
+	Tokens []string `mapstructure:"tokens"`
+	File   string   `mapstructure:"file"`
+}
+
+func (c TokenAuthConfig) Enabled() bool {
+	if strings.TrimSpace(c.File) != "" {
+		return true
+	}
+	for _, token := range c.Tokens {
+		if strings.TrimSpace(token) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (c TokenAuthConfig) TokenSet() (map[string]struct{}, error) {
+	if !c.Enabled() {
+		return nil, nil
+	}
+
+	tokens := make(map[string]struct{})
+	addTokens(tokens, c.Tokens)
+
+	file := strings.TrimSpace(c.File)
+	if file != "" {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			return nil, fmt.Errorf("read auth token file %q: %w", file, err)
+		}
+		addTokens(tokens, strings.Split(string(b), "\n"))
+	}
+	if len(tokens) == 0 {
+		return nil, fmt.Errorf("auth token config has no usable tokens")
+	}
+	return tokens, nil
+}
+
+func addTokens(dst map[string]struct{}, tokens []string) {
+	for _, token := range tokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		dst[token] = struct{}{}
+	}
+}
+
 // Config is the runtime configuration for the API server.
 type Config struct {
 	Port            int                 `mapstructure:"port"              validate:"required,min=1024,max=65535"`
@@ -40,6 +97,7 @@ type Config struct {
 	Valkey          app.ValkeyConfig    `mapstructure:"valkey"`
 	Cache           CacheConfig         `mapstructure:"cache"`
 	RateLimit       RateLimitConfig     `mapstructure:"rate-limit"`
+	Auth            AuthConfig          `mapstructure:"auth"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -83,6 +141,9 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("rate-limit-burst", 10, "Per-IP burst capacity")
 	fs.Int("rate-limit-ip-cache-size", 4096, "Max distinct IPs tracked by the rate limiter (LRU)")
 
+	fs.StringSlice("auth-token", []string{}, "Allowed X-AUTH-TOKEN values (comma-separated or repeated)")
+	fs.String("auth-token-file", "", "Path to allowed X-AUTH-TOKEN file (one token per line)")
+
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("failed to parse flags: %w", err)
 	}
@@ -114,6 +175,9 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	if err := bindRateLimitFlags(v, fs); err != nil {
+		return nil, err
+	}
+	if err := bindAuthFlags(v, fs); err != nil {
 		return nil, err
 	}
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -162,6 +226,18 @@ func bindRateLimitFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 		"rate-limit-rps":           "rate-limit.rps",
 		"rate-limit-burst":         "rate-limit.burst",
 		"rate-limit-ip-cache-size": "rate-limit.ip-cache-size",
+	} {
+		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
+			return fmt.Errorf("bind %s: %w", key, err)
+		}
+	}
+	return nil
+}
+
+func bindAuthFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	for flag, key := range map[string]string{
+		"auth-token":      "auth.token.tokens",
+		"auth-token-file": "auth.token.file",
 	} {
 		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
 			return fmt.Errorf("bind %s: %w", key, err)

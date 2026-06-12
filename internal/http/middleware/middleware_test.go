@@ -113,6 +113,83 @@ func TestTokenAuth_EmptyTokenNoops(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestTokenListAuth_AllowsKnownToken(t *testing.T) {
+	called := false
+	h := middleware.TokenListAuth(map[string]struct{}{"token-a": {}, "token-b": {}})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set(middleware.AuthTokenHeader, "token-b")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.True(t, called)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestTokenListAuth_RejectsMissingToken(t *testing.T) {
+	called := false
+	h := middleware.TokenListAuth(map[string]struct{}{"token-a": {}})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+
+	assert.False(t, called)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestTokenListAuth_RejectsUnknownToken(t *testing.T) {
+	called := false
+	h := middleware.TokenListAuth(map[string]struct{}{"token-a": {}})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set(middleware.AuthTokenHeader, "token-b")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.False(t, called)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestTokenListAuth_EmptySetDeniesAll(t *testing.T) {
+	called := false
+	h := middleware.TokenListAuth(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set(middleware.AuthTokenHeader, "token-a")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.False(t, called)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestTokenListAuth_ClonesTokenSet(t *testing.T) {
+	tokens := map[string]struct{}{"token-a": {}}
+	h := middleware.TokenListAuth(tokens)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	delete(tokens, "token-a")
+
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set(middleware.AuthTokenHeader, "token-a")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
 func TestRecoverer_ConvertsPanicTo500(t *testing.T) {
 	h := middleware.Recoverer(discardLogger())(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("boom")

@@ -89,12 +89,13 @@ func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline
 // The /fetches/{id} route is wrapped in a per-IP rate-limit middleware. When
 // no limiter is configured, the wrapping uses NoOpIPLimiter and is effectively
 // a passthrough.
-func (s *Server) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/candidates", s.ListCandidates)
-	mux.HandleFunc("POST /api/v1/page_fetch", s.PageFetch)
-	mux.HandleFunc("GET /api/v1/contents/{candidate_id}", s.GetContent)
+func (s *Server) Register(mux *http.ServeMux, mws ...middleware.Middleware) {
+	wrap := middleware.Chain(mws...)
+	mux.Handle("GET /api/v1/candidates", wrap(http.HandlerFunc(s.ListCandidates)))
+	mux.Handle("POST /api/v1/page_fetch", wrap(http.HandlerFunc(s.PageFetch)))
+	mux.Handle("GET /api/v1/contents/{candidate_id}", wrap(http.HandlerFunc(s.GetContent)))
 	mux.Handle("GET /api/v1/fetches/{id}",
-		middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch)))
+		wrap(middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch))))
 }
 
 // ErrorResponse is the standard JSON error body.

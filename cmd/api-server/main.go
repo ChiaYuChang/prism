@@ -121,6 +121,16 @@ func main() {
 			"burst", config.RateLimit.Burst,
 			"ip_cache_size", config.RateLimit.IPCacheSize)
 	}
+	authTokens, err := config.Auth.Token.TokenSet()
+	if err != nil {
+		logger.Error("failed to load auth tokens", "error", err)
+		os.Exit(1)
+	}
+	var apiMiddleware []middleware.Middleware
+	if len(authTokens) > 0 {
+		apiMiddleware = append(apiMiddleware, middleware.TokenListAuth(authTokens))
+		logger.Info("api token auth enabled", "tokens", len(authTokens))
+	}
 
 	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches(), serverOpts...)
 	if err != nil {
@@ -132,7 +142,7 @@ func main() {
 	mux.HandleFunc("GET /healthz", livenessHandler(monitor))
 	mux.HandleFunc("GET /readyz", readinessHandler(monitor))
 	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
-	apiServer.Register(mux)
+	apiServer.Register(mux, apiMiddleware...)
 
 	chain := middleware.Chain(
 		middleware.RequestID(),
@@ -142,7 +152,7 @@ func main() {
 		middleware.CORS(middleware.CORSOptions{
 			AllowOrigins: config.CORSOrigins,
 			AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			AllowHeaders: []string{"Content-Type", "Authorization", middleware.RequestIDHeader},
+			AllowHeaders: []string{"Content-Type", "Authorization", middleware.RequestIDHeader, middleware.AuthTokenHeader},
 			MaxAgeSecs:   600,
 		}),
 	)
