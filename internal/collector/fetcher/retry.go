@@ -20,26 +20,32 @@ var (
 // ResponseHandler decides what to do with an HTTP response.
 // Returns (retry=true, err) for retryable failures, (retry=false, nil) for success,
 // and (retry=false, err) to fail fast without retrying.
-type ResponseHandler func(resp *http.Response) (retry bool, err error)
+type ResponseHandler func(ctx context.Context, resp *http.Response) (retry bool, err error)
 
 // Built-in handlers.
 
 // RetryHandler marks any response as retryable.
-var RetryHandler ResponseHandler = func(_ *http.Response) (bool, error) {
+var RetryHandler ResponseHandler = func(_ context.Context, _ *http.Response) (bool, error) {
 	return true, ErrRetryable
 }
 
 // FailFastHandler marks any response as a non-retryable failure.
-var FailFastHandler ResponseHandler = func(r *http.Response) (bool, error) {
+var FailFastHandler ResponseHandler = func(_ context.Context, r *http.Response) (bool, error) {
 	return false, fmt.Errorf("%w: status %d", ErrClientError, r.StatusCode)
 }
 
 // RetryAfterHandler retries after honoring the Retry-After header (seconds).
 // Falls back to immediate retry signal if the header is absent or unparseable.
-var RetryAfterHandler ResponseHandler = func(r *http.Response) (bool, error) {
+var RetryAfterHandler ResponseHandler = func(ctx context.Context, r *http.Response) (bool, error) {
 	if raw := r.Header.Get("Retry-After"); raw != "" {
 		if secs, err := strconv.Atoi(raw); err == nil && secs > 0 {
-			time.Sleep(time.Duration(secs) * time.Second)
+			timer := time.NewTimer(time.Duration(secs) * time.Second)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return false, ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	return true, ErrRetryable
@@ -50,16 +56,16 @@ var RetryAfterHandler ResponseHandler = func(r *http.Response) (bool, error) {
 //   - 429           → retry with Retry-After
 //   - 5xx           → retry
 //   - anything else → fail fast
-var defaultResponseHandler ResponseHandler = func(r *http.Response) (bool, error) {
+var defaultResponseHandler ResponseHandler = func(ctx context.Context, r *http.Response) (bool, error) {
 	switch {
 	case r.StatusCode >= 200 && r.StatusCode < 300:
 		return false, nil
 	case r.StatusCode == 429:
-		return RetryAfterHandler(r)
+		return RetryAfterHandler(ctx, r)
 	case r.StatusCode >= 500:
 		return true, fmt.Errorf("%w: status %d", ErrRetryable, r.StatusCode)
 	default:
-		return FailFastHandler(r)
+		return FailFastHandler(ctx, r)
 	}
 }
 
@@ -115,7 +121,7 @@ func (f *RetryFetcher) Fetch(ctx context.Context, url string) (string, error) {
 			}
 		}
 
-		body, statusCode, err := f.inner.fetchWithStatus(ctx, url)
+		body, statusCode, header, err := f.inner.fetchWithStatus(ctx, url)
 		if err != nil {
 			// Network-level error (no HTTP response): always retry.
 			lastErr = err
@@ -128,8 +134,8 @@ func (f *RetryFetcher) Fetch(ctx context.Context, url string) (string, error) {
 		}
 
 		// Synthesise a minimal response for the handler.
-		resp := &http.Response{StatusCode: statusCode, Header: make(http.Header)}
-		retry, handlerErr := handler(resp)
+		resp := &http.Response{StatusCode: statusCode, Header: header.Clone()}
+		retry, handlerErr := handler(ctx, resp)
 		if handlerErr == nil {
 			return body, nil
 		}

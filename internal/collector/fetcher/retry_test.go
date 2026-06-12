@@ -105,3 +105,21 @@ func TestRetryFetcher_ContextCancellation(t *testing.T) {
 	_, err := f.Fetch(ctx, srv.URL)
 	require.Error(t, err)
 }
+
+func TestRetryFetcher_RetryAfterHonorsContextCancellation(t *testing.T) {
+	attempts := 0
+	srv := testutils.MustNewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	f := fetcher.NewRetryFetcher(fetcher.NewHTTPFetcher(srv.Client()), 3, time.Millisecond)
+	_, err := f.Fetch(ctx, srv.URL)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, 1, attempts)
+}
