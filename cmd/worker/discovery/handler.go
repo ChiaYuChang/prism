@@ -49,8 +49,19 @@ type Handler struct {
 }
 
 type metrics struct {
-	tasks        otelmetric.Int64Counter
-	taskDuration otelmetric.Float64Histogram
+	task   *taskMetrics
+	search *searchMetrics
+}
+
+type taskMetrics struct {
+	count    otelmetric.Int64Counter
+	duration otelmetric.Float64Histogram
+}
+
+type searchMetrics struct {
+	requests otelmetric.Int64Counter
+	duration otelmetric.Float64Histogram
+	results  otelmetric.Int64Counter
 }
 
 func newMetrics(meter otelmetric.Meter) (*metrics, error) {
@@ -70,10 +81,59 @@ func newMetrics(meter otelmetric.Meter) (*metrics, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create discovery task duration histogram: %w", err)
 	}
-	return &metrics{tasks: tasks, taskDuration: taskDuration}, nil
+	searchRequests, err := meter.Int64Counter(
+		"prism.search.requests",
+		otelmetric.WithDescription("Count of search provider request outcomes."),
+		otelmetric.WithUnit("{request}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create search request counter: %w", err)
+	}
+	searchRequestDuration, err := meter.Float64Histogram(
+		"prism.search.request.duration",
+		otelmetric.WithDescription("Search provider request duration."),
+		otelmetric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create search request duration histogram: %w", err)
+	}
+	searchResults, err := meter.Int64Counter(
+		"prism.search.results",
+		otelmetric.WithDescription("Count of search provider results returned."),
+		otelmetric.WithUnit("{result}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create search result counter: %w", err)
+	}
+
+	return &metrics{
+		task: &taskMetrics{
+			count:    tasks,
+			duration: taskDuration,
+		},
+		search: &searchMetrics{
+			requests: searchRequests,
+			duration: searchRequestDuration,
+			results:  searchResults,
+		},
+	}, nil
 }
 
 func (m *metrics) recordTask(ctx context.Context, sig message.TaskSignal, result string, started time.Time) {
+	if m == nil {
+		return
+	}
+	m.task.record(ctx, sig, result, started)
+}
+
+func (m *metrics) recordSearch(ctx context.Context, provider, config, result string, duration time.Duration, resultCount int) {
+	if m == nil {
+		return
+	}
+	m.search.record(ctx, provider, config, result, duration, resultCount)
+}
+
+func (m *taskMetrics) record(ctx context.Context, sig message.TaskSignal, result string, started time.Time) {
 	if m == nil {
 		return
 	}
@@ -92,8 +152,27 @@ func (m *metrics) recordTask(ctx context.Context, sig message.TaskSignal, result
 		attribute.String("source.type", stype),
 		attribute.String("result", result),
 	)
-	m.tasks.Add(ctx, 1, attrs)
-	m.taskDuration.Record(ctx, time.Since(started).Seconds(), attrs)
+	m.count.Add(ctx, 1, attrs)
+	m.duration.Record(ctx, time.Since(started).Seconds(), attrs)
+}
+
+func (m *searchMetrics) record(ctx context.Context, provider, config, result string, duration time.Duration, resultCount int) {
+	if m == nil {
+		return
+	}
+	attrs := otelmetric.WithAttributes(
+		attribute.String("provider", provider),
+		attribute.String("config", config),
+		attribute.String("result", result),
+	)
+	m.requests.Add(ctx, 1, attrs)
+	m.duration.Record(ctx, duration.Seconds(), attrs)
+	if result == "ok" && resultCount > 0 {
+		m.results.Add(ctx, int64(resultCount), otelmetric.WithAttributes(
+			attribute.String("provider", provider),
+			attribute.String("config", config),
+		))
+	}
 }
 
 func NewHandler(
@@ -263,8 +342,12 @@ func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSigna
 		failures   []error
 	)
 	for provider, client := range h.providers {
+		started := time.Now()
 		found, err := client.DiscoverNews(ctx, payload.Query, payload.Site)
+		duration := time.Since(started)
+		providerLabel, configLabel := normalizeSearchProvider(provider)
 		if err != nil {
+			h.metrics.recordSearch(ctx, providerLabel, configLabel, "failed", duration, 0)
 			h.logger.WarnContext(ctx, "search provider failed",
 				slog.String("provider", provider),
 				slog.String("source_abbr", sig.SourceAbbr),
@@ -274,6 +357,7 @@ func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSigna
 			failures = append(failures, fmt.Errorf("%s: %w", provider, err))
 			continue
 		}
+		h.metrics.recordSearch(ctx, providerLabel, configLabel, "ok", duration, len(found))
 		for i := range found {
 			if found[i].Metadata == nil {
 				found[i].Metadata = map[string]any{}
@@ -310,6 +394,34 @@ func (h *Handler) handleKeywordSearch(ctx context.Context, sig message.TaskSigna
 	}
 
 	return nil
+}
+
+// normalizeSearchProvider maps raw provider map keys to low-cardinality metric labels.
+// The config label is deployment-configured and should remain low-cardinality per deployment.
+func normalizeSearchProvider(key string) (provider string, config string) {
+	key = strings.TrimSpace(key)
+	switch {
+	case key == "brave":
+		return "search.brave", "default"
+	case key == "google-cse":
+		return "search.google_cse", "default"
+	case strings.HasPrefix(key, "serpapi-google-news-"):
+		return "search.serpapi.google_news", searchProviderConfig(key, "serpapi-google-news-")
+	case strings.HasPrefix(key, "serpapi-bing-news-"):
+		return "search.serpapi.bing_news", searchProviderConfig(key, "serpapi-bing-news-")
+	case strings.HasPrefix(key, "serpapi-duckduckgo-news-"):
+		return "search.serpapi.duckduckgo_news", searchProviderConfig(key, "serpapi-duckduckgo-news-")
+	default:
+		return "search.unknown", "unknown"
+	}
+}
+
+func searchProviderConfig(key, prefix string) string {
+	config := strings.TrimSpace(strings.TrimPrefix(key, prefix))
+	if config == "" {
+		return "unknown"
+	}
+	return config
 }
 
 // ownsTask returns true if the (task kind, source type) combination is owned by this worker, false otherwise.

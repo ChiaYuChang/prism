@@ -361,6 +361,137 @@ func TestHandlerHandleMessageKeywordSearchCompletesWhenOneProviderSucceeds(t *te
 	require.Equal(t, "google-cse", last.Candidates[0].Metadata["search_provider"])
 }
 
+func TestHandlerHandleMessageKeywordSearchRecordsSearchMetrics(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() {
+		require.NoError(t, meterProvider.Shutdown(context.Background()))
+	})
+	metrics, err := newMetrics(meterProvider.Meter("test"))
+	require.NoError(t, err)
+
+	taskID := uuid.Must(uuid.NewV7())
+	batchID := uuid.Must(uuid.NewV7())
+	scout := discoverymocks.NewMockScout(t)
+	braveClient := discoverymocks.NewMockSearchClient(t)
+	serpClient := discoverymocks.NewMockSearchClient(t)
+	scoutRepo := repomocks.NewMockScout(t)
+	scheduler := repomocks.NewMockScheduler(t)
+	sink := sinkmocks.NewMockCandidateSink(t)
+
+	h, err := NewHandler(
+		testLogger(),
+		noop.NewTracerProvider().Tracer("test"),
+		scout,
+		map[string]discovery.SearchClient{
+			"brave":                  braveClient,
+			"serpapi-google-news-tw": serpClient,
+		},
+		sink,
+		scoutRepo,
+		scheduler,
+		metrics,
+	)
+	require.NoError(t, err)
+
+	braveClient.EXPECT().
+		DiscoverNews(mock.Anything, "台灣半導體政策", "tw.news.yahoo.com").
+		Return(nil, errors.New("rate limited"))
+	serpClient.EXPECT().
+		DiscoverNews(mock.Anything, "台灣半導體政策", "tw.news.yahoo.com").
+		Return([]model.Candidates{
+			{Title: "Yahoo article 1", URL: "https://tw.news.yahoo.com/a"},
+			{Title: "Yahoo article 2", URL: "https://tw.news.yahoo.com/b"},
+		}, nil)
+
+	var last *discoverysink.CandidateSinkRequest
+	sink.EXPECT().
+		Handle(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, req discoverysink.CandidateSinkRequest) {
+			last = &req
+		}).Return(nil)
+	scheduler.EXPECT().
+		CompleteTask(mock.Anything, taskID).
+		Return(nil)
+
+	payloadBytes, err := json.Marshal(planner.MediaTaskPayload{
+		Query: "台灣半導體政策",
+		Site:  "tw.news.yahoo.com",
+	})
+	require.NoError(t, err)
+
+	sigPayload, err := (&message.TaskSignal{
+		TaskID:     taskID,
+		BatchID:    batchID,
+		Kind:       repo.TaskKindKeywordSearch,
+		SourceType: repo.SourceTypeMedia,
+		SourceAbbr: "yahoo",
+		URL:        "https://tw.news.yahoo.com",
+		Payload:    payloadBytes,
+		TraceID:    "trace-search-metrics",
+	}).Marshal()
+	require.NoError(t, err)
+
+	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", sigPayload))
+	require.NoError(t, err)
+	require.True(t, ack)
+	require.NotNil(t, last)
+
+	rm := collectDiscoveryMetrics(t, reader)
+	failedAttrs := map[string]string{
+		"provider": "search.brave",
+		"config":   "default",
+		"result":   "failed",
+	}
+	okAttrs := map[string]string{
+		"provider": "search.serpapi.google_news",
+		"config":   "tw",
+		"result":   "ok",
+	}
+	require.Equal(t, int64(1), metricCounterValue(
+		t, rm, "prism.search.requests", failedAttrs))
+	require.Equal(t, int64(1), metricCounterValue(
+		t, rm, "prism.search.requests", okAttrs))
+	require.Equal(t, uint64(1), metricHistogramObservationCount(
+		t, rm, "prism.search.request.duration", failedAttrs))
+	require.Equal(t, uint64(1), metricHistogramObservationCount(
+		t, rm, "prism.search.request.duration", okAttrs))
+	require.Equal(t, int64(2), metricCounterValue(
+		t, rm, "prism.search.results", map[string]string{
+			"provider": "search.serpapi.google_news",
+			"config":   "tw",
+		}))
+	require.Equal(t, int64(0), metricCounterValue(
+		t, rm, "prism.search.results", map[string]string{
+			"provider": "search.brave",
+			"config":   "default",
+		}))
+}
+
+func TestNormalizeSearchProvider(t *testing.T) {
+	tcs := []struct {
+		key      string
+		provider string
+		config   string
+	}{
+		{key: "brave", provider: "search.brave", config: "default"},
+		{key: "google-cse", provider: "search.google_cse", config: "default"},
+		{key: "serpapi-google-news-tw", provider: "search.serpapi.google_news", config: "tw"},
+		{key: "serpapi-bing-news-default", provider: "search.serpapi.bing_news", config: "default"},
+		{key: "serpapi-duckduckgo-news-main", provider: "search.serpapi.duckduckgo_news", config: "main"},
+		{key: "serpapi-google-news-", provider: "search.serpapi.google_news", config: "unknown"},
+		{key: "not-real", provider: "search.unknown", config: "unknown"},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.key, func(t *testing.T) {
+			provider, config := normalizeSearchProvider(tc.key)
+			require.Equal(t, tc.provider, provider)
+			require.Equal(t, tc.config, config)
+		})
+	}
+}
+
 func TestHandlerHandleMessageDirectoryFetchMedia(t *testing.T) {
 	taskID := uuid.Must(uuid.NewV7())
 	batchID := uuid.Must(uuid.NewV7())
@@ -572,6 +703,56 @@ func discoveryHistogramCount(t *testing.T, rm metricdata.ResourceMetrics, name s
 		}
 	}
 	return 0
+}
+
+func metricCounterValue(t *testing.T, rm metricdata.ResourceMetrics, name string, attrs map[string]string) int64 {
+	t.Helper()
+	var total int64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+			for _, dp := range sum.DataPoints {
+				if metricAttributesMatch(dp.Attributes, attrs) {
+					total += dp.Value
+				}
+			}
+		}
+	}
+	return total
+}
+
+func metricHistogramObservationCount(t *testing.T, rm metricdata.ResourceMetrics, name string, attrs map[string]string) uint64 {
+	t.Helper()
+	var total uint64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			histogram, ok := m.Data.(metricdata.Histogram[float64])
+			require.True(t, ok)
+			for _, dp := range histogram.DataPoints {
+				if metricAttributesMatch(dp.Attributes, attrs) {
+					total += dp.Count
+				}
+			}
+		}
+	}
+	return total
+}
+
+func metricAttributesMatch(set attribute.Set, attrs map[string]string) bool {
+	for key, want := range attrs {
+		got, found := set.Value(attribute.Key(key))
+		if !found || got.AsString() != want {
+			return false
+		}
+	}
+	return true
 }
 
 func testLogger() *slog.Logger {
