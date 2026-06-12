@@ -46,13 +46,10 @@ Phase A (`ArticleParser` removal + tests for kept components), the 2026-05 layer
 ## Phase 4 — Monitoring and Operations
 
 * [ ] 4.1 Operational Monitoring:
-  * [ ] **Victoria OTLP observability foundation:** Prism emits OTLP logs, traces, and metrics to an OpenTelemetry Collector; collector exports logs to VictoriaLogs, traces to VictoriaTraces, and metrics to VictoriaMetrics; Grafana visualizes all three.
-  * [ ] **Shared observability config in `internal/obs`:** every production/operator command reads and saves the same redaction-safe OTEL config (`RegisterTelemetryFlags`, `BindTelemetryFlags`, `LoadTelemetryConfig`, `SaveTelemetryConfig`), instead of duplicating config loading in each `cmd` package.
-  * [ ] **Secret-safe observability logging:** never log plain passwords, API keys, tokens, secret keys, or OTLP headers; startup/config logs must use `SecretMask` or config types with `LogValue()` redaction.
-  * [ ] **Command telemetry bootstrap:** initialize telemetry in scheduler, API, discovery, collector, planner, batch detector/publisher, backfiller, recover, and RSS; dev-only tools can stay noop unless explicitly opted in.
+  * [ ] **Remaining command telemetry bootstrap:** recover and any RSS/operator tails still need an explicit decision; scheduler, API, discovery, collector, planner, batch detector/publisher, and backfiller now use the shared telemetry runtime.
   * [ ] **Trace conventions:** root span per API request, scheduler tick, worker message, and recover run; child spans for fetch, parse, LLM/search provider calls, DB-heavy operations, and publish steps. Fix planner to inject propagated `trace_id` before starting its span.
-  * [ ] **Metrics conventions:** use real-world OTEL instrument types: counters for monotonic totals (`tasks_dispatched_total`, `http_requests_total`), histograms for latency/size distributions (`worker_handle_duration`, `http_request_duration`, fetch bytes), up/down counters for in-flight work, and observable gauges for sampled state (`queue_lag`, cache size, open connections). Avoid high-cardinality URL/query/error labels.
-  * [ ] **Compose/Grafana wiring:** add `otel-collector`, VictoriaMetrics, VictoriaTraces, Grafana datasource provisioning, starter dashboards, and worker container healthchecks. JSON log files plus scheduler/discovery/collector/API traces and metrics now flow through OTel Collector to Victoria backends; remaining command rollout, app metric instruments, and dashboards remain open.
+  * [ ] **Remaining app metric instruments:** API metrics, queue/cache gauges, and any DB-heavy operation metrics remain open. Scheduler task/tick metrics, discovery/collector worker task metrics, LLM provider metrics, and search provider metrics are shipped.
+  * [ ] **Dashboards and alerting:** starter Grafana datasource wiring exists, but review-ready dashboards and alerts for scheduler, worker, LLM/search provider, and API health remain open.
 * [ ] 4.2 Admin Operations:
   * [ ] Pause/resume discovery.
   * [ ] Replay failed tasks.

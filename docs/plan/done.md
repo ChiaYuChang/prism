@@ -292,3 +292,31 @@ Deferred follow-ups: normalize Brave and Google CSE to named params maps only if
 * [x] Increased the test setup retry budget for S3 readiness and bucket creation; production `S3Archiver` behavior is unchanged.
 * [x] Cleaned up unchecked S3 response body closes in `internal/collector/archiver/s3.go` so package lint passes.
 * [x] Verified with `rtk go test -short -count=1 ./internal/collector/archiver`, `rtk golangci-lint run ./internal/collector/archiver`, and `rtk go test -short -count=1 ./...`.
+
+## Phase 4.1 — OpenTelemetry Observability Rollout (2026-06)
+
+Shipped the core OTLP telemetry foundation and the first application metric rollout across schedulers, workers, and providers.
+
+* [x] `internal/obs` now owns shared redaction-safe telemetry config and runtime helpers for OTLP traces and metrics.
+* [x] JSON logs and OTLP telemetry are routed through the local Victoria stack: VictoriaLogs, VictoriaTraces, VictoriaMetrics, and Grafana datasource wiring.
+* [x] Scheduler, API, discovery worker, collector worker, planner worker, batch detector/publisher, and backfiller initialize the shared telemetry runtime. Recover and RSS/operator tails remain a separate follow-up decision.
+* [x] Scheduler metrics: terminal task outcome counter plus tick and dispatch duration histograms.
+* [x] Discovery and collector worker metrics: terminal task outcome counters and task duration histograms with low-cardinality task/source/result labels.
+* [x] LLM provider metrics: `prism.llm.requests`, `prism.llm.request.duration`, and `prism.llm.tokens`; generation and embedding calls are instrumented via `internal/llm` decorators and the shared factory path.
+* [x] LLM token accounting now records provider-specific subcategories where available: cached, tool, reasoning, and thought tokens; Ollama total token accounting now runs after streaming completes.
+* [x] Search provider metrics: `prism.search.requests`, `prism.search.request.duration`, and `prism.search.results`, with SerpAPI labels normalized to bounded engine labels plus low-cardinality deployment config profiles.
+* [x] Lint cleanup kept normal test builds clean by checking output-finalizing write/close errors and moving manual cassette recorders behind the `manual` build tag.
+* [x] Verified after provider metrics with `rtk go test -short -count=1 ./...` (550 passed in 72 packages) and `rtk golangci-lint run` (no issues).
+
+Commits:
+- `f0c3a22` feat(obs): add OTLP telemetry runtime
+- `33f80f7` feat(obs): ship JSON logs to VictoriaLogs
+- `24493a3` feat(obs): route OTLP telemetry to Victoria stack
+- `12c2adf` feat(obs): enable OTLP telemetry for workers
+- `1c6c453` feat(obs): add scheduler metrics
+- `585237e` feat(obs): migrate remaining commands to telemetry runtime
+- `33f749e` feat(obs): add discovery worker metrics
+- `670651a` feat(obs): add worker task metrics
+- `92d6a3e` fix(lint): address unchecked errors in tooling tests
+- `38a51da` feat(obs): add LLM provider metrics
+- `a14086d` feat(obs): add search provider metrics
