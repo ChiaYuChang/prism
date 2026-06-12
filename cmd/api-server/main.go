@@ -68,6 +68,11 @@ func main() {
 		}
 	}()
 	infra.SetTracer(telemetry.Tracer(TracerName))
+	httpMetrics, err := middleware.NewHTTPMetrics(telemetry.Meter(TracerName))
+	if err != nil {
+		logger.Error("failed to initialize HTTP metrics", "error", err)
+		os.Exit(1)
+	}
 
 	monitor := obs.NewHealthMonitor()
 
@@ -131,6 +136,7 @@ func main() {
 
 	chain := middleware.Chain(
 		middleware.RequestID(),
+		middleware.HTTPMetrics(httpMetrics),
 		middleware.Logger(logger),
 		middleware.Recoverer(logger),
 		middleware.CORS(middleware.CORSOptions{

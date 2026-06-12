@@ -2,6 +2,7 @@ package middleware_test
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,9 @@ import (
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func discardLogger() *slog.Logger {
@@ -139,6 +143,50 @@ func TestLogger_WritesOneLine(t *testing.T) {
 	assert.Contains(t, log, "path=/test")
 	assert.Contains(t, log, "status=200")
 	assert.Equal(t, 1, strings.Count(log, "http_request"), "exactly one log line expected")
+}
+
+func TestHTTPMetrics_RecordsRequest(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { require.NoError(t, meterProvider.Shutdown(context.Background())) })
+	metrics, err := middleware.NewHTTPMetrics(meterProvider.Meter("test"))
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /test", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte("hello"))
+	})
+
+	h := middleware.HTTPMetrics(metrics)(mux)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	rm := collectHTTPMetrics(t, reader)
+	attrs := map[string]string{
+		"method":      http.MethodGet,
+		"route":       "GET /test",
+		"status_code": "201",
+		"result":      "success",
+	}
+	require.Equal(t, int64(1), httpCounterValue(t, rm, "prism.http.server.requests", attrs))
+	require.Equal(t, uint64(1), httpFloatHistogramCount(t, rm, "prism.http.server.request.duration", attrs))
+	require.Equal(t, uint64(1), httpIntHistogramCount(t, rm, "prism.http.server.response.size", attrs))
+}
+
+func TestHTTPMetrics_NoopsWhenNil(t *testing.T) {
+	called := false
+	h := middleware.HTTPMetrics(nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	require.True(t, called)
+	require.Equal(t, http.StatusNoContent, rec.Code)
 }
 
 func TestCORS_PreflightShortCircuits(t *testing.T) {
@@ -289,4 +337,81 @@ func TestClientIP_FallsBackToRemoteAddr(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/x", nil)
 	r.RemoteAddr = "10.0.0.1:1234"
 	require.Equal(t, "10.0.0.1", middleware.ClientIP(r))
+}
+
+func collectHTTPMetrics(t *testing.T, reader *sdkmetric.ManualReader) metricdata.ResourceMetrics {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(context.Background(), &rm))
+	return rm
+}
+
+func httpCounterValue(t *testing.T, rm metricdata.ResourceMetrics, name string, attrs map[string]string) int64 {
+	t.Helper()
+	var total int64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+			for _, dp := range sum.DataPoints {
+				if httpAttributesMatch(dp.Attributes, attrs) {
+					total += dp.Value
+				}
+			}
+		}
+	}
+	return total
+}
+
+func httpFloatHistogramCount(t *testing.T, rm metricdata.ResourceMetrics, name string, attrs map[string]string) uint64 {
+	t.Helper()
+	var total uint64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			histogram, ok := m.Data.(metricdata.Histogram[float64])
+			require.True(t, ok)
+			for _, dp := range histogram.DataPoints {
+				if httpAttributesMatch(dp.Attributes, attrs) {
+					total += dp.Count
+				}
+			}
+		}
+	}
+	return total
+}
+
+func httpIntHistogramCount(t *testing.T, rm metricdata.ResourceMetrics, name string, attrs map[string]string) uint64 {
+	t.Helper()
+	var total uint64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			histogram, ok := m.Data.(metricdata.Histogram[int64])
+			require.True(t, ok)
+			for _, dp := range histogram.DataPoints {
+				if httpAttributesMatch(dp.Attributes, attrs) {
+					total += dp.Count
+				}
+			}
+		}
+	}
+	return total
+}
+
+func httpAttributesMatch(set attribute.Set, attrs map[string]string) bool {
+	for key, want := range attrs {
+		got, found := set.Value(attribute.Key(key))
+		if !found || got.AsString() != want {
+			return false
+		}
+	}
+	return true
 }

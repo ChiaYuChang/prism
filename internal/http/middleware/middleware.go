@@ -100,17 +100,27 @@ type statusRecorder struct {
 }
 
 func (s *statusRecorder) WriteHeader(code int) {
+	if s.status != 0 {
+		return
+	}
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
 }
 
 func (s *statusRecorder) Write(b []byte) (int, error) {
 	if s.status == 0 {
-		s.status = http.StatusOK
+		s.WriteHeader(http.StatusOK)
 	}
 	n, err := s.ResponseWriter.Write(b)
 	s.bytes += n
 	return n, err
+}
+
+func (s *statusRecorder) statusCode() int {
+	if s.status == 0 {
+		return http.StatusOK
+	}
+	return s.status
 }
 
 // Logger logs one structured line per request: method, path, status, bytes, elapsed.
@@ -123,7 +133,7 @@ func Logger(logger *slog.Logger) Middleware {
 			logger.LogAttrs(r.Context(), slog.LevelInfo, "http_request",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
-				slog.Int("status", rec.status),
+				slog.Int("status", rec.statusCode()),
 				slog.Int("bytes", rec.bytes),
 				slog.Duration("elapsed", time.Since(start)),
 				slog.String("request_id", RequestIDFromContext(r.Context())),
