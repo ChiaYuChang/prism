@@ -46,3 +46,52 @@ logger:
     url: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
     insecure: true
     timeout: 10s
+
+monitoring:
+  mode: pull
+  interval: 10s
+  timeout: 2s
+  internal-port: 8089
+  targets:
+    batch-detector:
+      enabled: true
+      url: http://batch-detector:8083/health
+      display-name: Batch Detector
+      description: Detects completed batches of party press releases
+      group: batch
+    batch-publisher:
+      enabled: true
+      url: http://batch-publisher:8084/health
+      display-name: Batch Publisher
+      description: Publishes batch completed events
+      group: batch
+    scheduler-slow:
+      enabled: true
+      url: http://scheduler-slow:8090/health
+      display-name: Scheduler (Slow)
+      description: Schedules and dispatches low-priority tasks
+      group: scheduler
+    scheduler-fast:
+      enabled: true
+      url: http://scheduler-fast:8091/health
+      display-name: Scheduler (Fast)
+      description: Schedules and dispatches high-priority tasks
+      group: scheduler
+    discovery:
+      enabled: true
+      url: http://discovery:8092/health
+      display-name: Discovery Worker
+      description: Crawls and discovers candidate briefs
+      group: worker
+    collector:
+      enabled: true
+      url: http://collector:8093/health
+      display-name: Collector Worker
+      description: Fetches and parses full press releases
+      group: worker
+    planner:
+      enabled: true
+      url: http://planner:8094/health
+      display-name: Planner Worker
+      description: Plans and schedules media tasks
+      group: worker

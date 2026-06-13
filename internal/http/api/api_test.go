@@ -433,7 +433,7 @@ func TestGetFetch_RateLimit_Returns429(t *testing.T) {
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()
-	srv.Register(mux)
+	srv.RegisterPublic(mux)
 
 	fetchID := uuid.Must(uuid.NewV7())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/fetches/"+fetchID.String(), nil)
@@ -491,4 +491,185 @@ func TestGetContent_InvalidID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.GetContent(rec, req)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestGetStatus_CachePinging(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	// Setup a mock local health server to ping
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"level":"OK","message":"service is good","uptime":"10s","timestamp":"2026-06-14T05:00:00Z"}`))
+	}))
+	defer mockServer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start monitor targeting our mockServer
+	srv.StartMonitor(ctx, 100*time.Millisecond, map[string]api.MonitorTarget{
+		"mock-service": {
+			URL:     mockServer.URL,
+			Timeout: 2 * time.Second,
+		},
+	})
+
+	// Make request to GET /api/v1/status
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	rec := httptest.NewRecorder()
+	srv.GetStatus(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var res map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&res))
+
+	require.Contains(t, res, "mock-service")
+	mockServiceStatus := res["mock-service"].(map[string]interface{})
+	require.Equal(t, "OK", mockServiceStatus["level"])
+	require.Equal(t, "service is good", mockServiceStatus["message"])
+}
+
+func TestGetStatus_Empty(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	// Make request to GET /api/v1/status without targets
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	rec := httptest.NewRecorder()
+	srv.GetStatus(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var res map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&res))
+	require.Empty(t, res)
+}
+
+func TestGetStatus_TimeoutFallback(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer slowServer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	srv.StartMonitor(ctx, 100*time.Millisecond, map[string]api.MonitorTarget{
+		"slow-service": {
+			URL:     slowServer.URL,
+			Timeout: 5 * time.Millisecond,
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	rec := httptest.NewRecorder()
+	srv.GetStatus(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var res map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&res))
+
+	require.Contains(t, res, "slow-service")
+	status := res["slow-service"].(map[string]interface{})
+	require.Equal(t, "ERROR", status["level"])
+	require.Contains(t, status["message"], "context deadline exceeded")
+}
+
+func TestGetStatus_PushMode(t *testing.T) {
+	m := &testServerMocks{
+		scout:       mocks.NewMockScout(t),
+		tasks:       mocks.NewMockTasks(t),
+		pipeline:    mocks.NewMockPipeline(t),
+		userFetches: mocks.NewMockUserFetches(t),
+	}
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+
+	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches,
+		api.WithMonitorMode("push"))
+	require.NoError(t, err)
+
+	internalMux := http.NewServeMux()
+	srv.RegisterInternal(internalMux)
+
+	payload := `{"service":"lambda-test","level":"WARN","message":"working","uptime":"5s"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/status", bytes.NewReader([]byte(payload)))
+	rec := httptest.NewRecorder()
+	internalMux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	publicMux := http.NewServeMux()
+	srv.RegisterPublic(publicMux)
+
+	reqGet := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	recGet := httptest.NewRecorder()
+	publicMux.ServeHTTP(recGet, reqGet)
+
+	require.Equal(t, http.StatusOK, recGet.Code)
+	var res map[string]interface{}
+	require.NoError(t, json.NewDecoder(recGet.Body).Decode(&res))
+
+	require.Contains(t, res, "lambda-test")
+	statusVal := res["lambda-test"].(map[string]interface{})
+	require.Equal(t, "WARN", statusVal["level"])
+	require.Equal(t, "working", statusVal["message"])
+}
+
+func TestGetStatus_PushMode_OmittedInPullMode(t *testing.T) {
+	m := &testServerMocks{
+		scout:       mocks.NewMockScout(t),
+		tasks:       mocks.NewMockTasks(t),
+		pipeline:    mocks.NewMockPipeline(t),
+		userFetches: mocks.NewMockUserFetches(t),
+	}
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+
+	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches,
+		api.WithMonitorMode("pull"))
+	require.NoError(t, err)
+
+	internalMux := http.NewServeMux()
+	srv.RegisterInternal(internalMux)
+
+	payload := `{"service":"lambda-test","level":"WARN","message":"working","uptime":"5s"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/status", bytes.NewReader([]byte(payload)))
+	rec := httptest.NewRecorder()
+	internalMux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestGetStatus_InitializeStatuses(t *testing.T) {
+	m := &testServerMocks{
+		scout:       mocks.NewMockScout(t),
+		tasks:       mocks.NewMockTasks(t),
+		pipeline:    mocks.NewMockPipeline(t),
+		userFetches: mocks.NewMockUserFetches(t),
+	}
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+
+	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches)
+	require.NoError(t, err)
+
+	// Pre-initialize status for expected service
+	srv.InitializeStatuses([]string{"expected-service"})
+
+	// Verify that GET /api/v1/status returns it as LevelStarting
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	rec := httptest.NewRecorder()
+	srv.GetStatus(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var res map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&res))
+
+	require.Contains(t, res, "expected-service")
+	statusVal := res["expected-service"].(map[string]interface{})
+	require.Equal(t, "STARTING", statusVal["level"])
+	require.Equal(t, "Waiting for first heartbeat", statusVal["message"])
 }

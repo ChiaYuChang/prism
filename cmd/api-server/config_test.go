@@ -36,6 +36,95 @@ func TestLoadConfig_ShippedConfig(t *testing.T) {
 	assert.True(t, cfg.Cache.Enabled)
 	assert.True(t, cfg.RateLimit.Enabled)
 	assert.Equal(t, "prism.api", cfg.Telemetry.ServiceName)
+
+	assert.Equal(t, "pull", cfg.Monitoring.Mode)
+	assert.Equal(t, 10*time.Second, cfg.Monitoring.Interval)
+	assert.Equal(t, 2*time.Second, cfg.Monitoring.Timeout)
+	require.Contains(t, cfg.Monitoring.Targets, "batch-detector")
+	target := cfg.Monitoring.Targets["batch-detector"]
+	require.NotNil(t, target.Enabled)
+	assert.True(t, *target.Enabled)
+	assert.Equal(t, "http://batch-detector:8083/health", target.URL)
+	assert.Equal(t, "Batch Detector", target.DisplayName)
+	assert.Equal(t, "batch", target.Group)
+}
+
+func TestLoadConfig_Monitoring(t *testing.T) {
+	t.Run("empty targets", func(t *testing.T) {
+		cfg, err := LoadConfig([]string{
+			"--monitoring-mode=pull",
+			"--monitoring-interval=5s",
+			"--monitoring-timeout=1s",
+			"--monitoring-internal-port=8089",
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "pull", cfg.Monitoring.Mode)
+		assert.Equal(t, 5*time.Second, cfg.Monitoring.Interval)
+		assert.Equal(t, 1*time.Second, cfg.Monitoring.Timeout)
+		assert.Empty(t, cfg.Monitoring.Targets)
+	})
+
+	t.Run("normalization timeout fallback and defaults", func(t *testing.T) {
+		configFile := writeTempFile(t, `
+monitoring:
+  mode: pull
+  interval: 10s
+  timeout: 3s
+  targets:
+    service-a:
+      url: http://service-a/health
+    service-b:
+      url: http://service-b/health
+      enabled: false
+      timeout: 10s
+      group: custom
+`)
+		cfg, err := LoadConfig([]string{"--config=" + configFile})
+		require.NoError(t, err)
+
+		require.Len(t, cfg.Monitoring.Targets, 2)
+
+		targetA := cfg.Monitoring.Targets["service-a"]
+		require.NotNil(t, targetA.Enabled)
+		assert.True(t, *targetA.Enabled)
+		assert.Equal(t, "default", targetA.Group)
+		assert.Equal(t, 3*time.Second, targetA.Timeout) // fallback to global monitoring.timeout
+
+		targetB := cfg.Monitoring.Targets["service-b"]
+		require.NotNil(t, targetB.Enabled)
+		assert.False(t, *targetB.Enabled)
+		assert.Equal(t, "custom", targetB.Group)
+		assert.Equal(t, 10*time.Second, targetB.Timeout) // custom timeout used
+	})
+
+	t.Run("enabled target requires url", func(t *testing.T) {
+		configFile := writeTempFile(t, `
+monitoring:
+  targets:
+    service-a:
+      enabled: true
+`)
+
+		_, err := LoadConfig([]string{"--config=" + configFile})
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "monitoring target \"service-a\" validation failed")
+		assert.ErrorContains(t, err, "required")
+	})
+
+	t.Run("disabled target can omit url", func(t *testing.T) {
+		configFile := writeTempFile(t, `
+monitoring:
+  targets:
+    service-a:
+      enabled: false
+`)
+
+		cfg, err := LoadConfig([]string{"--config=" + configFile})
+		require.NoError(t, err)
+		target := cfg.Monitoring.Targets["service-a"]
+		require.NotNil(t, target.Enabled)
+		assert.False(t, *target.Enabled)
+	})
 }
 
 func setShippedConfigEnv(t *testing.T) {

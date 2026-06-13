@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/discovery/extractor"
 	"github.com/ChiaYuChang/prism/internal/discovery/planner"
 	"github.com/ChiaYuChang/prism/internal/infra"
@@ -38,6 +39,7 @@ func main() {
 	}
 	logger := prismlogger.NewLoggerFromHandlers(handlers)
 	slog.SetDefault(logger)
+	appconfig.FlushPendingLogs()
 	defer func() {
 		if err := shutdownLogger(context.Background()); err != nil {
 			logger.Error("failed to shutdown logger", "error", err)

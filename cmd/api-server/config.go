@@ -1,12 +1,14 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	app "github.com/ChiaYuChang/prism/internal/appconfig"
+	"github.com/ChiaYuChang/prism/internal/http/api"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
@@ -98,6 +100,37 @@ type Config struct {
 	Cache           CacheConfig         `mapstructure:"cache"`
 	RateLimit       RateLimitConfig     `mapstructure:"rate-limit"`
 	Auth            AuthConfig          `mapstructure:"auth"`
+	Monitoring      MonitoringConfig    `mapstructure:"monitoring"`
+}
+
+type MonitoringTarget struct {
+	Enabled           *bool `mapstructure:"enabled"`
+	api.MonitorTarget `mapstructure:",squash"`
+}
+
+func (t MonitoringTarget) IsEnabled() bool {
+	return t.Enabled == nil || *t.Enabled
+}
+
+func (t MonitoringTarget) Normalized(defaultTimeout time.Duration) MonitoringTarget {
+	return MonitoringTarget{
+		Enabled: t.Enabled,
+		MonitorTarget: api.MonitorTarget{
+			URL:         t.URL,
+			DisplayName: t.DisplayName,
+			Description: t.Description,
+			Group:       t.Group,
+			Timeout:     t.Timeout,
+		}.Normalized(defaultTimeout),
+	}
+}
+
+type MonitoringConfig struct {
+	Mode         string                      `mapstructure:"mode"             validate:"required,oneof=pull push"`
+	Interval     time.Duration               `mapstructure:"interval"         validate:"required,min=1s"`
+	Timeout      time.Duration               `mapstructure:"timeout"          validate:"required,min=100ms"`
+	Targets      map[string]MonitoringTarget `mapstructure:"targets"`
+	InternalPort int                         `mapstructure:"internal-port"    validate:"required_if=Mode push,omitempty,min=1024,max=65535"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -106,10 +139,16 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	v.AutomaticEnv()
 
+	v.SetDefault("monitoring.mode", "pull")
+	v.SetDefault("monitoring.interval", 10*time.Second)
+	v.SetDefault("monitoring.timeout", 2*time.Second)
+	v.SetDefault("monitoring.internal-port", 8089)
+
 	fs := pflag.NewFlagSet("api-server", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 
 	fs.Int("port", 8090, "HTTP listen port")
+	fs.Int("monitoring-internal-port", 8089, "HTTP listen port for internal administration and status updates")
 	fs.Duration("read-timeout", 10*time.Second, "HTTP server read timeout")
 	fs.Duration("write-timeout", 30*time.Second, "HTTP server write timeout")
 	fs.Duration("shutdown-timeout", 10*time.Second, "Graceful shutdown timeout")
@@ -143,6 +182,10 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs.StringSlice("auth-token", []string{}, "Allowed X-AUTH-TOKEN values (comma-separated or repeated)")
 	fs.String("auth-token-file", "", "Path to allowed X-AUTH-TOKEN file (one token per line)")
+
+	fs.String("monitoring-mode", "pull", "Monitoring mode: pull or push")
+	fs.Duration("monitoring-interval", 10*time.Second, "Interval to ping worker/app health endpoints in pull mode")
+	fs.Duration("monitoring-timeout", 2*time.Second, "Timeout for monitoring pings")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("failed to parse flags: %w", err)
@@ -179,6 +222,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := bindAuthFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := bindMonitoringFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
@@ -199,11 +245,41 @@ func LoadConfig(args []string) (*Config, error) {
 		}
 	}
 
+	// Normalize monitoring targets after load
+	for k, target := range cfg.Monitoring.Targets {
+		if target.Enabled == nil {
+			t := true
+			target.Enabled = &t
+		}
+		target = target.Normalized(cfg.Monitoring.Timeout)
+		cfg.Monitoring.Targets[k] = target
+	}
+
 	validate := validator.New()
 	if err := validate.Struct(&cfg); err != nil {
 		return nil, fmt.Errorf("config validation failed: %v", err)
 	}
+
+	if err := validateMonitoringTargets(validate, cfg.Monitoring.Targets); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
+}
+
+func validateMonitoringTargets(validate *validator.Validate, targets map[string]MonitoringTarget) error {
+	errs := []error{}
+	for name, target := range targets {
+		if !target.IsEnabled() {
+			continue
+		}
+		if err := validate.Struct(target.MonitorTarget); err != nil {
+			errs = append(errs, fmt.Errorf("monitoring target %q validation failed: %w", name, err))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("monitoring target validation failed: %w", errors.Join(errs...))
+	}
+	return nil
 }
 
 func bindCacheFlags(v *viper.Viper, fs *pflag.FlagSet) error {
@@ -237,6 +313,20 @@ func bindAuthFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 	for flag, key := range map[string]string{
 		"auth-token":      "auth.token.tokens",
 		"auth-token-file": "auth.token.file",
+	} {
+		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
+			return fmt.Errorf("bind %s: %w", key, err)
+		}
+	}
+	return nil
+}
+
+func bindMonitoringFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	for flag, key := range map[string]string{
+		"monitoring-mode":          "monitoring.mode",
+		"monitoring-interval":      "monitoring.interval",
+		"monitoring-timeout":       "monitoring.timeout",
+		"monitoring-internal-port": "monitoring.internal-port",
 	} {
 		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
 			return fmt.Errorf("bind %s: %w", key, err)

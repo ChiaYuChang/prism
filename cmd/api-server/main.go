@@ -19,6 +19,7 @@ import (
 	"time"
 
 	_ "github.com/ChiaYuChang/prism/cmd/api-server/docs"
+	"github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/http/api"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/infra"
@@ -48,6 +49,10 @@ func main() {
 	}
 	logger := prismlogger.NewLoggerFromHandlers(handlers)
 	slog.SetDefault(logger)
+	appconfig.FlushPendingLogs()
+	if config.Monitoring.Mode == "push" {
+		logger.Warn("Monitoring mode 'push' is configured, but it is not yet fully implemented/supported across workers/apps/api")
+	}
 	defer func() {
 		if err := shutdownLogger(context.Background()); err != nil {
 			logger.Error("failed to shutdown logger", "error", err)
@@ -83,7 +88,9 @@ func main() {
 	}
 	defer func() { _ = repositoryCloser.Close() }()
 
-	var serverOpts []api.ServerOption
+	serverOpts := []api.ServerOption{
+		api.WithMonitorMode(config.Monitoring.Mode),
+	}
 
 	if config.Cache.Enabled {
 		valkeyClient, err := infra.NewValkeyClient(ctx, &redis.Options{
@@ -138,11 +145,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	var expectedServices []string
+	targets := make(map[string]api.MonitorTarget)
+	for name, target := range config.Monitoring.Targets {
+		if target.IsEnabled() {
+			expectedServices = append(expectedServices, name)
+			if target.DisplayName == "" {
+				target.DisplayName = name
+			}
+			targets[name] = target.MonitorTarget
+		}
+	}
+	apiServer.InitializeStatuses(expectedServices)
+
+	if config.Monitoring.Mode == "pull" {
+		apiServer.StartMonitor(ctx, config.Monitoring.Interval, targets)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", livenessHandler(monitor))
 	mux.HandleFunc("GET /readyz", readinessHandler(monitor))
 	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
-	apiServer.Register(mux, apiMiddleware...)
+	apiServer.RegisterPublic(mux, apiMiddleware...)
 
 	chain := middleware.Chain(
 		middleware.RequestID(),
@@ -164,14 +188,34 @@ func main() {
 		WriteTimeout: config.WriteTimeout,
 	}
 
-	serverErr := make(chan error, 1)
+	serverErr := make(chan error, 2)
 	go func() {
 		logger.Info("api server listening", "port", config.Port)
 		monitor.OK()
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErr <- err
+			serverErr <- fmt.Errorf("public api server failed: %w", err)
 		}
 	}()
+
+	var internalServer *http.Server
+	if config.Monitoring.Mode == "push" {
+		internalMux := http.NewServeMux()
+		apiServer.RegisterInternal(internalMux, apiMiddleware...)
+
+		internalServer = &http.Server{
+			Addr:         fmt.Sprintf(":%d", config.Monitoring.InternalPort),
+			Handler:      chain(internalMux),
+			ReadTimeout:  config.ReadTimeout,
+			WriteTimeout: config.WriteTimeout,
+		}
+
+		go func() {
+			logger.Info("internal api server listening", "port", config.Monitoring.InternalPort)
+			if err := internalServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serverErr <- fmt.Errorf("internal api server failed: %w", err)
+			}
+		}()
+	}
 
 	select {
 	case err := <-serverErr:
@@ -183,8 +227,18 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout)
 	defer cancel()
+
+	var errs []error
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("graceful shutdown failed", "error", err)
+		errs = append(errs, fmt.Errorf("public server shutdown: %w", err))
+	}
+	if internalServer != nil {
+		if err := internalServer.Shutdown(shutdownCtx); err != nil {
+			errs = append(errs, fmt.Errorf("internal server shutdown: %w", err))
+		}
+	}
+	if len(errs) > 0 {
+		logger.Error("graceful shutdown failed", "errors", errors.Join(errs...))
 	}
 }
 
