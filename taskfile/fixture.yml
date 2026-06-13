@@ -1,0 +1,36 @@
+version: "3"
+
+tasks:
+  build:
+    desc: build fixture-server binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/dev/fixture-server
+        ./{{.CMD_DIR}}/dev/fixture-server
+
+  start:
+    desc: start fixture-server in background on :9999 serving testdata/fixtures
+    deps: [ build ]
+    vars:
+      FIXTURE_ADDR: '{{.FIXTURE_ADDR | default ":9999"}}'
+      FIXTURE_ROOT: '{{.FIXTURE_ROOT | default "testdata/fixtures"}}'
+    preconditions:
+      - sh: "! pgrep -f '^\\./bin/dev/fixture-server ' >/dev/null"
+        msg: "fixture-server already running. Run 'task fixture:stop' first."
+    cmds:
+      - mkdir -p logs {{.FIXTURE_ROOT}}
+      - |
+        ./{{.BUILD_DIR}}/dev/fixture-server --addr {{.FIXTURE_ADDR}} --root {{.FIXTURE_ROOT}} \
+          > logs/fixture-server.log 2>&1 &
+        sleep 1
+        pgrep -af '^\./bin/dev/fixture-server ' || echo "fixture-server failed to start"
+        echo "addr={{.FIXTURE_ADDR}} root={{.FIXTURE_ROOT}}"
+
+  stop:
+    desc: stop fixture-server started by fixture:start
+    cmds:
+      - |
+        if pkill -f '^\./bin/dev/fixture-server '; then
+          echo "stopped fixture-server"
+        else
+          echo "fixture-server not running"
+        fi

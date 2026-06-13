@@ -1,0 +1,39 @@
+version: "3"
+
+tasks:
+  all:
+    desc: build all microservice binaries
+    deps:
+      - for: [scheduler, discovery, collector, planner, batch-detector, batch-publisher]
+        task: '{{.ITEM}}'
+
+  scheduler:
+    desc: build scheduler binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/scheduler ./{{.CMD_DIR}}/scheduler/*.go" ]
+
+  discovery:
+    desc: build discovery worker binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/*.go
+
+  collector:
+    desc: build collector worker binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/collector ./{{.CMD_DIR}}/worker/collector
+
+  planner:
+    desc: build planner worker binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/planner ./{{.CMD_DIR}}/worker/planner
+
+  batch-detector:
+    desc: build batch detector binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/batch/detector
+        ./{{.CMD_DIR}}/batch/detector/*.go
+
+  batch-publisher:
+    desc: build batch publisher binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/batch/publisher
+        ./{{.CMD_DIR}}/batch/publisher/*.go

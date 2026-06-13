@@ -61,6 +61,7 @@ testdata/fixtures/
 # support files
 SESSION_SUMMARY.md
 CLAUDE.md
+AGENTS.md
 .task/*
 build/ok*
 opencode.json

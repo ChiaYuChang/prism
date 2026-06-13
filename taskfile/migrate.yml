@@ -1,0 +1,32 @@
+version: "3"
+
+tasks:
+  up:
+    desc: run database migration
+    cmds:
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" up'
+
+  down:
+    desc: rollback last migration
+    cmds:
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down 1'
+
+  clean:
+    desc: rollback last migration
+    cmds:
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down'
+
+  force:
+    desc: Force a migration version (use with caution!)
+    vars:
+      VERSION: "{{.VERSION}}"
+    cmds:
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" force {{.VERSION}}'
+
+  create:
+    desc: create new migration file (NAME=xxx)
+    cmds:
+      - migrate create -ext sql -dir {{.DB_DIR}}/migrations -seq {{.NAME}}
+    preconditions:
+      - sh: "test -n \"{{.NAME}}\""
+        msg: "Please provide a name for the migration file, e.g. task migrate:create NAME=add_users_table"

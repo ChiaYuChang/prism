@@ -1,0 +1,166 @@
+version: "3"
+
+tasks:
+  start:
+    desc: start scheduler-slow + scheduler-fast + discovery + collector in background
+    preconditions:
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" = \"127.0.0.1\""
+        msg: "refusing non-localhost POSTGRES_HOST"
+      - sh: "! pgrep -f '^\\./bin/(scheduler|discovery|collector) ' >/dev/null"
+        msg: "workers already running. Run 'task worker:stop' first."
+    deps:
+      - task: :build:scheduler
+      - task: :build:discovery
+      - task: :build:collector
+    # Secrets flow via env vars (per-cmd PRISM_* prefixes) so they never
+    # land on argv where `ps -ef` / /proc/<pid>/cmdline would expose them
+    # to any user on the host. Viper picks them up via AutomaticEnv.
+    env:
+      PRISM_SCHEDULER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_SCHEDULER_VALKEY_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      PRISM_DISCOVERY_WORKER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_DISCOVERY_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_COLLECTOR_WORKER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_COLLECTOR_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+    cmds:
+      - mkdir -p logs tmp/archives testdata/fixtures
+      - |
+        ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --nats-host localhost --nats-port 4222 \
+          --kinds DIRECTORY_FETCH,KEYWORD_SEARCH \
+          --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock \
+          --interval 1m \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          --valkey-username {{.VALKEY_APP_USER}} \
+          > logs/scheduler-slow.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --nats-host localhost --nats-port 4222 \
+          --kinds PAGE_FETCH \
+          --lock-key prism:scheduler:PAGE_FETCH:lock \
+          --health-port 8091 \
+          --interval 1m \
+          --media-quota 30 --buffer 10 \
+          --rate-limit-config assets/ratelimits/scheduler.yaml \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          --valkey-username {{.VALKEY_APP_USER}} \
+          > logs/scheduler-fast.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/discovery --messenger-type nats \
+          --nats-host localhost --nats-port 4222 \
+          --capture-dir testdata/fixtures \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          > logs/discovery.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/collector --messenger-type nats \
+          --nats-host localhost --nats-port 4222 \
+          --capture-dir testdata/fixtures \
+          --archive "file://$(pwd)/tmp/archives" \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          > logs/collector.log 2>&1 &
+      - |
+        sleep 1
+        pgrep -af '^\./bin/(scheduler|discovery|collector) ' || true
+        echo "tail logs with: tail -f logs/*.log"
+
+  stop:
+    desc: stop background workers started by worker:start (does not touch fixture-server)
+    cmds:
+      - |
+        if pkill -f '^\./bin/(scheduler|discovery|collector) '; then
+          echo "stopped workers"
+        else
+          echo "no workers running"
+        fi
+
+  start:replay:
+    desc: start workers wired to fixture-server (no real-site traffic)
+    preconditions:
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" = \"127.0.0.1\""
+        msg: "refusing non-localhost POSTGRES_HOST"
+      - sh: "pgrep -f '^\\./bin/dev/fixture-server ' >/dev/null"
+        msg: "fixture-server is not running. Run 'task fixture:start' first."
+      - sh: "! pgrep -f '^\\./bin/(scheduler|discovery|collector) ' >/dev/null"
+        msg: "workers already running. Run 'task worker:stop' first."
+    deps:
+      - task: :build:scheduler
+      - task: :build:discovery
+      - task: :build:collector
+    vars:
+      FIXTURE_BASE: '{{.FIXTURE_BASE | default "http://localhost:9999"}}'
+      FORCE_MINIFY_FLAG: '{{.FORCE_MINIFY_FLAG | default ""}}'
+    # Secrets via env (see worker:start above for rationale).
+    env:
+      PRISM_SCHEDULER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_SCHEDULER_VALKEY_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      PRISM_DISCOVERY_WORKER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_DISCOVERY_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_COLLECTOR_WORKER_NATS_TOKEN: { sh: "cat {{.NATS_AUTH_TOKEN_FILE}}" }
+      PRISM_COLLECTOR_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+    cmds:
+      - mkdir -p logs tmp/archives
+      - |
+        ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --nats-host localhost --nats-port 4222 \
+          --kinds DIRECTORY_FETCH,KEYWORD_SEARCH \
+          --lock-key prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock \
+          --interval 5s \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          --valkey-username {{.VALKEY_APP_USER}} \
+          > logs/scheduler-slow.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
+          --nats-host localhost --nats-port 4222 \
+          --kinds PAGE_FETCH \
+          --lock-key prism:scheduler:PAGE_FETCH:lock \
+          --health-port 8091 \
+          --interval 3s \
+          --media-quota 30 --buffer 10 \
+          --rate-limit-config assets/ratelimits/replay.yaml \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          --valkey-username {{.VALKEY_APP_USER}} \
+          > logs/scheduler-fast.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/discovery --messenger-type nats \
+          --nats-host localhost --nats-port 4222 \
+          --fixture-base {{.FIXTURE_BASE}} \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          > logs/discovery.log 2>&1 &
+      - |
+        ./{{.BUILD_DIR}}/collector --messenger-type nats \
+          --nats-host localhost --nats-port 4222 \
+          --fixture-base {{.FIXTURE_BASE}} \
+          --archive "file://$(pwd)/tmp/archives" \
+          {{.FORCE_MINIFY_FLAG}} \
+          --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
+          --pg-username {{.POSTGRES_APP_USER}} \
+          --pg-db {{.POSTGRES_APP_DB}} \
+          > logs/collector.log 2>&1 &
+      - |
+        sleep 1
+        pgrep -af '^\./bin/(scheduler|discovery|collector) ' || true
+        echo "replay mode: fixture-base={{.FIXTURE_BASE}} force_minify_flag={{.FORCE_MINIFY_FLAG}}"
+        echo "tail logs with: tail -f logs/*.log"
+
+  start:replay:fail-minify:
+    desc: replay-mode workers with collector --force-minify-error injected (Phase 3)
+    cmds:
+      - task: start:replay
+        vars:
+          FORCE_MINIFY_FLAG: "--force-minify-error"

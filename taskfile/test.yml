@@ -1,0 +1,159 @@
+version: "3"
+
+tasks:
+  test:
+    desc: run unit tests
+    summary: |
+      Runs the default short Go test suite across all packages with coverage.
+      This is the fast local/CI unit-test path and intentionally excludes tests
+      gated behind integration or e2e build tags.
+    cmds:
+      - go test -v -short -cover ./...
+
+  # NOTE: secrets flow via env vars (PRISM_<APP>_POSTGRES_PASSWORD etc.) so
+  # they never appear on argv where `ps -ef` would expose them to any user on
+  # the host. Viper's AutomaticEnv + the per-cmd prefix picks them up; the
+  # dotted viper keys (postgres.password, valkey.password) translate to
+  # POSTGRES_PASSWORD / VALKEY_PASSWORD via the SetEnvKeyReplacer rule.
+  test:scheduler:
+    desc: run scheduler in test mode (gochannel)
+    summary: |
+      Runs the scheduler on the host with the in-memory GoChannel messenger.
+      This is useful for local development when NATS is not needed but Postgres
+      task claiming should still be exercised.
+    env:
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+    cmds:
+      - go run ./cmd/scheduler --messenger-type gochannel --interval 1m
+        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
+        {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}}
+
+  test:scheduler-fast:
+    desc: run scheduler-fast in test mode (PAGE_FETCH, 3s interval, MEDIA priority)
+    summary: |
+      Runs the PAGE_FETCH scheduler tier on the host with GoChannel messaging.
+      It uses the fast interval and Valkey-backed coordination settings used by
+      the local fast-lane scheduler flow.
+    env:
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_SCHEDULER_VALKEY_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+    cmds:
+      - go run ./cmd/scheduler --messenger-type gochannel --kinds PAGE_FETCH
+        --lock-key prism:scheduler:PAGE_FETCH:lock --interval 3s --media-quota
+        30 --buffer 10 --rate-limit-config assets/ratelimits/scheduler.yaml
+        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
+        {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}} --valkey-username
+        {{.VALKEY_APP_USER}}
+
+  test:scheduler-slow:
+    desc: run scheduler-slow in test mode (DIRECTORY_FETCH+KEYWORD_SEARCH, 60s interval)
+    summary: |
+      Runs the DIRECTORY_FETCH and KEYWORD_SEARCH scheduler tier on the host
+      with GoChannel messaging. This mirrors the slower discovery/search task
+      cadence without requiring NATS.
+    env:
+      PRISM_SCHEDULER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+      PRISM_SCHEDULER_VALKEY_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+    cmds:
+      - go run ./cmd/scheduler --messenger-type gochannel --kinds
+        DIRECTORY_FETCH,KEYWORD_SEARCH --lock-key
+        prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock --interval 60s
+        --buffer 10 --rate-limit-config assets/ratelimits/scheduler.yaml
+        --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
+        {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}} --valkey-username
+        {{.VALKEY_APP_USER}}
+
+  test:discovery:
+    desc: run discovery worker in test mode (gochannel)
+    summary: |
+      Runs the discovery worker on the host with GoChannel messaging against the
+      configured local Postgres database. Use this for focused discovery-worker
+      development outside the container stack.
+    env:
+      PRISM_DISCOVERY_WORKER_POSTGRES_PASSWORD: "{{.POSTGRES_APP_PASSWORD}}"
+    cmds:
+      - go run ./cmd/worker/discovery --messenger-type gochannel --pg-host
+        {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
+        {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}}
+
+  test:e2e:setup:bare:
+    desc: bring up a fresh e2e stack + migrate (no seed); driver tests use this
+    summary: |
+      Starts an isolated MODE=e2e Compose stack and applies database migrations
+      without seeding test tasks. It refuses non-local Postgres targets to avoid
+      accidentally running e2e setup against production-like databases.
+    vars:
+      MODE: e2e
+      PROJECT: "{{.NAME}}-{{.MODE}}"
+    preconditions:
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" = \"127.0.0.1\""
+        msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}; e2e never targets production"
+    cmds:
+      - task: compose:bake
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+      - task: compose:up
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+      - task: migrate:up
+
+  test:e2e:setup:
+    desc: bring up a fresh e2e stack and seed DIRECTORY_FETCH tasks (Phase 1 operator e2e)
+    summary: |
+      Runs the bare e2e setup and then seeds DIRECTORY_FETCH tasks for the
+      operator-driven end-to-end discovery flow. Use this when manually driving
+      the Phase 1 style pipeline.
+    cmds:
+      - task: test:e2e:setup:bare
+      - task: test:e2e:seed
+
+  test:e2e:seed:
+    desc: insert DIRECTORY_FETCH tasks for dpp / tpp / kmt (testdata/seed-tasks.sql)
+    summary: |
+      Inserts the standard DIRECTORY_FETCH seed tasks from testdata into the
+      local e2e database. The localhost precondition prevents writing seed data
+      to an unintended remote database.
+    preconditions:
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" = \"127.0.0.1\""
+        msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}"
+    cmds:
+      - psql "{{.POSTGRES_URL}}" -f testdata/seed-tasks.sql
+
+  test:e2e:teardown:
+    desc: tear down e2e stack including volumes (drops the seeded data)
+    summary: |
+      Tears down the isolated e2e stack, including worker containers, tool
+      containers, core infra, and volumes. This drops seeded data and returns
+      the e2e project to a clean state.
+    vars:
+      MODE: e2e
+      PROJECT: "{{.NAME}}-{{.MODE}}"
+    preconditions:
+      - sh: "test \"{{.POSTGRES_HOST}}\" = \"localhost\" -o \"{{.POSTGRES_HOST}}\" = \"127.0.0.1\""
+        msg: "refusing non-localhost POSTGRES_HOST={{.POSTGRES_HOST}}"
+    cmds:
+      - task: compose:worker:down
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+      - task: compose:tools:down
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+      - task: compose:clean
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+
+  test:e2e:page-fetch:
+    desc: Phase 6 - automated user-line driver test (Phase 2.7 Stage 4)
+    summary: |
+      Runs the automated page-fetch e2e driver against an isolated stack with
+      fixture replay enabled. It starts infra, migrations, workers, and the API,
+      then runs the e2e Go tests and defers stack teardown.
+    vars:
+      MODE: e2e
+      PROJECT: "{{.NAME}}-{{.MODE}}"
+    env:
+      FIXTURE_BASE: "http://fixture-server:9999"
+      PRISM_E2E_DSN: "{{.POSTGRES_URL}}"
+      PRISM_E2E_API_BASE: "http://localhost:8090"
+    cmds:
+      - task: test:e2e:setup:bare
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+      - task: compose:worker
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
+      - defer: { task: test:e2e:teardown, vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" } }
+      - go test -tags=e2e -count=1 -v ./e2e/...

@@ -1,0 +1,17 @@
+version: "3"
+
+tasks:
+  scheduler:
+    desc: run scheduler on host
+    cmds:
+      - go run cmd/scheduler/main.go
+
+  discovery:
+    desc: run discovery worker on host
+    cmds:
+      - go run cmd/worker/discovery/main.go
+
+  pipeline:
+    desc: run pipeline worker on host
+    cmds:
+      - go run cmd/pipeline-worker/main.go

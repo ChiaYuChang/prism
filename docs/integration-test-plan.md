@@ -57,8 +57,8 @@ Code committed in `322a012`; end-to-end run not yet verified.
 
 - [x] Add `cmd/dev/fixture-server/main.go` — `http.FileServer` serving `testdata/fixtures`
 - [x] Add URL rewriter in fetcher: `internal/dev/replay.go` — `WrapClientReplay` transforms `https://<host>/<path>` → `<fixture-base>/<host>/<path>`. Shared by discovery + collector via `--fixture-base` flag.
-- [x] Taskfile entries `fixture-server:start/stop` and `worker:start:replay` wired with pgrep-based lifecycle.
-- [x] Re-run pipeline with `task fixture-server:start` + `task worker:start:replay`, confirm same 26/26 output with zero real-site traffic (capture-dir does not grow).
+- [x] Taskfile entries `fixture:start/stop` and `worker:start:replay` wired with pgrep-based lifecycle.
+- [x] Re-run pipeline with `task fixture:start` + `task worker:start:replay`, confirm same 26/26 output with zero real-site traffic (capture-dir does not grow).
   - Verified 2026-05-01: tasks DIRECTORY_FETCH=3 / PAGE_FETCH=26 all COMPLETED; candidates+contents dpp=10/kmt=10/tpp=6 each; capture-dir delta=0.
   - Bug fixed during run: `worker:start:replay` Taskfile entry was missing `--nats-host/--nats-port/--nats-token` flags on all 4 binaries → workers crashed at startup with `nats: Authorization Violation`. Patched.
   - Noise (not a bug): discovery worker logs `unsupported task kind: kind=PAGE_FETCH source_type=PARTY` — both discovery + collector subscribe to `prism.task` and filter by Kind; collector handles PAGE_FETCH correctly. Discovery's handler-level reject is expected. Consider quiet-loging non-matching kinds at DEBUG.
@@ -222,7 +222,7 @@ isolated `prism-e2e` stack. Verify before assuming work needed:
   (Stage 3 only added flags, not the compose service).
 - **fixture-server** — `cmd/dev/fixture-server` exists and serves
   `testdata/fixtures/<host>/<path>.html`. It runs as a host process in
-  Phase 2 (`task fixture-server:start`); for Phase 6 it must run
+  Phase 2 (`task fixture:start`); for Phase 6 it must run
   inside compose so the collector resolves
   `http://fixture-server:8080/...` from its own network. Add a
   service entry in the worker overlay.
