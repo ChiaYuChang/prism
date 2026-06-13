@@ -1,34 +1,65 @@
 receivers:
+  filelog/app:
+    include:
+      - /logs/*.json
+    start_at: end
+    include_file_path: true
+    operators:
+      - type: json_parser
+        parse_from: body
+        parse_to: attributes
+
   otlp:
     protocols:
       grpc:
-        endpoint: "0.0.0.0:4317"
+        endpoint: 0.0.0.0:4317
       http:
-        endpoint: "0.0.0.0:4318"
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
 
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
 
 exporters:
-  prometheusremotewrite:
-    endpoint: "http://replace-with-your-metrics-host:8428/api/v1/write"
-    resource_to_telemetry_conversion:
-      enabled: true
   otlphttp/victorialogs:
-    endpoint: "http://replace-with-your-logs-host:9428/insert/opentelemetry/v1/logs"
+    logs_endpoint: http://replace-with-your-logs-host:9428/insert/opentelemetry/v1/logs
+    compression: gzip
+    encoding: proto
+
+  file/local_backup:
+    path: /var/log/app/otel_logs.json
+    rotation:
+      max_megabytes: 100
+      max_backups: 5
+
+  otlphttp/victoriametrics:
+    metrics_endpoint: http://replace-with-your-metrics-host:8428/opentelemetry/v1/metrics
+    compression: gzip
+    encoding: proto
+
   otlphttp/victoriatraces:
-    endpoint: "http://replace-with-your-traces-host:9428/insert/opentelemetry/v1/traces"
+    traces_endpoint: http://replace-with-your-traces-host:10428/insert/opentelemetry/v1/traces
+    compression: gzip
+    encoding: proto
 
 service:
   extensions: [health_check]
+
   pipelines:
+    logs:
+      receivers: [filelog/app]
+      processors: [batch]
+      exporters: [file/local_backup, otlphttp/victorialogs]
+
     metrics:
       receivers: [otlp]
-      exporters: [prometheusremotewrite]
-    logs:
-      receivers: [otlp]
-      exporters: [otlphttp/victorialogs]
+      processors: [batch]
+      exporters: [otlphttp/victoriametrics]
+
     traces:
       receivers: [otlp]
+      processors: [batch]
       exporters: [otlphttp/victoriatraces]

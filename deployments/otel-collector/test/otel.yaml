@@ -1,15 +1,14 @@
 receivers:
-  filelog/docker:
+  filelog/app:
     include:
       - /logs/*.json
     start_at: end
     include_file_path: true
     operators:
-      # Prism writes slog JSON to files mounted at /logs; parse each line into
-      # queryable log fields for VictoriaLogs/Grafana.
       - type: json_parser
         parse_from: body
         parse_to: attributes
+
   otlp:
     protocols:
       grpc:
@@ -26,11 +25,21 @@ extensions:
 
 exporters:
   otlphttp/victorialogs:
-    endpoint: http://victoria-logs:9428/insert/opentelemetry
+    logs_endpoint: http://victoria-logs:9428/insert/opentelemetry/v1/logs
+    compression: gzip
+    encoding: proto
+
+  file/local_backup:
+    path: /var/log/app/otel_logs.json
+    rotation:
+      max_megabytes: 100
+      max_backups: 5
+
   otlphttp/victoriametrics:
     compression: gzip
     encoding: proto
     metrics_endpoint: http://victoria-metrics:8428/opentelemetry/v1/metrics
+
   otlphttp/victoriatraces:
     compression: gzip
     encoding: proto
@@ -38,15 +47,18 @@ exporters:
 
 service:
   extensions: [health_check]
+
   pipelines:
     logs:
-      receivers: [filelog/docker]
+      receivers: [filelog/app]
       processors: [batch]
-      exporters: [otlphttp/victorialogs]
+      exporters: [file/local_backup, otlphttp/victorialogs]
+
     metrics:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlphttp/victoriametrics]
+
     traces:
       receivers: [otlp]
       processors: [batch]
