@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -26,6 +27,17 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	require.True(t, ok, "default messenger should be *NatsConfig")
 	assert.Equal(t, "localhost", natsCfg.Host)
 	assert.Equal(t, 4222, natsCfg.Port)
+}
+
+func TestLoadConfig_ShippedConfig(t *testing.T) {
+	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "batch", "publisher", "config.yaml")})
+	require.NoError(t, err)
+
+	assert.Equal(t, time.Minute, cfg.Interval)
+	assert.Equal(t, "postgres", cfg.Postgres.Host)
+	assert.Equal(t, "nats", cfg.MessengerType)
+	assert.Equal(t, "prism.batch.publisher", cfg.Telemetry.ServiceName)
+	assert.Equal(t, "/logs/batch-publisher.json", cfg.Logger.File.File)
 }
 
 func TestLoadConfig_FromFlags_Gochannel(t *testing.T) {

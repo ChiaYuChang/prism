@@ -11,8 +11,8 @@ vars:
   EFFECTIVE_COMPOSE_MERGED: '.{{.ENV}}-{{.EFFECTIVE_PROFILES_SLUG}}.docker-compose.merged.yaml'
 
 env:
-  COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
-  COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
+  COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
+  COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
 
 tasks:
   bake:
@@ -59,6 +59,7 @@ tasks:
       - "echo {{.MODE}} > {{.MODE_FILE}}"
       - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"
       - task: wait
+        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
 
   wait:
     desc: wait for core services, plus observability services when obs profile is active
@@ -70,6 +71,9 @@ tasks:
     deps: [ bake ]
     vars:
       TIMEOUT: "{{.TIMEOUT | default 30}}"
+    env:
+      COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
+      COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
     cmds:
       - |
         SERVICES=(postgres nats valkey seaweedfs)
@@ -95,6 +99,9 @@ tasks:
       safe even from a later shell session.
     vars:
       COMPOSE_MERGED: "{{.EFFECTIVE_COMPOSE_MERGED}}"
+    env:
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down
       - rm -f {{.MODE_FILE}}
@@ -108,6 +115,9 @@ tasks:
       e2e infrastructure state.
     vars:
       COMPOSE_MERGED: "{{.EFFECTIVE_COMPOSE_MERGED}}"
+    env:
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down -v --remove-orphans
       - rm -f {{.MODE_FILE}}
@@ -120,6 +130,9 @@ tasks:
       Compose project name. Useful after compose:up when multiple service logs
       need to be inspected together.
     deps: [ bake ]
+    env:
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f
 
@@ -414,7 +427,8 @@ tasks:
     vars:
       COMPOSE_MERGED: "{{.EFFECTIVE_COMPOSE_MERGED}}"
     env:
-      COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
+      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} stop pgadmin nats-nui redisinsight
         victoria-logs grafana

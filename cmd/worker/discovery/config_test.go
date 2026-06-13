@@ -22,6 +22,17 @@ func TestLoadConfigDefaults(t *testing.T) {
 	require.NotNil(t, cfg.Messenger)
 }
 
+func TestLoadConfigShippedConfig(t *testing.T) {
+	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "discovery", "config.yaml")})
+	require.NoError(t, err)
+
+	assert.Equal(t, 8092, cfg.HealthPort)
+	assert.Equal(t, "/app/configs/worker/discovery/scouts.yaml", cfg.ScoutConfigPath)
+	assert.Equal(t, "postgres", cfg.Postgres.Host)
+	assert.Equal(t, "prism.discovery", cfg.Telemetry.ServiceName)
+	assert.Equal(t, "/logs/discovery.json", cfg.Logger.File.File)
+}
+
 func TestLoadConfigSearchProvidersFromYAML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	body := []byte(`

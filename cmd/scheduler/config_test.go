@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,6 +18,43 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 10*time.Minute, config.Interval)
 	assert.Equal(t, "localhost", config.Postgres.Host)
 	assert.Equal(t, "nats", config.MessengerType)
+}
+
+func TestLoadConfig_ShippedConfigs(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		wantHealth int
+		wantKinds  []string
+		wantSvc    string
+	}{
+		{
+			name:       "slow",
+			path:       filepath.Join("..", "..", "configs", "scheduler", "slow.yaml"),
+			wantHealth: 8090,
+			wantKinds:  []string{"DIRECTORY_FETCH", "KEYWORD_SEARCH"},
+			wantSvc:    "prism.scheduler.slow",
+		},
+		{
+			name:       "fast",
+			path:       filepath.Join("..", "..", "configs", "scheduler", "fast.yaml"),
+			wantHealth: 8091,
+			wantKinds:  []string{"PAGE_FETCH"},
+			wantSvc:    "prism.scheduler.fast",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := LoadConfig([]string{"--config", tt.path})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantHealth, cfg.HealthPort)
+			assert.Equal(t, tt.wantKinds, cfg.Kinds)
+			assert.Equal(t, "postgres", cfg.Postgres.Host)
+			assert.Equal(t, "valkey", cfg.Valkey.Host)
+			assert.Equal(t, tt.wantSvc, cfg.Telemetry.ServiceName)
+		})
+	}
 }
 
 func TestLoadConfig_FromFlags(t *testing.T) {

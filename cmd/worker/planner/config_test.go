@@ -9,6 +9,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLoadConfigShippedConfig(t *testing.T) {
+	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "planner", "config.yaml")})
+	require.NoError(t, err)
+
+	require.Equal(t, 8094, cfg.HealthPort)
+	require.Equal(t, "/app/assets/worker/planner/prompts/analysis/extractor.md", cfg.PromptPath)
+	require.Equal(t, "postgres", cfg.Postgres.Host)
+	require.Equal(t, "gemini", cfg.LLM.Provider)
+	require.Equal(t, "gemini-2.0-flash", cfg.LLM.Model)
+	require.Equal(t, "prism.planner", cfg.Telemetry.ServiceName)
+}
+
 func TestLoadConfigSearchTargetsFromYAML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	body := []byte(`

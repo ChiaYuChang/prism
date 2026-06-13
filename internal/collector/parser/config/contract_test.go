@@ -50,7 +50,7 @@ var hostFixtures = map[string]struct {
 }
 
 func TestParsersConfig_ContractEachHost(t *testing.T) {
-	body, err := os.ReadFile("parsers.yaml")
+	body, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "configs", "worker", "collector", "parsers.yaml"))
 	require.NoError(t, err)
 
 	var cfg config.Config

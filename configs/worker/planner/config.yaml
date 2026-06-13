@@ -1,0 +1,44 @@
+health-port: 8094
+prompt-path: /app/assets/worker/planner/prompts/analysis/extractor.md
+messenger-type: nats
+nats-host: nats
+nats-port: 4222
+queue-group: planner-worker
+subscribers-count: 1
+ack-wait-timeout: 30s
+postgres:
+  host: postgres
+  port: 5432
+  username: prism
+  db: prism
+  sslmode: disable
+llm:
+  provider: gemini
+  model: gemini-2.0-flash
+  timeout: 30s
+search:
+  targets:
+    yahoo:
+      enable: true
+      source_abbr: yahoo
+      url: https://tw.news.yahoo.com
+      site: tw.news.yahoo.com
+telemetry:
+  enabled: true
+  service-name: prism.planner
+  environment: local
+  endpoint: otel-collector:4317
+  insecure: true
+  sample-ratio: 1
+  timeout: 10s
+logger:
+  level: info
+  console:
+    enable: true
+  file:
+    enable: true
+    file: /logs/planner.json
+  otel:
+    url: otel-collector:4317
+    insecure: true
+    timeout: 10s

@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -20,6 +21,16 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	assert.Equal(t, "localhost", cfg.Postgres.Host)
 	assert.Equal(t, 5432, cfg.Postgres.Port)
 	assert.Equal(t, "disable", cfg.Postgres.SSLMode)
+}
+
+func TestLoadConfig_ShippedConfig(t *testing.T) {
+	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "batch", "detector", "config.yaml")})
+	require.NoError(t, err)
+
+	assert.Equal(t, time.Minute, cfg.Interval)
+	assert.Equal(t, "postgres", cfg.Postgres.Host)
+	assert.Equal(t, "prism.batch.detector", cfg.Telemetry.ServiceName)
+	assert.Equal(t, "/logs/batch-detector.json", cfg.Logger.File.File)
 }
 
 func TestLoadConfig_FromFlags(t *testing.T) {

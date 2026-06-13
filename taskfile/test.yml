@@ -59,7 +59,7 @@ tasks:
     cmds:
       - go run ./cmd/scheduler --messenger-type gochannel --kinds PAGE_FETCH
         --lock-key prism:scheduler:PAGE_FETCH:lock --interval 3s --media-quota
-        30 --buffer 10 --rate-limit-config assets/ratelimits/scheduler.yaml
+        30 --buffer 10 --rate-limit-config assets/scheduler/ratelimits/scheduler.yaml
         --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
         {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}} --valkey-username
         {{.VALKEY_APP_USER}}
@@ -77,7 +77,7 @@ tasks:
       - go run ./cmd/scheduler --messenger-type gochannel --kinds
         DIRECTORY_FETCH,KEYWORD_SEARCH --lock-key
         prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock --interval 60s
-        --buffer 10 --rate-limit-config assets/ratelimits/scheduler.yaml
+        --buffer 10 --rate-limit-config assets/scheduler/ratelimits/scheduler.yaml
         --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} --pg-username
         {{.POSTGRES_APP_USER}} --pg-db {{.POSTGRES_APP_DB}} --valkey-username
         {{.VALKEY_APP_USER}}

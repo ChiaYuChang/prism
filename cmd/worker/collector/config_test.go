@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -20,6 +21,18 @@ func TestLoadConfigDefaults(t *testing.T) {
 	assert.Equal(t, "nats", cfg.MessengerType)
 	assert.Equal(t, "", cfg.Archive)
 	require.NotNil(t, cfg.Messenger)
+}
+
+func TestLoadConfigShippedConfig(t *testing.T) {
+	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "collector", "config.yaml")})
+	require.NoError(t, err)
+
+	assert.Equal(t, 8093, cfg.HealthPort)
+	assert.Equal(t, "/app/configs/worker/collector/parsers.yaml", cfg.ParsersConfigPath)
+	assert.Equal(t, "file:///app/archives", cfg.Archive)
+	assert.Equal(t, "postgres", cfg.Postgres.Host)
+	assert.Equal(t, "prism.collector", cfg.Telemetry.ServiceName)
+	assert.Equal(t, "/logs/collector.json", cfg.Logger.File.File)
 }
 
 func TestLoadConfigFromFlags(t *testing.T) {

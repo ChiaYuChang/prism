@@ -1,0 +1,42 @@
+interval: 1m
+health-port: 8090
+batch-size: 100
+kinds:
+  - DIRECTORY_FETCH
+  - KEYWORD_SEARCH
+lock-key: prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock
+buffer: 10
+rate-limit-config: /app/assets/scheduler/ratelimits/scheduler.yaml
+messenger-type: nats
+nats-host: nats
+nats-port: 4222
+postgres:
+  host: postgres
+  port: 5432
+  username: prism
+  db: prism
+  sslmode: disable
+valkey:
+  host: valkey
+  port: 6379
+  username: prism
+  db: 0
+telemetry:
+  enabled: true
+  service-name: prism.scheduler.slow
+  environment: local
+  endpoint: otel-collector:4317
+  insecure: true
+  sample-ratio: 1
+  timeout: 10s
+logger:
+  level: info
+  console:
+    enable: true
+  file:
+    enable: true
+    file: /logs/scheduler-slow.json
+  otel:
+    url: otel-collector:4317
+    insecure: true
+    timeout: 10s

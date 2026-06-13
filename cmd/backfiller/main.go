@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	DefaultScoutConfigPath      = "internal/discovery/scout/config/scouts.yaml"
-	DefaultBackfillerConfigPath = "internal/discovery/backfiller/config/backfillers.yaml"
+	DefaultScoutConfigPath      = "configs/worker/discovery/scouts.yaml"
+	DefaultBackfillerConfigPath = "configs/backfiller/backfillers.yaml"
 	DefaultHTTPTimeout          = 30 * time.Second
 	CommandName                 = "backfiller"
 	TracerName                  = "prism.backfiller"

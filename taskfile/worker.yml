@@ -45,7 +45,7 @@ tasks:
           --health-port 8091 \
           --interval 1m \
           --media-quota 30 --buffer 10 \
-          --rate-limit-config assets/ratelimits/scheduler.yaml \
+          --rate-limit-config assets/scheduler/ratelimits/scheduler.yaml \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
@@ -120,7 +120,7 @@ tasks:
           --health-port 8091 \
           --interval 3s \
           --media-quota 30 --buffer 10 \
-          --rate-limit-config assets/ratelimits/replay.yaml \
+          --rate-limit-config assets/scheduler/ratelimits/replay.yaml \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \

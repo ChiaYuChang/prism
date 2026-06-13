@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,6 +22,18 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	assert.Equal(t, "localhost", cfg.Postgres.Host)
 	assert.Equal(t, 5432, cfg.Postgres.Port)
 	assert.Equal(t, "info", cfg.Logger.Level)
+}
+
+func TestLoadConfig_ShippedConfig(t *testing.T) {
+	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "configs", "api-server", "config.yaml")})
+	require.NoError(t, err)
+
+	assert.Equal(t, 8090, cfg.Port)
+	assert.Equal(t, "postgres", cfg.Postgres.Host)
+	assert.Equal(t, "valkey", cfg.Valkey.Host)
+	assert.True(t, cfg.Cache.Enabled)
+	assert.True(t, cfg.RateLimit.Enabled)
+	assert.Equal(t, "prism.api", cfg.Telemetry.ServiceName)
 }
 
 func TestLoadConfig_FromFlags(t *testing.T) {

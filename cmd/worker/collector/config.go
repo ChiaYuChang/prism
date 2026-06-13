@@ -65,7 +65,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Duration("http-timeout", 30*time.Second, "HTTP timeout for page fetch requests")
 	fs.Duration("max-processing-time", 2*time.Minute, "Maximum wall-clock time for handling a single message (ctx timeout passed to handler)")
 	fs.String("archive", "", "Archive URI for error payloads (file:///path or s3://bucket/prefix); empty disables archiving")
-	fs.String("parsers-config", "internal/collector/parser/config/parsers.yaml", "Path to the parsers configuration file (YAML)")
+	fs.String("parsers-config", "configs/worker/collector/parsers.yaml", "Path to the parsers configuration file (YAML)")
 	fs.String("prompt", "", "Override path to the LLM fallback system-instruction file (defaults to fallback.prompt_file in parsers.yaml)")
 	fs.String("capture-dir", "", "Dev-only: tee successful response bodies to <dir>/<host>/<path> for fixture capture")
 	fs.String("fixture-base", "", "Dev-only: rewrite outbound requests to this fixture-server URL (mutually exclusive with --capture-dir)")

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	DefaultPromptPath = "assets/prompts/analysis/extractor.md"
+	DefaultPromptPath = "assets/worker/planner/prompts/analysis/extractor.md"
 )
 
 type Config struct {

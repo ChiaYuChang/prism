@@ -11,21 +11,16 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        CMD_PATH: cmd/batch/detector
+        TARGET: batch/detector
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --interval=${PRISM_BATCH_INTERVAL:-1m}
-      - --pg-host=postgres
-      - --pg-port=5432
-      - --pg-username=${POSTGRES_APP_USER:-prism}
-      - --pg-db=${POSTGRES_APP_DB:-prism}
-      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
-      - --otel-service-name=prism.batch.detector
-      - --otel-endpoint=otel-collector:4317
-      - --log-file-enable
-      - --log-file-file=/logs/batch-detector.json
+      - --config=/app/configs/batch/detector/config.yaml
     environment:
       PRISM_BATCH_DETECTOR_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_BATCH_DETECTOR_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_BATCH_DETECTOR_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_BATCH_DETECTOR_INTERVAL: ${PRISM_BATCH_INTERVAL:-1m}
+      PRISM_BATCH_DETECTOR_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
     volumes:
@@ -43,25 +38,17 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        CMD_PATH: cmd/batch/publisher
+        TARGET: batch/publisher
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --messenger-type=nats
-      - --nats-host=nats
-      - --nats-port=4222
-      - --interval=${PRISM_BATCH_INTERVAL:-1m}
-      - --pg-host=postgres
-      - --pg-port=5432
-      - --pg-username=${POSTGRES_APP_USER:-prism}
-      - --pg-db=${POSTGRES_APP_DB:-prism}
-      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
-      - --otel-service-name=prism.batch.publisher
-      - --otel-endpoint=otel-collector:4317
-      - --log-file-enable
-      - --log-file-file=/logs/batch-publisher.json
+      - --config=/app/configs/batch/publisher/config.yaml
     environment:
       PRISM_BATCH_PUBLISHER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_BATCH_PUBLISHER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_BATCH_PUBLISHER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_BATCH_PUBLISHER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_BATCH_PUBLISHER_INTERVAL: ${PRISM_BATCH_INTERVAL:-1m}
+      PRISM_BATCH_PUBLISHER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
     volumes:
@@ -85,29 +72,17 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        CMD_PATH: cmd/api-server
+        TARGET: api-server
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --port=8090
-      - --pg-host=postgres
-      - --pg-port=5432
-      - --pg-username=${POSTGRES_APP_USER:-prism}
-      - --pg-db=${POSTGRES_APP_DB:-prism}
-      - --valkey-host=valkey
-      - --valkey-port=6379
-      - --valkey-username=${VALKEY_APP_USER:-prism}
-      - --cache-enabled
-      - --rate-limit-enabled
-      - --rate-limit-rps=100
-      - --rate-limit-burst=200
-      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
-      - --otel-service-name=prism.api
-      - --otel-endpoint=otel-collector:4317
-      - --log-file-enable
-      - --log-file-file=/logs/api-server.json
+      - --config=/app/configs/api-server/config.yaml
     environment:
       PRISM_API_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_API_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_API_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_API_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
+      PRISM_API_VALKEY_USERNAME: ${VALKEY_APP_USER:-prism}
+      PRISM_API_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     ports:
       - "8090:8090"
     networks:

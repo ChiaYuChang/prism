@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	DefaultScoutConfigPath = "internal/discovery/scout/config/scouts.yaml"
+	DefaultScoutConfigPath = "configs/worker/discovery/scouts.yaml"
 )
 
 type Config struct {

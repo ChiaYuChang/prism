@@ -3,15 +3,15 @@
 # Multi-stage build for Prism worker binaries.
 #
 # Build args:
-#   CMD_PATH       — package path under repo root, e.g. cmd/scheduler,
-#                    cmd/worker/discovery, cmd/worker/collector.
+#   TARGET         — target name under cmd/, e.g. scheduler,
+#                    worker/discovery, worker/collector.
 #   RUNTIME_IMAGE  — runtime base. Default is distroless static-debian12:nonroot
 #                    (production). For test/debug, override to alpine:3.20.
 #                    Never use golang:alpine as the runtime.
 #
 # Usage:
 #   docker build \
-#     --build-arg CMD_PATH=cmd/scheduler \
+#     --build-arg TARGET=scheduler \
 #     -f deployments/Dockerfile.worker \
 #     -t prism/scheduler:latest .
 
@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 COPY . .
 
-ARG CMD_PATH=cmd/scheduler
+ARG TARGET=scheduler
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     mkdir -p /out/app && \
@@ -38,23 +38,18 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -trimpath \
         -ldflags="-s -w" \
         -o /out/app/worker \
-        ./${CMD_PATH}
+        ./cmd/${TARGET}
 
-# Prepare runtime assets/configs selectively based on CMD_PATH to minimize
+# Prepare runtime assets and configs selectively based on TARGET to minimize
 # image size and security attack surface in the final runtime container.
 RUN mkdir -p /out/app && \
-    if [ "${CMD_PATH}" = "cmd/scheduler" ] || \
-       [ "${CMD_PATH}" = "cmd/worker/collector" ] || \
-       [ "${CMD_PATH}" = "cmd/worker/planner" ]; then \
-        cp -r /src/assets /out/app/assets; \
+    if [ -d "assets/${TARGET}" ]; then \
+        mkdir -p /out/app/assets/$(dirname ${TARGET}) && \
+        cp -r assets/${TARGET} /out/app/assets/${TARGET}; \
     fi && \
-    if [ "${CMD_PATH}" = "cmd/worker/discovery" ]; then \
-        mkdir -p /out/app/configs && \
-        cp /src/internal/discovery/scout/config/scouts.yaml /out/app/configs/scouts.yaml; \
-    fi && \
-    if [ "${CMD_PATH}" = "cmd/worker/collector" ]; then \
-        mkdir -p /out/app/configs && \
-        cp /src/internal/collector/parser/config/parsers.yaml /out/app/configs/parsers.yaml; \
+    if [ -d "configs/${TARGET}" ]; then \
+        mkdir -p /out/app/configs/$(dirname ${TARGET}) && \
+        cp -r configs/${TARGET} /out/app/configs/${TARGET}; \
     fi
 
 # ---- runtime stage ---------------------------------------------------------

@@ -34,7 +34,7 @@ import (
 
 func main() {
 	var (
-		configPath = pflag.String("config", "internal/collector/parser/config/parsers.yaml", "path to parsers.yaml")
+		configPath = pflag.String("config", "configs/worker/collector/parsers.yaml", "path to parsers.yaml")
 		urlFlag    = pflag.String("url", "", "article URL (required; determines default host routing)")
 		inputPath  = pflag.String("input", "", "input HTML path (required; '-' for stdin)")
 		allParsers = pflag.Bool("all-parsers", false, "ignore host routing; run every configured host's parser + generic fallback")

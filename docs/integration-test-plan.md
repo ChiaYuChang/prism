@@ -19,7 +19,7 @@ Goal: verify the existing microservices (scheduler, discovery worker, collector 
   - Phase 1 implication: to broaden the fixture corpus, seed DIRECTORY_FETCH tasks for *multiple sources*, not multiple pages of one source.
 
 - [x] **Seed SQL for DIRECTORY_FETCH tasks** — `testdata/seed-tasks.sql`
-  - Three PARTY sources (dpp, tpp, kmt) seeded with index-page URLs from `internal/discovery/backfiller/config/backfillers.yaml`.
+  - Three PARTY sources (dpp, tpp, kmt) seeded with index-page URLs from `configs/backfiller/backfillers.yaml`.
   - Apply with `psql "$PRISM_DSN" -f testdata/seed-tasks.sql` after migrations.
 
 ## Phase 1 — One-shot real-site run (~10 min, only time we touch real sites)

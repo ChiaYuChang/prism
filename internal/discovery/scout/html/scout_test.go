@@ -33,7 +33,7 @@ func TestHTMLScoutDiscover(t *testing.T) {
 	}{
 		{
 			name:       "dpp",
-			configPath: "../config/scouts.yaml",
+			configPath: filepath.Join("..", "..", "..", "..", "configs", "worker", "discovery", "scouts.yaml"),
 			rawURL:     "https://www.dpp.org.tw/media",
 			transport: func(t *testing.T) http.RoundTripper {
 				t.Helper()
@@ -68,7 +68,7 @@ func TestHTMLScoutDiscover(t *testing.T) {
 		},
 		{
 			name:       "tpp",
-			configPath: "../config/scouts.yaml",
+			configPath: filepath.Join("..", "..", "..", "..", "configs", "worker", "discovery", "scouts.yaml"),
 			rawURL:     "https://www.tpp.org.tw/media?page=1",
 			transport: func(t *testing.T) http.RoundTripper {
 				t.Helper()

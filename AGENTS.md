@@ -136,7 +136,7 @@ Signal structs live in `internal/message/`. They use plain `json.Marshal`/`json.
 - `atom/` — Atom feeds
 - `custom/yahoo/` — non-standard embedded-JSON pages
 
-Scout definitions are centralized in `internal/discovery/scout/config/scouts.yaml`. The `config.Factory` builds the correct scout type from config. New sources should prefer the shared `HTMLScout`, `RSSScout`, or `AtomScout` implementations over new per-source packages.
+Scout definitions are centralized in `configs/worker/discovery/scouts.yaml`. The `config.Factory` builds the correct scout type from config. New sources should prefer the shared `HTMLScout`, `RSSScout`, or `AtomScout` implementations over new per-source packages.
 
 ### LLM Infrastructure
 

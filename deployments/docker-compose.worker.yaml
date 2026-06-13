@@ -20,32 +20,18 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        CMD_PATH: cmd/scheduler
+        TARGET: scheduler
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --messenger-type=nats
-      - --nats-host=nats
-      - --nats-port=4222
-      - --kinds=DIRECTORY_FETCH,KEYWORD_SEARCH
-      - --lock-key=prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock
-      - --interval=1m
-      - --rate-limit-config=/app/assets/ratelimits/scheduler.yaml
-      - --pg-host=postgres
-      - --pg-port=5432
-      - --pg-username=${POSTGRES_APP_USER:-prism}
-      - --pg-db=${POSTGRES_APP_DB:-prism}
-      - --valkey-host=valkey
-      - --valkey-port=6379
-      - --valkey-username=${VALKEY_APP_USER:-prism}
-      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
-      - --otel-service-name=prism.scheduler.slow
-      - --otel-endpoint=otel-collector:4317
-      - --log-file-enable
-      - --log-file-file=/logs/scheduler-slow.json
+      - --config=/app/configs/scheduler/slow.yaml
     environment:
       PRISM_SCHEDULER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_SCHEDULER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_SCHEDULER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_SCHEDULER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_SCHEDULER_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
+      PRISM_SCHEDULER_VALKEY_USERNAME: ${VALKEY_APP_USER:-prism}
+      PRISM_SCHEDULER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
     volumes:
@@ -64,32 +50,15 @@ services:
     image: prism/scheduler:latest
     user: "0:0"
     command:
-      - --messenger-type=nats
-      - --nats-host=nats
-      - --nats-port=4222
-      - --kinds=PAGE_FETCH
-      - --lock-key=prism:scheduler:PAGE_FETCH:lock
-      - --interval=3s
-      - --health-port=8091
-      - --media-quota=30
-      - --buffer=10
-      - --rate-limit-config=/app/assets/ratelimits/scheduler.yaml
-      - --pg-host=postgres
-      - --pg-port=5432
-      - --pg-username=${POSTGRES_APP_USER:-prism}
-      - --pg-db=${POSTGRES_APP_DB:-prism}
-      - --valkey-host=valkey
-      - --valkey-port=6379
-      - --valkey-username=${VALKEY_APP_USER:-prism}
-      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
-      - --otel-service-name=prism.scheduler.fast
-      - --otel-endpoint=otel-collector:4317
-      - --log-file-enable
-      - --log-file-file=/logs/scheduler-fast.json
+      - --config=/app/configs/scheduler/fast.yaml
     environment:
       PRISM_SCHEDULER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_SCHEDULER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_SCHEDULER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_SCHEDULER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_SCHEDULER_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
+      PRISM_SCHEDULER_VALKEY_USERNAME: ${VALKEY_APP_USER:-prism}
+      PRISM_SCHEDULER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
     volumes:
@@ -107,28 +76,17 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        CMD_PATH: cmd/worker/discovery
+        TARGET: worker/discovery
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --messenger-type=nats
-      - --nats-host=nats
-      - --nats-port=4222
-      - --scout-config=/app/configs/scouts.yaml
-      # Same FIXTURE_BASE pattern as collector — empty default = real-site
-      # fetch; set to http://fixture-server:9999 for replay (Phase 6).
-      - --fixture-base=${FIXTURE_BASE:-}
-      - --pg-host=postgres
-      - --pg-port=5432
-      - --pg-username=${POSTGRES_APP_USER:-prism}
-      - --pg-db=${POSTGRES_APP_DB:-prism}
-      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
-      - --otel-service-name=prism.discovery
-      - --otel-endpoint=otel-collector:4317
-      - --log-file-enable
-      - --log-file-file=/logs/discovery.json
+      - --config=/app/configs/worker/discovery/config.yaml
     environment:
       PRISM_DISCOVERY_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_DISCOVERY_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_DISCOVERY_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_DISCOVERY_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_DISCOVERY_WORKER_FIXTURE_BASE: ${FIXTURE_BASE:-}
+      PRISM_DISCOVERY_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
     volumes:
@@ -148,30 +106,17 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        CMD_PATH: cmd/worker/collector
+        TARGET: worker/collector
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --messenger-type=nats
-      - --nats-host=nats
-      - --nats-port=4222
-      - --parsers-config=/app/configs/parsers.yaml
-      - --archive=file:///app/archives
-      # FIXTURE_BASE is unset for normal real-site operation; the empty
-      # value is a passthrough in dev.WrapClientReplay. Set to
-      # http://fixture-server:9999 for e2e replay (Phase 6).
-      - --fixture-base=${FIXTURE_BASE:-}
-      - --pg-host=postgres
-      - --pg-port=5432
-      - --pg-username=${POSTGRES_APP_USER:-prism}
-      - --pg-db=${POSTGRES_APP_DB:-prism}
-      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
-      - --otel-service-name=prism.collector
-      - --otel-endpoint=otel-collector:4317
-      - --log-file-enable
-      - --log-file-file=/logs/collector.json
+      - --config=/app/configs/worker/collector/config.yaml
     environment:
       PRISM_COLLECTOR_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_COLLECTOR_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_COLLECTOR_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_COLLECTOR_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_COLLECTOR_WORKER_FIXTURE_BASE: ${FIXTURE_BASE:-}
+      PRISM_COLLECTOR_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     volumes:
       - worker_archives:/app/archives
       - worker_logs:/logs
@@ -192,28 +137,20 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        CMD_PATH: cmd/worker/planner
+        TARGET: worker/planner
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --messenger-type=nats
-      - --nats-host=nats
-      - --nats-port=4222
-      - --pg-host=postgres
-      - --pg-port=5432
-      - --pg-username=${POSTGRES_APP_USER:-prism}
-      - --pg-db=${POSTGRES_APP_DB:-prism}
-      - --llm-provider=${PRISM_PLANNER_LLM_PROVIDER:-gemini}
-      - --llm-model=${PRISM_PLANNER_LLM_MODEL:-gemini-2.0-flash}
-      - --search-target-yahoo-enable=${PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE:-true}
-      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
-      - --otel-service-name=prism.planner
-      - --otel-endpoint=otel-collector:4317
-      - --log-file-enable
-      - --log-file-file=/logs/planner.json
+      - --config=/app/configs/worker/planner/config.yaml
     environment:
       PRISM_PLANNER_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_PLANNER_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_PLANNER_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_PLANNER_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_PLANNER_WORKER_LLM_KEY: ${GEMINI_API_KEY:-}
+      PRISM_PLANNER_WORKER_LLM_PROVIDER: ${PRISM_PLANNER_LLM_PROVIDER:-gemini}
+      PRISM_PLANNER_WORKER_LLM_MODEL: ${PRISM_PLANNER_LLM_MODEL:-gemini-2.0-flash}
+      PRISM_PLANNER_WORKER_SEARCH_TARGETS_YAHOO_ENABLE: ${PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE:-true}
+      PRISM_PLANNER_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
     volumes:
@@ -235,7 +172,7 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        CMD_PATH: cmd/dev/fixture-server
+        TARGET: dev/fixture-server
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
       - --addr=:9999

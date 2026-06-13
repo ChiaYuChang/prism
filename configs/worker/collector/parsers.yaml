@@ -1,16 +1,16 @@
 version: 1
 
-# Global LLM fallback. Default disabled — uncomment to opt in. When
+# Global LLM fallback. Default disabled - uncomment to opt in. When
 # enabled, hosts without a `parsers:` entry route to an LLM-backed
 # parser using the shared response schema (ParserConfigJSONSchema).
 # Provider/model/key sit here so the activation surface is one file.
 # Set `key_file` to a mounted secret path; `key` inline is supported
 # but discouraged for production. `prompt_file` is required when
-# `enable: true`. See docs/plan/spec.md §6 LLM dual-role entry.
+# `enable: true`. See docs/plan/spec.md section 6 LLM dual-role entry.
 #
 # fallback:
 #   enable: true
-#   prompt_file: /app/assets/prompts/collector/article_parser.md
+#   prompt_file: /app/assets/worker/collector/prompts/collector/article_parser.md
 #   llm:
 #     provider: gemini       # gemini | openai | ollama
 #     model: gemini-2.0-flash
