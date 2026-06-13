@@ -1,6 +1,7 @@
-# Worker stack — gated behind the `worker` profile so the daily infra-only
-# `task compose:up` is unaffected. Activate with `task compose:worker`
-# (sets COMPOSE_PROFILES=worker) or `docker compose --profile worker up`.
+# Worker stack — long-running Prism worker services gated behind the `worker`
+# profile so the daily infra-only `task compose:up` is unaffected. Activate with
+# `task compose:worker` (sets COMPOSE_PROFILES=worker) or
+# `docker compose --profile worker up`.
 #
 # Workers join the same `prism-net` network defined in docker-compose.yaml,
 # so service-name DNS (`postgres`, `nats`, `valkey`) resolves automatically
@@ -14,6 +15,7 @@ services:
   scheduler-slow:
     profiles: [ worker ]
     image: prism/scheduler:latest
+    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -60,6 +62,7 @@ services:
   scheduler-fast:
     profiles: [ worker ]
     image: prism/scheduler:latest
+    user: "0:0"
     command:
       - --messenger-type=nats
       - --nats-host=nats
@@ -99,6 +102,7 @@ services:
   discovery:
     profiles: [ worker ]
     image: prism/discovery:latest
+    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -139,6 +143,7 @@ services:
   collector:
     profiles: [ worker ]
     image: prism/collector:latest
+    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -177,46 +182,38 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
-      fixture-server:
-        condition: service_started
     restart: unless-stopped
 
-  # api-server — user-facing HTTP API (Phase 2.7). Stage 3 toggles
-  # (--cache-enabled, --rate-limit-enabled) are ON here so the live
-  # paths are exercised by the Phase 6 e2e driver. Burst is high enough
-  # that a 1Hz poll never trips the limiter.
-  prism-api:
-    profiles: [ worker ]
-    image: prism/api-server:latest
+  planner:
+    profiles: [ planner ]
+    image: prism/planner:latest
+    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        CMD_PATH: cmd/api-server
+        CMD_PATH: cmd/worker/planner
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --port=8090
+      - --messenger-type=nats
+      - --nats-host=nats
+      - --nats-port=4222
       - --pg-host=postgres
       - --pg-port=5432
       - --pg-username=${POSTGRES_APP_USER:-prism}
       - --pg-db=${POSTGRES_APP_DB:-prism}
-      - --valkey-host=valkey
-      - --valkey-port=6379
-      - --valkey-username=${VALKEY_APP_USER:-prism}
-      - --cache-enabled
-      - --rate-limit-enabled
-      - --rate-limit-rps=100
-      - --rate-limit-burst=200
+      - --llm-provider=${PRISM_PLANNER_LLM_PROVIDER:-gemini}
+      - --llm-model=${PRISM_PLANNER_LLM_MODEL:-gemini-2.0-flash}
+      - --search-target-yahoo-enable=${PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE:-true}
       - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
-      - --otel-service-name=prism.api
+      - --otel-service-name=prism.planner
       - --otel-endpoint=otel-collector:4317
       - --log-file-enable
-      - --log-file-file=/logs/api-server.json
+      - --log-file-file=/logs/planner.json
     environment:
-      PRISM_API_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
-      PRISM_API_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
-    ports:
-      - "8090:8090"
+      PRISM_PLANNER_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_PLANNER_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_PLANNER_WORKER_LLM_KEY: ${GEMINI_API_KEY:-}
     networks:
       - prism-net
     volumes:
@@ -224,15 +221,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      valkey:
+      nats:
         condition: service_healthy
     restart: unless-stopped
 
-  # fixture-server — serves testdata/fixtures over HTTP for the e2e
-  # replay path. Idle in normal worker mode (no traffic until collector
-  # is launched with FIXTURE_BASE=http://fixture-server:9999).
+  # fixture-server — serves testdata/fixtures over HTTP for the e2e replay path.
+  # It is isolated behind the `fixture` profile and is not part of the normal
+  # real-world collection stack.
   fixture-server:
-    profiles: [ worker ]
+    profiles: [ fixture ]
     image: prism/fixture-server:latest
     build:
       context: ..

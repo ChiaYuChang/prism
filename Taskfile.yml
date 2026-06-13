@@ -112,3 +112,8 @@ tasks:
     desc: list all available tasks
     cmds:
       - task --list
+
+  start:
+    desc: start full containerized stack
+    cmds:
+      - task: compose:start

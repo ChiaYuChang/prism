@@ -1,0 +1,125 @@
+# App stack — long-running Prism app/trigger services gated behind the `app`
+# profile so infra-only and worker-only starts remain possible. Activate with
+# `task compose:app` or `docker compose --profile app up`.
+
+services:
+  batch-detector:
+    profiles: [ app ]
+    image: prism/batch-detector:latest
+    user: "0:0"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        CMD_PATH: cmd/batch/detector
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --interval=${PRISM_BATCH_INTERVAL:-1m}
+      - --pg-host=postgres
+      - --pg-port=5432
+      - --pg-username=${POSTGRES_APP_USER:-prism}
+      - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
+      - --otel-service-name=prism.batch.detector
+      - --otel-endpoint=otel-collector:4317
+      - --log-file-enable
+      - --log-file-file=/logs/batch-detector.json
+    environment:
+      PRISM_BATCH_DETECTOR_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+    networks:
+      - prism-net
+    volumes:
+      - worker_logs:/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  batch-publisher:
+    profiles: [ app ]
+    image: prism/batch-publisher:latest
+    user: "0:0"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        CMD_PATH: cmd/batch/publisher
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --messenger-type=nats
+      - --nats-host=nats
+      - --nats-port=4222
+      - --interval=${PRISM_BATCH_INTERVAL:-1m}
+      - --pg-host=postgres
+      - --pg-port=5432
+      - --pg-username=${POSTGRES_APP_USER:-prism}
+      - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
+      - --otel-service-name=prism.batch.publisher
+      - --otel-endpoint=otel-collector:4317
+      - --log-file-enable
+      - --log-file-file=/logs/batch-publisher.json
+    environment:
+      PRISM_BATCH_PUBLISHER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_BATCH_PUBLISHER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+    networks:
+      - prism-net
+    volumes:
+      - worker_logs:/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # api-server — user-facing HTTP API (Phase 2.7). Stage 3 toggles
+  # (--cache-enabled, --rate-limit-enabled) are ON here so the live paths are
+  # exercised by the Phase 6 e2e driver. Burst is high enough that a 1Hz poll
+  # never trips the limiter.
+  prism-api:
+    profiles: [ app ]
+    image: prism/api-server:latest
+    user: "0:0"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        CMD_PATH: cmd/api-server
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --port=8090
+      - --pg-host=postgres
+      - --pg-port=5432
+      - --pg-username=${POSTGRES_APP_USER:-prism}
+      - --pg-db=${POSTGRES_APP_DB:-prism}
+      - --valkey-host=valkey
+      - --valkey-port=6379
+      - --valkey-username=${VALKEY_APP_USER:-prism}
+      - --cache-enabled
+      - --rate-limit-enabled
+      - --rate-limit-rps=100
+      - --rate-limit-burst=200
+      - --otel-enabled=${PRISM_WORKER_OTEL_ENABLED:-true}
+      - --otel-service-name=prism.api
+      - --otel-endpoint=otel-collector:4317
+      - --log-file-enable
+      - --log-file-file=/logs/api-server.json
+    environment:
+      PRISM_API_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_API_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
+    ports:
+      - "8090:8090"
+    networks:
+      - prism-net
+    volumes:
+      - worker_logs:/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  worker_logs:

@@ -174,10 +174,22 @@ tasks:
       - task: test:e2e:setup:bare
         vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
       - defer: { task: test:e2e:teardown, vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" } }
+      - task: compose:fixture
+        vars:
+          MODE: "{{.MODE}}"
+          PROJECT: "{{.PROJECT}}"
+          WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
       - task: compose:worker
         vars:
           MODE: "{{.MODE}}"
           PROJECT: "{{.PROJECT}}"
+          COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}},fixture"
+          WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
+      - task: compose:app
+        vars:
+          MODE: "{{.MODE}}"
+          PROJECT: "{{.PROJECT}}"
+          COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}},fixture,worker"
           WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
       - |
         for i in $(seq 1 120); do

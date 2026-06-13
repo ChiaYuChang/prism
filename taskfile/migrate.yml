@@ -1,15 +1,29 @@
 version: "3"
 
 tasks:
+  default:
+    desc: run migrate command with explicit CLI args
+    summary: |
+      Runs the migrate CLI with arguments passed after `--`.
+      Examples: `task migrate -- up 1`, `task migrate -- down 3`.
+    cmds:
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" {{.CLI_ARGS}}'
+
   up:
     desc: run database migration
+    summary: |
+      Runs database migrations up. Extra migrate args can be passed after `--`,
+      for example `task migrate:up -- 1` to apply one migration.
     cmds:
-      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" up'
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" up {{.CLI_ARGS}}'
 
   down:
-    desc: rollback last migration
+    desc: rollback database migration
+    summary: |
+      Rolls back one migration by default. Extra migrate args can be passed after
+      `--`, for example `task migrate:down -- 2` to roll back two migrations.
     cmds:
-      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down 1'
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down {{.CLI_ARGS | default "1"}}'
 
   clean:
     desc: rollback last migration

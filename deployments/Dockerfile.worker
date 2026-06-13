@@ -33,26 +33,37 @@ COPY . .
 ARG CMD_PATH=cmd/scheduler
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    mkdir -p /out/app && \
     CGO_ENABLED=0 GOOS=linux go build \
         -trimpath \
         -ldflags="-s -w" \
-        -o /out/worker \
+        -o /out/app/worker \
         ./${CMD_PATH}
+
+# Prepare runtime assets/configs selectively based on CMD_PATH to minimize
+# image size and security attack surface in the final runtime container.
+RUN mkdir -p /out/app && \
+    if [ "${CMD_PATH}" = "cmd/scheduler" ] || \
+       [ "${CMD_PATH}" = "cmd/worker/collector" ] || \
+       [ "${CMD_PATH}" = "cmd/worker/planner" ]; then \
+        cp -r /src/assets /out/app/assets; \
+    fi && \
+    if [ "${CMD_PATH}" = "cmd/worker/discovery" ]; then \
+        mkdir -p /out/app/configs && \
+        cp /src/internal/discovery/scout/config/scouts.yaml /out/app/configs/scouts.yaml; \
+    fi && \
+    if [ "${CMD_PATH}" = "cmd/worker/collector" ]; then \
+        mkdir -p /out/app/configs && \
+        cp /src/internal/collector/parser/config/parsers.yaml /out/app/configs/parsers.yaml; \
+    fi
 
 # ---- runtime stage ---------------------------------------------------------
 FROM ${RUNTIME_IMAGE}
 
 WORKDIR /app
 
-# Binary.
-COPY --from=build /out/worker /app/worker
-
-# Runtime config files referenced by --rate-limit-config / --scout-config
-# / --parsers-config. Baked into the image so containers don't need volume
-# mounts for static assets that ship with the source tree.
-COPY --from=build /src/assets /app/assets
-COPY --from=build /src/internal/discovery/scout/config/scouts.yaml /app/configs/scouts.yaml
-COPY --from=build /src/internal/collector/parser/config/parsers.yaml /app/configs/parsers.yaml
+# Copy selective binary and configurations.
+COPY --from=build /out/app /app
 
 # distroless/static:nonroot already runs as nonroot:nonroot. For alpine
 # overrides, callers can `--user` at run time; we don't switch USER here so

@@ -1,5 +1,19 @@
 version: "3"
 
+vars:
+  EFFECTIVE_MODE:
+    sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
+  EFFECTIVE_PROFILES:
+    sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
+  EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
+  EFFECTIVE_PROFILES_SLUG:
+    sh: 'echo "{{.EFFECTIVE_PROFILES}}" | tr "," "_"'
+  EFFECTIVE_COMPOSE_MERGED: '.{{.ENV}}-{{.EFFECTIVE_PROFILES_SLUG}}.docker-compose.merged.yaml'
+
+env:
+  COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+  COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
+
 tasks:
   bake:
     # Delegates to script/compose-bake.sh, which owns the -f file list,
@@ -56,11 +70,6 @@ tasks:
     deps: [ bake ]
     vars:
       TIMEOUT: "{{.TIMEOUT | default 30}}"
-      EFFECTIVE_MODE:
-        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
-      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
-    env:
-      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
     cmds:
       - |
         SERVICES=(postgres nats valkey seaweedfs)
@@ -85,17 +94,7 @@ tasks:
       volumes. If .task/mode exists, it uses that recorded mode so teardown is
       safe even from a later shell session.
     vars:
-      EFFECTIVE_MODE:
-        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
-      EFFECTIVE_PROFILES:
-        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
-      PROFILES_SLUG:
-        sh: 'echo "{{.EFFECTIVE_PROFILES}}" | tr "," "_"'
-      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
-      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
-    env:
-      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
-      COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
+      COMPOSE_MERGED: "{{.EFFECTIVE_COMPOSE_MERGED}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down
       - rm -f {{.MODE_FILE}}
@@ -108,17 +107,7 @@ tasks:
       containers. This is the destructive cleanup path for resetting local or
       e2e infrastructure state.
     vars:
-      EFFECTIVE_MODE:
-        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
-      EFFECTIVE_PROFILES:
-        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
-      PROFILES_SLUG:
-        sh: 'echo "{{.EFFECTIVE_PROFILES}}" | tr "," "_"'
-      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
-      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
-    env:
-      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
-      COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
+      COMPOSE_MERGED: "{{.EFFECTIVE_COMPOSE_MERGED}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} down -v --remove-orphans
       - rm -f {{.MODE_FILE}}
@@ -131,39 +120,113 @@ tasks:
       Compose project name. Useful after compose:up when multiple service logs
       need to be inspected together.
     deps: [ bake ]
-    vars:
-      EFFECTIVE_MODE:
-        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
-      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
-    env:
-      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f
 
-  worker:
-    desc: build and start containerized workers (requires infra stack to be up)
+  start:
+    desc: start full containerized stack
     summary: |
-      Bakes the worker profile, builds container images for the worker services,
-      and starts them alongside an already running infra stack. This keeps
-      containerized workers on the same prism-net network as Postgres, NATS,
-      Valkey, and observability services.
+      Starts the deployable local stack: core infra, enabled dev/observability
+      profile services, database migrations, and containerized app services.
+      Fixture replay services are intentionally excluded from this real-world
+      collection path.
+    cmds:
+      - for: [start:up, start:migrate:up, start:worker, start:app]
+        task: "{{.ITEM}}"
+
+  start:up:
+    internal: true
+    cmds:
+      - task: up
+        vars:
+          COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
+
+  start:migrate:up:
+    internal: true
+    cmds:
+      - task: :migrate:up
+
+  start:worker:
+    internal: true
+    cmds:
+      - task: worker
+        vars:
+          COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
+
+  start:app:
+    internal: true
+    cmds:
+      - task: app
+        vars:
+          COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}},worker"
+
+  migrate:up:
+    internal: true
+    cmds:
+      - task: :migrate:up
+
+  app:
+    desc: build and start containerized app services (requires infra stack to be up)
+    summary: |
+      Bakes the app profile, builds container images for API and trigger
+      services, and starts them alongside an already running infra stack. Worker
+      containers are managed separately by compose:worker.
     deps:
       - task: bake
         vars:
-          COMPOSE_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+          COMPOSE_PROFILES: '{{.APP_PROFILES}}'
     vars:
-      WORKER_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+      BASE_PROFILES:
+        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
+      APP_PROFILES:
+        sh: 'p="{{.BASE_PROFILES}}"; case ",$p," in *",app,"*) echo "$p" ;; *) echo "$p,app" ;; esac'
       PROFILES_SLUG:
-        sh: 'echo "{{.WORKER_PROFILES}}" | tr "," "_"'
+        sh: 'echo "{{.APP_PROFILES}}" | tr "," "_"'
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
-      EFFECTIVE_MODE:
-        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
-      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
         msg: "infra stack is not up. Run 'task compose:up' first."
     env:
-      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
+      COMPOSE_PROFILES: "{{.APP_PROFILES}}"
+      NATS_AUTH_TOKEN:
+        sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
+      POSTGRES_APP_PASSWORD:
+        sh: "cat {{.POSTGRES_APP_PASSWORD_FILE}}"
+      VALKEY_APP_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
+      POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
+      VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
+      WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} build batch-detector
+        batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} up -d batch-detector
+        batch-publisher prism-api
+      - "echo {{.APP_PROFILES}} > {{.PROFILES_FILE}}"
+
+  worker:
+    desc: build and start containerized workers (requires infra stack to be up)
+    summary: |
+      Bakes the worker profile, builds container images for scheduler,
+      discovery, and collector workers, and starts them alongside an already
+      running infra stack. App/API services are managed separately by
+      compose:app.
+    deps:
+      - task: bake
+        vars:
+          COMPOSE_PROFILES: '{{.WORKER_PROFILES}}'
+    vars:
+      BASE_PROFILES:
+        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
+      WORKER_PROFILES:
+        sh: 'p="{{.BASE_PROFILES}}"; case ",$p," in *",worker,"*) echo "$p" ;; *) echo "$p,worker" ;; esac'
+      PROFILES_SLUG:
+        sh: 'echo "{{.WORKER_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
+    preconditions:
+      - sh: "test -f {{.MODE_FILE}}"
+        msg: "infra stack is not up. Run 'task compose:up' first."
+    env:
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
       NATS_AUTH_TOKEN:
         sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
@@ -176,10 +239,124 @@ tasks:
       WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} build scheduler-slow discovery
-        collector prism-api fixture-server
+        collector
       - docker compose -f {{.COMPOSE_MERGED}} up -d scheduler-slow scheduler-fast
-        discovery collector prism-api fixture-server
+        discovery collector
       - "echo {{.WORKER_PROFILES}} > {{.PROFILES_FILE}}"
+
+  app:down:
+    desc: stop containerized app services (leaves infra and workers running)
+    summary: |
+      Stops and removes only the app-profile containers from the active project.
+      Core infrastructure and worker containers remain running.
+    deps:
+      - task: bake
+        vars:
+          COMPOSE_PROFILES: '{{.APP_PROFILES}}'
+    vars:
+      BASE_PROFILES:
+        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
+      APP_PROFILES:
+        sh: 'p="{{.BASE_PROFILES}}"; case ",$p," in *",app,"*) echo "$p" ;; *) echo "$p,app" ;; esac'
+      PROFILES_SLUG:
+        sh: 'echo "{{.APP_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
+    env:
+      COMPOSE_PROFILES: "{{.APP_PROFILES}}"
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} stop batch-detector batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} rm -f batch-detector batch-publisher prism-api
+
+  app:logs:
+    desc: tail logs from containerized app services
+    summary: |
+      Follows logs for app-profile services: batch detector, batch publisher,
+      and the user-facing API server.
+    deps:
+      - task: bake
+        vars:
+          COMPOSE_PROFILES: '{{.APP_PROFILES}}'
+    vars:
+      BASE_PROFILES:
+        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
+      APP_PROFILES:
+        sh: 'p="{{.BASE_PROFILES}}"; case ",$p," in *",app,"*) echo "$p" ;; *) echo "$p,app" ;; esac'
+      PROFILES_SLUG:
+        sh: 'echo "{{.APP_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
+    env:
+      COMPOSE_PROFILES: "{{.APP_PROFILES}}"
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} logs -f batch-detector
+        batch-publisher prism-api
+
+  fixture:
+    desc: build and start containerized fixture server (replay/e2e only)
+    summary: |
+      Starts the fixture-server service behind the fixture profile. This is for
+      deterministic replay/e2e flows only and is intentionally excluded from the
+      normal real-world collection stack.
+    deps:
+      - task: bake
+        vars:
+          COMPOSE_PROFILES: '{{.FIXTURE_PROFILES}}'
+    vars:
+      BASE_PROFILES:
+        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
+      FIXTURE_PROFILES:
+        sh: 'p="{{.BASE_PROFILES}}"; case ",$p," in *",fixture,"*) echo "$p" ;; *) echo "$p,fixture" ;; esac'
+      PROFILES_SLUG:
+        sh: 'echo "{{.FIXTURE_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
+    preconditions:
+      - sh: "test -f {{.MODE_FILE}}"
+        msg: "infra stack is not up. Run 'task compose:up' first."
+    env:
+      COMPOSE_PROFILES: "{{.FIXTURE_PROFILES}}"
+      WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} build fixture-server
+      - docker compose -f {{.COMPOSE_MERGED}} up -d fixture-server
+      - "echo {{.FIXTURE_PROFILES}} > {{.PROFILES_FILE}}"
+
+  planner:
+    desc: build and start containerized planner worker (requires LLM key)
+    summary: |
+      Starts the LLM-backed planner worker. This is kept out of compose:app so
+      real-world PARTY collection can run without an LLM key; enable it when
+      downstream MEDIA planning is needed.
+    deps:
+      - task: bake
+        vars:
+          COMPOSE_PROFILES: '{{.PLANNER_PROFILES}}'
+    vars:
+      BASE_PROFILES:
+        sh: "cat {{.PROFILES_FILE}} 2>/dev/null || echo {{.COMPOSE_PROFILES}}"
+      PLANNER_PROFILES:
+        sh: 'p="{{.BASE_PROFILES}}"; case ",$p," in *",planner,"*) echo "$p" ;; *) echo "$p,planner" ;; esac'
+      PROFILES_SLUG:
+        sh: 'echo "{{.PLANNER_PROFILES}}" | tr "," "_"'
+      COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
+    preconditions:
+      - sh: "test -f {{.MODE_FILE}}"
+        msg: "infra stack is not up. Run 'task compose:up' first."
+      - sh: "test -f {{.GEMINI_API_KEY_FILE}}"
+        msg: "missing GEMINI_API_KEY_FILE={{.GEMINI_API_KEY_FILE}}"
+    env:
+      COMPOSE_PROFILES: "{{.PLANNER_PROFILES}}"
+      GEMINI_API_KEY:
+        sh: "test -f {{.GEMINI_API_KEY_FILE}} && cat {{.GEMINI_API_KEY_FILE}} || true"
+      NATS_AUTH_TOKEN:
+        sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
+      POSTGRES_APP_PASSWORD:
+        sh: "cat {{.POSTGRES_APP_PASSWORD_FILE}}"
+      POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
+      POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
+      WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
+    cmds:
+      - docker compose -f {{.COMPOSE_MERGED}} build planner
+      - docker compose -f {{.COMPOSE_MERGED}} up -d planner
+      - "echo {{.PLANNER_PROFILES}} > {{.PROFILES_FILE}}"
 
   worker:down:
     desc: stop containerized workers (leaves infra stack running)
@@ -189,23 +366,20 @@ tasks:
     deps:
       - task: bake
         vars:
-          COMPOSE_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+          COMPOSE_PROFILES: '{{.WORKER_PROFILES}}'
     vars:
-      WORKER_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+      WORKER_PROFILES:
+        sh: 'p="{{.EFFECTIVE_PROFILES}}"; case ",$p," in *",worker,"*) echo "$p" ;; *) echo "$p,worker" ;; esac'
       PROFILES_SLUG:
         sh: 'echo "{{.WORKER_PROFILES}}" | tr "," "_"'
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
-      EFFECTIVE_MODE:
-        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
-      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
-      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} stop scheduler-slow scheduler-fast
-        discovery collector prism-api fixture-server
+        discovery collector
       - docker compose -f {{.COMPOSE_MERGED}} rm -f scheduler-slow scheduler-fast
-        discovery collector prism-api fixture-server
+        discovery collector
       - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"
 
   worker:logs:
@@ -217,17 +391,14 @@ tasks:
     deps:
       - task: bake
         vars:
-          COMPOSE_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+          COMPOSE_PROFILES: '{{.WORKER_PROFILES}}'
     vars:
-      WORKER_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}},worker'
+      WORKER_PROFILES:
+        sh: 'p="{{.EFFECTIVE_PROFILES}}"; case ",$p," in *",worker,"*) echo "$p" ;; *) echo "$p,worker" ;; esac'
       PROFILES_SLUG:
         sh: 'echo "{{.WORKER_PROFILES}}" | tr "," "_"'
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
-      EFFECTIVE_MODE:
-        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
-      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
     env:
-      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f scheduler-slow
@@ -241,11 +412,8 @@ tasks:
       without tearing down Postgres, NATS, Valkey, or SeaweedFS.
     deps: [ bake ]
     vars:
-      EFFECTIVE_MODE:
-        sh: "cat {{.MODE_FILE}} 2>/dev/null || echo {{.MODE}}"
-      EFFECTIVE_PROJECT: "{{.NAME}}-{{.EFFECTIVE_MODE}}"
+      COMPOSE_MERGED: "{{.EFFECTIVE_COMPOSE_MERGED}}"
     env:
-      COMPOSE_PROJECT_NAME: "{{.EFFECTIVE_PROJECT}}"
       COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} stop pgadmin nats-nui redisinsight
