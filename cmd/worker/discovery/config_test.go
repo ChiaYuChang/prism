@@ -23,6 +23,8 @@ func TestLoadConfigDefaults(t *testing.T) {
 }
 
 func TestLoadConfigShippedConfig(t *testing.T) {
+	setShippedConfigEnv(t)
+
 	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "discovery", "config.yaml")})
 	require.NoError(t, err)
 
@@ -31,6 +33,17 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
 	assert.Equal(t, "prism.discovery", cfg.Telemetry.ServiceName)
 	assert.Equal(t, "/logs/discovery.json", cfg.Logger.File.File)
+}
+
+func setShippedConfigEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("POSTGRES_HOST", "postgres")
+	t.Setenv("POSTGRES_PORT", "5432")
+	t.Setenv("POSTGRES_APP_USER", "prism")
+	t.Setenv("POSTGRES_APP_DB", "prism")
+	t.Setenv("FIXTURE_BASE", "")
+	t.Setenv("PRISM_WORKER_OTEL_ENABLED", "true")
+	t.Setenv("OTEL_COLLECTOR_ENDPOINT", "otel-collector:4317")
 }
 
 func TestLoadConfigSearchProvidersFromYAML(t *testing.T) {

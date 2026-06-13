@@ -7,27 +7,27 @@ queue-group: planner-worker
 subscribers-count: 1
 ack-wait-timeout: 30s
 postgres:
-  host: postgres
-  port: 5432
-  username: prism
-  db: prism
+  host: '{{ env "POSTGRES_HOST" "postgres" }}'
+  port: {{ env "POSTGRES_PORT" "5432" }}
+  username: '{{ env "POSTGRES_APP_USER" "prism" }}'
+  db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
 llm:
-  provider: gemini
-  model: gemini-2.0-flash
+  provider: '{{ env "PRISM_PLANNER_LLM_PROVIDER" "gemini" }}'
+  model: '{{ env "PRISM_PLANNER_LLM_MODEL" "gemini-2.0-flash" }}'
   timeout: 30s
 search:
   targets:
     yahoo:
-      enable: true
+      enable: {{ env "PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE" "true" }}
       source_abbr: yahoo
       url: https://tw.news.yahoo.com
       site: tw.news.yahoo.com
 telemetry:
-  enabled: true
+  enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   service-name: prism.planner
   environment: local
-  endpoint: otel-collector:4317
+  endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
   insecure: true
   sample-ratio: 1
   timeout: 10s
@@ -39,6 +39,6 @@ logger:
     enable: true
     file: /logs/planner.json
   otel:
-    url: otel-collector:4317
+    url: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
     insecure: true
     timeout: 10s

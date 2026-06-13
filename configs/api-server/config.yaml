@@ -4,18 +4,18 @@ write-timeout: 30s
 shutdown-timeout: 10s
 cors-origins: []
 postgres:
-  host: postgres
-  port: 5432
-  username: prism
-  db: prism
+  host: '{{ env "POSTGRES_HOST" "postgres" }}'
+  port: {{ env "POSTGRES_PORT" "5432" }}
+  username: '{{ env "POSTGRES_APP_USER" "prism" }}'
+  db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
 valkey:
-  host: valkey
-  port: 6379
-  username: prism
+  host: '{{ env "VALKEY_HOST" "valkey" }}'
+  port: {{ env "VALKEY_PORT" "6379" }}
+  username: '{{ env "VALKEY_APP_USER" "prism" }}'
   db: 0
 cache:
-  enabled: true
+  enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   live-ttl: 2s
   terminal-ttl: 60s
 rate-limit:
@@ -31,7 +31,7 @@ telemetry:
   enabled: true
   service-name: prism.api
   environment: local
-  endpoint: otel-collector:4317
+  endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
   insecure: true
   sample-ratio: 1
   timeout: 10s
@@ -43,6 +43,6 @@ logger:
     enable: true
     file: /logs/api-server.json
   otel:
-    url: otel-collector:4317
+    url: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
     insecure: true
     timeout: 10s

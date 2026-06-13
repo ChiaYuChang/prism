@@ -1,18 +1,18 @@
-interval: 1m
+interval: '{{ env "PRISM_BATCH_INTERVAL" "1m" }}'
 once: false
 recent-limit: 100
 health-port: 8083
 postgres:
-  host: postgres
-  port: 5432
-  username: prism
-  db: prism
+  host: '{{ env "POSTGRES_HOST" "postgres" }}'
+  port: {{ env "POSTGRES_PORT" "5432" }}
+  username: '{{ env "POSTGRES_APP_USER" "prism" }}'
+  db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
 telemetry:
-  enabled: true
+  enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   service-name: prism.batch.detector
   environment: local
-  endpoint: otel-collector:4317
+  endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
   insecure: true
   sample-ratio: 1
   timeout: 10s
@@ -24,6 +24,6 @@ logger:
     enable: true
     file: /logs/batch-detector.json
   otel:
-    url: otel-collector:4317
+    url: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
     insecure: true
     timeout: 10s

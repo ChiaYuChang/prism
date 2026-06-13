@@ -21,6 +21,8 @@ func TestLoadConfig_Defaults(t *testing.T) {
 }
 
 func TestLoadConfig_ShippedConfigs(t *testing.T) {
+	setShippedConfigEnv(t)
+
 	tests := []struct {
 		name       string
 		path       string
@@ -55,6 +57,19 @@ func TestLoadConfig_ShippedConfigs(t *testing.T) {
 			assert.Equal(t, tt.wantSvc, cfg.Telemetry.ServiceName)
 		})
 	}
+}
+
+func setShippedConfigEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("POSTGRES_HOST", "postgres")
+	t.Setenv("POSTGRES_PORT", "5432")
+	t.Setenv("POSTGRES_APP_USER", "prism")
+	t.Setenv("POSTGRES_APP_DB", "prism")
+	t.Setenv("VALKEY_HOST", "valkey")
+	t.Setenv("VALKEY_PORT", "6379")
+	t.Setenv("VALKEY_APP_USER", "prism")
+	t.Setenv("PRISM_WORKER_OTEL_ENABLED", "true")
+	t.Setenv("OTEL_COLLECTOR_ENDPOINT", "otel-collector:4317")
 }
 
 func TestLoadConfig_FromFlags(t *testing.T) {

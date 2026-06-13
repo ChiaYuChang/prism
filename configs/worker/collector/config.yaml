@@ -3,7 +3,7 @@ http-timeout: 30s
 max-processing-time: 2m
 archive: file:///app/archives
 parsers-config: /app/configs/worker/collector/parsers.yaml
-fixture-base: ""
+fixture-base: '{{ env "FIXTURE_BASE" "" }}'
 force-minify-error: false
 messenger-type: nats
 nats-host: nats
@@ -12,16 +12,16 @@ queue-group: collector-worker
 subscribers-count: 1
 ack-wait-timeout: 30s
 postgres:
-  host: postgres
-  port: 5432
-  username: prism
-  db: prism
+  host: '{{ env "POSTGRES_HOST" "postgres" }}'
+  port: {{ env "POSTGRES_PORT" "5432" }}
+  username: '{{ env "POSTGRES_APP_USER" "prism" }}'
+  db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
 telemetry:
-  enabled: true
+  enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   service-name: prism.collector
   environment: local
-  endpoint: otel-collector:4317
+  endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
   insecure: true
   sample-ratio: 1
   timeout: 10s
@@ -33,6 +33,6 @@ logger:
     enable: true
     file: /logs/collector.json
   otel:
-    url: otel-collector:4317
+    url: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
     insecure: true
     timeout: 10s

@@ -16,6 +16,13 @@ services:
     command:
       - --config=/app/configs/batch/detector/config.yaml
     environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_BATCH_INTERVAL: ${PRISM_BATCH_INTERVAL:-1m}
       PRISM_BATCH_DETECTOR_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
       PRISM_BATCH_DETECTOR_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
       PRISM_BATCH_DETECTOR_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
@@ -43,6 +50,13 @@ services:
     command:
       - --config=/app/configs/batch/publisher/config.yaml
     environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_BATCH_INTERVAL: ${PRISM_BATCH_INTERVAL:-1m}
       PRISM_BATCH_PUBLISHER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_BATCH_PUBLISHER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
       PRISM_BATCH_PUBLISHER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
@@ -77,6 +91,15 @@ services:
     command:
       - --config=/app/configs/api-server/config.yaml
     environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      VALKEY_HOST: valkey
+      VALKEY_PORT: 6379
+      VALKEY_APP_USER: ${VALKEY_APP_USER:-prism}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
       PRISM_API_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
       PRISM_API_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
       PRISM_API_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}

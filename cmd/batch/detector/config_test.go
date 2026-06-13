@@ -24,6 +24,8 @@ func TestLoadConfig_Defaults(t *testing.T) {
 }
 
 func TestLoadConfig_ShippedConfig(t *testing.T) {
+	setShippedConfigEnv(t)
+
 	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "batch", "detector", "config.yaml")})
 	require.NoError(t, err)
 
@@ -31,6 +33,17 @@ func TestLoadConfig_ShippedConfig(t *testing.T) {
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
 	assert.Equal(t, "prism.batch.detector", cfg.Telemetry.ServiceName)
 	assert.Equal(t, "/logs/batch-detector.json", cfg.Logger.File.File)
+}
+
+func setShippedConfigEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("POSTGRES_HOST", "postgres")
+	t.Setenv("POSTGRES_PORT", "5432")
+	t.Setenv("POSTGRES_APP_USER", "prism")
+	t.Setenv("POSTGRES_APP_DB", "prism")
+	t.Setenv("PRISM_BATCH_INTERVAL", "1m")
+	t.Setenv("PRISM_WORKER_OTEL_ENABLED", "true")
+	t.Setenv("OTEL_COLLECTOR_ENDPOINT", "otel-collector:4317")
 }
 
 func TestLoadConfig_FromFlags(t *testing.T) {

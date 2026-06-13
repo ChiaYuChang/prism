@@ -63,8 +63,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	configPath, _ := fs.GetString("config")
 	if configPath != "" {
-		v.SetConfigFile(configPath)
-		if err := v.ReadInConfig(); err != nil {
+		if err := app.ReadConfigFile(v, configPath); err != nil {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
 	}
