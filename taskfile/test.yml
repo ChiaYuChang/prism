@@ -8,6 +8,25 @@ tasks:
       This is the fast local/CI unit-test path and intentionally excludes tests
       gated behind integration or e2e build tags.
     cmds:
+      - task: test:unit
+
+  test:all:
+    desc: run all automated tests
+    summary: |
+      Runs the two automated test entry points in sequence: unit tests and the
+      page-fetch e2e driver. Long-running helper tasks such as test:scheduler
+      and test:discovery are intentionally excluded because they start
+      foreground development processes rather than tests.
+    cmds:
+      - task: test:unit
+      - task: test:e2e:page-fetch
+
+  test:unit:
+    desc: run unit test group
+    summary: |
+      Runs the default short Go test suite across all packages with coverage.
+      This is the unit-test group used by test and test:all.
+    cmds:
       - go test -v -short -cover ./...
 
   # NOTE: secrets flow via env vars (PRISM_<APP>_POSTGRES_PASSWORD etc.) so
@@ -146,6 +165,7 @@ tasks:
     vars:
       MODE: e2e
       PROJECT: "{{.NAME}}-{{.MODE}}"
+      WORKER_RUNTIME_IMAGE: "alpine:3.20"
     env:
       FIXTURE_BASE: "http://fixture-server:9999"
       PRISM_E2E_DSN: "{{.POSTGRES_URL}}"
@@ -153,7 +173,19 @@ tasks:
     cmds:
       - task: test:e2e:setup:bare
         vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
-      - task: compose:worker
-        vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
       - defer: { task: test:e2e:teardown, vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" } }
+      - task: compose:worker
+        vars:
+          MODE: "{{.MODE}}"
+          PROJECT: "{{.PROJECT}}"
+          WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
+      - |
+        for i in $(seq 1 120); do
+          if wget -q --spider http://127.0.0.1:8090/healthz; then
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "api-server did not become reachable at http://127.0.0.1:8090/healthz" >&2
+        exit 1
       - go test -tags=e2e -count=1 -v ./e2e/...

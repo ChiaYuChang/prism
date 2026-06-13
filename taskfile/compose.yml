@@ -173,6 +173,7 @@ tasks:
       POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
       POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
       VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
+      WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} build scheduler-slow discovery
         collector prism-api fixture-server
