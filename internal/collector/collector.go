@@ -2,8 +2,41 @@ package collector
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
+
+	"github.com/ChiaYuChang/prism/pkg/utils"
+	"github.com/go-playground/validator/v10"
 )
+
+// ErrInvalidArticle is returned when a parsed article does not meet the minimum requirements (Title and Content).
+var ErrInvalidArticle = errors.New("invalid article")
+
+var validate = validator.New()
+
+// NormalizeArticle applies string normalization to Title, Content, and Author fields.
+func NormalizeArticle(article *Article) *Article {
+	if article == nil {
+		return nil
+	}
+	article.Title = utils.NormalizeString(article.Title)
+	article.Content = utils.NormalizeString(article.Content)
+	article.Author = utils.NormalizeString(article.Author)
+
+	return article
+}
+
+// ValidateArticle executes struct validation against validation tags on the Article.
+func ValidateArticle(article *Article) error {
+	if article == nil {
+		return ErrInvalidArticle
+	}
+	if err := validate.Struct(article); err != nil {
+		return fmt.Errorf("%w: %s", ErrInvalidArticle, err)
+	}
+	return nil
+}
 
 // Article is the structured output of the parser pipeline.
 // It contains only fields that a parser can populate from raw HTML.
@@ -11,8 +44,8 @@ import (
 // storage layer when persisting to contents.
 type Article struct {
 	URL         string
-	Title       string
-	Content     string
+	Title       string `validate:"required"`
+	Content     string `validate:"required"`
 	Author      string
 	PublishedAt time.Time
 	FetchedAt   time.Time

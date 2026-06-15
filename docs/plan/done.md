@@ -365,3 +365,21 @@ Commits:
 - `3c51e70` fix(fetcher): honor Retry-After cancellation
 - `6300946` fix(security): add IP filter middleware
 
+## Phase 2.9 (Cont.) — Parser Robustness, Struct Validation, and Central Normalization (2026-06)
+
+Shipped strict article validation, empty output guards for fetch/minify stages, and central string normalization for parsed articles.
+
+* [x] **Article Validation and Robustness**:
+  * Added validation tags (`validate:"required"`) to `Title` and `Content` fields in the `Article` struct.
+  * Declared the `ErrInvalidArticle` sentinel error for invalid or empty parser outputs.
+  * Added `NormalizeArticle` and `ValidateArticle` helpers in `collector.go` to isolate normalization and validation logic.
+  * Updated dispatcher to invoke `NormalizeArticle` and `ValidateArticle` to validate parsed articles, returning a StageError wrapping `ErrInvalidArticle` on failure.
+  * Configured dispatcher to reject empty raw HTML (from Fetcher) or empty minified HTML (from Minifier) with `ErrInvalidArticle`.
+* [x] **Central String Normalization**:
+  * Integrated `utils.NormalizeString` to clean up `Title`, `Content`, and `Author` fields prior to validation, resolving NBSPs, ideographic spaces, control characters, and inner spaces.
+  * Kept raw, minified, and canonical intermediate payloads unmodified to preserve replay/archive payload fidelity.
+* [x] **Verification**:
+  * Covered empty raw, empty minified, nil article, empty title, empty content, whitespace-only title, whitespace-only content, and normalization output assertions in unit tests.
+  * Verified that canonical intermediate payloads remain unmodified on invalid article parse failures.
+
+

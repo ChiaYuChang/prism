@@ -102,7 +102,7 @@ func TestDispatcher_Dispatch_Success(t *testing.T) {
 	m.Minifier.EXPECT().Transform(anyCtx, raw).Return(minified, nil).Once()
 	m.Transformer.EXPECT().Transform(anyCtx, minified).Return(canonical, nil).Once()
 	m.Parser.EXPECT().Parse(anyCtx, url, canonical).
-		Return(&collector.Article{URL: url, Title: title}, nil).Once()
+		Return(&collector.Article{URL: url, Title: title, Content: "some content"}, nil).Once()
 
 	reg := collector.NewPipelineRegistry(p)
 	d, err := collector.NewDispatcher(silentLogger(), noop.NewTracerProvider().Tracer("test"), reg)
@@ -116,6 +116,41 @@ func TestDispatcher_Dispatch_Success(t *testing.T) {
 	// Canonical (= last Transform output, input to Parser) is the documented
 	// archive point for the success path.
 	assert.Equal(t, canonical, result.Canonical)
+}
+
+func TestDispatcher_Dispatch_Normalization(t *testing.T) {
+	const (
+		sourceID  = "dpp"
+		url       = "https://www.dpp.org.tw/media/contents/11540"
+		raw       = "<html><body>raw</body></html>"
+		minified  = "<html><body>min</body></html>"
+		canonical = "<html><body>canonical</body></html>"
+	)
+
+	p, m := newStageMocks(t)
+
+	m.Fetcher.EXPECT().Fetch(anyCtx, url).Return(raw, nil).Once()
+	m.Minifier.EXPECT().Transform(anyCtx, raw).Return(minified, nil).Once()
+	m.Transformer.EXPECT().Transform(anyCtx, minified).Return(canonical, nil).Once()
+	m.Parser.EXPECT().Parse(anyCtx, url, canonical).
+		Return(&collector.Article{
+			URL:     url,
+			Title:   "  hello\u00A0world  ",
+			Content: "a\n\t b　 c",
+			Author:  "  john\u00A0doe  ",
+		}, nil).Once()
+
+	reg := collector.NewPipelineRegistry(p)
+	d, err := collector.NewDispatcher(silentLogger(), noop.NewTracerProvider().Tracer("test"), reg)
+	require.NoError(t, err)
+
+	result, err := d.Dispatch(context.Background(), sourceID, url)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	
+	assert.Equal(t, "hello world", result.Article.Title)
+	assert.Equal(t, "a b c", result.Article.Content)
+	assert.Equal(t, "john doe", result.Article.Author)
 }
 
 // TestDispatcher_Dispatch_EmptyTransformers verifies that a Pipeline with no
@@ -134,7 +169,7 @@ func TestDispatcher_Dispatch_EmptyTransformers(t *testing.T) {
 	fetcher.EXPECT().Fetch(anyCtx, url).Return(raw, nil).Once()
 	minifier.EXPECT().Transform(anyCtx, raw).Return(minified, nil).Once()
 	parser.EXPECT().Parse(anyCtx, url, minified).
-		Return(&collector.Article{URL: url}, nil).Once()
+		Return(&collector.Article{URL: url, Title: "title", Content: "content"}, nil).Once()
 
 	p := collector.Pipeline{
 		Fetcher:  fetcher,
@@ -179,12 +214,31 @@ func TestDispatcher_Dispatch_StageErrors(t *testing.T) {
 			wantIntermediate: "",
 		},
 		{
+			name: "fetch returns empty string",
+			setup: func(m stageMocks) error {
+				m.Fetcher.EXPECT().Fetch(anyCtx, url).Return("", nil).Once()
+				return collector.ErrInvalidArticle
+			},
+			wantStage:        collector.PipelineStageFetch,
+			wantIntermediate: "",
+		},
+		{
 			name: "minify fails",
 			setup: func(m stageMocks) error {
 				boom := errors.New("minify blew up")
 				m.Fetcher.EXPECT().Fetch(anyCtx, url).Return(raw, nil).Once()
 				m.Minifier.EXPECT().Transform(anyCtx, raw).Return("", boom).Once()
 				return boom
+			},
+			wantStage:        collector.PipelineStageMinify,
+			wantIntermediate: raw,
+		},
+		{
+			name: "minify returns empty string",
+			setup: func(m stageMocks) error {
+				m.Fetcher.EXPECT().Fetch(anyCtx, url).Return(raw, nil).Once()
+				m.Minifier.EXPECT().Transform(anyCtx, raw).Return("", nil).Once()
+				return collector.ErrInvalidArticle
 			},
 			wantStage:        collector.PipelineStageMinify,
 			wantIntermediate: raw,
@@ -210,6 +264,66 @@ func TestDispatcher_Dispatch_StageErrors(t *testing.T) {
 				m.Transformer.EXPECT().Transform(anyCtx, minified).Return(canonical, nil).Once()
 				m.Parser.EXPECT().Parse(anyCtx, url, canonical).Return(nil, boom).Once()
 				return boom
+			},
+			wantStage:        collector.PipelineStageParse,
+			wantIntermediate: canonical,
+		},
+		{
+			name: "parse returns nil article",
+			setup: func(m stageMocks) error {
+				m.Fetcher.EXPECT().Fetch(anyCtx, url).Return(raw, nil).Once()
+				m.Minifier.EXPECT().Transform(anyCtx, raw).Return(minified, nil).Once()
+				m.Transformer.EXPECT().Transform(anyCtx, minified).Return(canonical, nil).Once()
+				m.Parser.EXPECT().Parse(anyCtx, url, canonical).Return(nil, nil).Once()
+				return collector.ErrInvalidArticle
+			},
+			wantStage:        collector.PipelineStageParse,
+			wantIntermediate: canonical,
+		},
+		{
+			name: "parse returns empty title",
+			setup: func(m stageMocks) error {
+				m.Fetcher.EXPECT().Fetch(anyCtx, url).Return(raw, nil).Once()
+				m.Minifier.EXPECT().Transform(anyCtx, raw).Return(minified, nil).Once()
+				m.Transformer.EXPECT().Transform(anyCtx, minified).Return(canonical, nil).Once()
+				m.Parser.EXPECT().Parse(anyCtx, url, canonical).Return(&collector.Article{URL: url, Title: "", Content: "content"}, nil).Once()
+				return collector.ErrInvalidArticle
+			},
+			wantStage:        collector.PipelineStageParse,
+			wantIntermediate: canonical,
+		},
+		{
+			name: "parse returns empty content",
+			setup: func(m stageMocks) error {
+				m.Fetcher.EXPECT().Fetch(anyCtx, url).Return(raw, nil).Once()
+				m.Minifier.EXPECT().Transform(anyCtx, raw).Return(minified, nil).Once()
+				m.Transformer.EXPECT().Transform(anyCtx, minified).Return(canonical, nil).Once()
+				m.Parser.EXPECT().Parse(anyCtx, url, canonical).Return(&collector.Article{URL: url, Title: "title", Content: ""}, nil).Once()
+				return collector.ErrInvalidArticle
+			},
+			wantStage:        collector.PipelineStageParse,
+			wantIntermediate: canonical,
+		},
+		{
+			name: "parse returns whitespace-only title",
+			setup: func(m stageMocks) error {
+				m.Fetcher.EXPECT().Fetch(anyCtx, url).Return(raw, nil).Once()
+				m.Minifier.EXPECT().Transform(anyCtx, raw).Return(minified, nil).Once()
+				m.Transformer.EXPECT().Transform(anyCtx, minified).Return(canonical, nil).Once()
+				m.Parser.EXPECT().Parse(anyCtx, url, canonical).Return(&collector.Article{URL: url, Title: "  \u00A0  ", Content: "content"}, nil).Once()
+				return collector.ErrInvalidArticle
+			},
+			wantStage:        collector.PipelineStageParse,
+			wantIntermediate: canonical,
+		},
+		{
+			name: "parse returns whitespace-only content",
+			setup: func(m stageMocks) error {
+				m.Fetcher.EXPECT().Fetch(anyCtx, url).Return(raw, nil).Once()
+				m.Minifier.EXPECT().Transform(anyCtx, raw).Return(minified, nil).Once()
+				m.Transformer.EXPECT().Transform(anyCtx, minified).Return(canonical, nil).Once()
+				m.Parser.EXPECT().Parse(anyCtx, url, canonical).Return(&collector.Article{URL: url, Title: "title", Content: " \n\t 　 "}, nil).Once()
+				return collector.ErrInvalidArticle
 			},
 			wantStage:        collector.PipelineStageParse,
 			wantIntermediate: canonical,
@@ -260,7 +374,7 @@ func TestDispatcher_RoutesBySourceID(t *testing.T) {
 	specFetcher.EXPECT().Fetch(anyCtx, url).Return("raw", nil).Once()
 	specMinifier.EXPECT().Transform(anyCtx, "raw").Return("min", nil).Once()
 	specParser.EXPECT().Parse(anyCtx, url, "min").
-		Return(&collector.Article{URL: url, Title: "t"}, nil).Once()
+		Return(&collector.Article{URL: url, Title: "t", Content: "c"}, nil).Once()
 
 	reg := collector.NewPipelineRegistry(fallback)
 	reg.Register("dpp", specific)

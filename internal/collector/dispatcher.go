@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"go.opentelemetry.io/otel/trace"
 )
@@ -71,12 +72,37 @@ func (d *Dispatcher) Dispatch(ctx context.Context, sourceID, url string) (*Dispa
 
 	raw, err := p.Fetcher.Fetch(ctx, url)
 	if err != nil {
-		return nil, &StageError{Stage: PipelineStageFetch, SubStage: stageName(p.Fetcher), Err: err}
+		return nil, &StageError{
+			Stage:    PipelineStageFetch,
+			SubStage: stageName(p.Fetcher),
+			Err:      err,
+		}
+	}
+
+	if strings.TrimSpace(raw) == "" {
+		return nil, &StageError{
+			Stage:    PipelineStageFetch,
+			SubStage: stageName(p.Fetcher),
+			Err:      fmt.Errorf("%w: fetched output is empty", ErrInvalidArticle),
+		}
 	}
 
 	minified, err := p.Minifier.Transform(ctx, raw)
 	if err != nil {
-		return nil, &StageError{Stage: PipelineStageMinify, SubStage: stageName(p.Minifier), Err: err, Intermediate: raw}
+		return nil, &StageError{
+			Stage:        PipelineStageMinify,
+			SubStage:     stageName(p.Minifier),
+			Err:          err,
+			Intermediate: raw,
+		}
+	}
+	if strings.TrimSpace(minified) == "" {
+		return nil, &StageError{
+			Stage:        PipelineStageMinify,
+			SubStage:     stageName(p.Minifier),
+			Err:          fmt.Errorf("%w: minified output is empty", ErrInvalidArticle),
+			Intermediate: raw,
+		}
 	}
 
 	canonical := minified
@@ -95,10 +121,25 @@ func (d *Dispatcher) Dispatch(ctx context.Context, sourceID, url string) (*Dispa
 
 	article, err := p.Parser.Parse(ctx, url, canonical)
 	if err != nil {
-		return nil, &StageError{Stage: PipelineStageParse, SubStage: stageName(p.Parser), Err: err, Intermediate: canonical}
+		return nil, &StageError{
+			Stage:    PipelineStageParse,
+			SubStage: stageName(p.Parser),
+			Err:      err, Intermediate: canonical,
+		}
 	}
 
-	d.logger.DebugContext(ctx, "dispatch complete",
+	article = NormalizeArticle(article)
+	if err := ValidateArticle(article); err != nil {
+		return nil, &StageError{
+			Stage:        PipelineStageParse,
+			SubStage:     stageName(p.Parser),
+			Err:          err,
+			Intermediate: canonical,
+		}
+	}
+
+	d.logger.DebugContext(
+		ctx, "dispatch complete",
 		slog.String("url", url),
 		slog.String("source_id", sourceID),
 		slog.String("title", article.Title),

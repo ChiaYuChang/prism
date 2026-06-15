@@ -94,6 +94,25 @@ func TestHandlerProcess_ArchivesStageErrorWithRecoverablePayloadKind(t *testing.
 			wantKind:    archiver.PayloadKindCanonical,
 			wantStage:   collector.PipelineStageParse,
 		},
+		{
+			name: "invalid parsed article archives canonical payload",
+			setup: func(t *testing.T) collector.Pipeline {
+				fetcher := mocks.NewMockFetcher(t)
+				minifier := mocks.NewMockTransformer(t)
+				transformer := mocks.NewMockTransformer(t)
+				parser := mocks.NewMockParser(t)
+
+				fetcher.EXPECT().Fetch(mock.Anything, url).Return(raw, nil).Once()
+				minifier.EXPECT().Transform(mock.Anything, raw).Return(minified, nil).Once()
+				transformer.EXPECT().Transform(mock.Anything, minified).Return(canonical, nil).Once()
+				parser.EXPECT().Parse(mock.Anything, url, canonical).Return(&collector.Article{URL: url, Title: ""}, nil).Once()
+
+				return collector.Pipeline{Fetcher: fetcher, Minifier: minifier, Transformers: []collector.Transformer{transformer}, Parser: parser}
+			},
+			wantPayload: canonical,
+			wantKind:    archiver.PayloadKindCanonical,
+			wantStage:   collector.PipelineStageParse,
+		},
 	}
 
 	for _, tt := range tests {
