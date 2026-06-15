@@ -121,7 +121,7 @@ func TestTokenListAuth_AllowsKnownToken(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.Header.Set(middleware.AuthTokenHeader, "token-b")
+	req.Header.Set(middleware.TokenAuthHeader, "token-b")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -151,7 +151,7 @@ func TestTokenListAuth_RejectsUnknownToken(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.Header.Set(middleware.AuthTokenHeader, "token-b")
+	req.Header.Set(middleware.TokenAuthHeader, "token-b")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -167,7 +167,7 @@ func TestTokenListAuth_EmptySetDeniesAll(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.Header.Set(middleware.AuthTokenHeader, "token-a")
+	req.Header.Set(middleware.TokenAuthHeader, "token-a")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -183,7 +183,7 @@ func TestTokenListAuth_ClonesTokenSet(t *testing.T) {
 	delete(tokens, "token-a")
 
 	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req.Header.Set(middleware.AuthTokenHeader, "token-a")
+	req.Header.Set(middleware.TokenAuthHeader, "token-a")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -270,7 +270,7 @@ func TestCORS_PreflightShortCircuits(t *testing.T) {
 	called := false
 	h := middleware.CORS(middleware.CORSOptions{
 		AllowOrigins: []string{"https://example.com"},
-		AllowMethods: []string{"GET", "POST"},
+		AllowMethods: []string{http.MethodGet, http.MethodPost},
 		AllowHeaders: []string{"Content-Type"},
 		MaxAgeSecs:   600,
 	})(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {

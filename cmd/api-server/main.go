@@ -175,8 +175,8 @@ func main() {
 		middleware.Recoverer(logger),
 		middleware.CORS(middleware.CORSOptions{
 			AllowOrigins: config.CORSOrigins,
-			AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			AllowHeaders: []string{"Content-Type", "Authorization", middleware.RequestIDHeader, middleware.AuthTokenHeader},
+			AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+			AllowHeaders: []string{"Content-Type", "Authorization", middleware.RequestIDHeader, middleware.TokenAuthHeader},
 			MaxAgeSecs:   600,
 		}),
 	)

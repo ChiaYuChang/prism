@@ -36,7 +36,7 @@ type AuthConfig struct {
 	Token TokenAuthConfig `mapstructure:"token"`
 }
 
-// TokenAuthConfig configures X-AUTH-TOKEN allow-list authentication.
+// TokenAuthConfig configures X-PRISM-TOKEN allow-list authentication.
 type TokenAuthConfig struct {
 	Tokens []string `mapstructure:"tokens"`
 	File   string   `mapstructure:"file"`
@@ -180,8 +180,8 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("rate-limit-burst", 10, "Per-IP burst capacity")
 	fs.Int("rate-limit-ip-cache-size", 4096, "Max distinct IPs tracked by the rate limiter (LRU)")
 
-	fs.StringSlice("auth-token", []string{}, "Allowed X-AUTH-TOKEN values (comma-separated or repeated)")
-	fs.String("auth-token-file", "", "Path to allowed X-AUTH-TOKEN file (one token per line)")
+	fs.StringSlice("auth-token", []string{}, "Allowed X-PRISM-TOKEN values (comma-separated or repeated)")
+	fs.String("auth-token-file", "", "Path to allowed X-PRISM-TOKEN file (one token per line)")
 
 	fs.String("monitoring-mode", "pull", "Monitoring mode: pull or push")
 	fs.Duration("monitoring-interval", 10*time.Second, "Interval to ping worker/app health endpoints in pull mode")

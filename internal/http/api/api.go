@@ -226,7 +226,7 @@ func (s *Server) pingTarget(ctx context.Context, client *http.Client, url string
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return obs.HealthStatus{
 			Level:     obs.LevelError,

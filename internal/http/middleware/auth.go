@@ -10,9 +10,6 @@ import (
 // to protected API routes.
 const TokenAuthHeader = "X-PRISM-TOKEN"
 
-// AuthTokenHeader is the HTTP header used for token-list authentication.
-const AuthTokenHeader = "X-AUTH-TOKEN"
-
 // TokenAuth requires callers to provide TokenAuthHeader with the configured
 // token. Empty configured token disables the check so callers can compose it
 // unconditionally while auth configuration is still optional.
@@ -35,7 +32,7 @@ func TokenAuth(token string) Middleware {
 	}
 }
 
-// TokenListAuth requires callers to provide AuthTokenHeader with a token that
+// TokenListAuth requires callers to provide TokenAuthHeader with a token that
 // exists in tokens. Empty tokens are ignored; an empty set denies all requests.
 func TokenListAuth(tokens map[string]struct{}) Middleware {
 	allowed := make(map[string]struct{}, len(tokens))
@@ -49,7 +46,7 @@ func TokenListAuth(tokens map[string]struct{}) Middleware {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := strings.TrimSpace(r.Header.Get(AuthTokenHeader))
+			token := strings.TrimSpace(r.Header.Get(TokenAuthHeader))
 			if _, ok := allowed[token]; token == "" || !ok {
 				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 				return
