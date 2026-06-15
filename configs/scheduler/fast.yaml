@@ -35,7 +35,9 @@ logger:
     enable: true
   file:
     enable: true
-    file: /logs/scheduler-fast.json
+    file: /logs/app.log
+    max-size: 10MiB
+    max-files: 5
   otel:
     url: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
     insecure: true

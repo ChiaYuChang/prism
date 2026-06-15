@@ -32,7 +32,7 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 	assert.Equal(t, "/app/configs/worker/discovery/scouts.yaml", cfg.ScoutConfigPath)
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
 	assert.Equal(t, "prism.discovery", cfg.Telemetry.ServiceName)
-	assert.Equal(t, "/logs/discovery.json", cfg.Logger.File.File)
+	assert.Equal(t, "/logs/app.log", cfg.Logger.File.File)
 }
 
 func setShippedConfigEnv(t *testing.T) {

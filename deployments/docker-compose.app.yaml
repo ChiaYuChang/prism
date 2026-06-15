@@ -31,7 +31,7 @@ services:
     networks:
       - prism-net
     volumes:
-      - worker_logs:/logs
+      - ../runtime/logs/batch-detector:/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,7 +66,7 @@ services:
     networks:
       - prism-net
     volumes:
-      - worker_logs:/logs
+      - ../runtime/logs/batch-publisher:/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,7 +111,7 @@ services:
     networks:
       - prism-net
     volumes:
-      - worker_logs:/logs
+      - ../runtime/logs/api-server:/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,5 +119,4 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-volumes:
-  worker_logs:
+

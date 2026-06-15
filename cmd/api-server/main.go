@@ -88,22 +88,37 @@ func main() {
 	}
 	defer func() { _ = repositoryCloser.Close() }()
 
-	serverOpts := []api.ServerOption{
-		api.WithMonitorMode(config.Monitoring.Mode),
-	}
-
-	if config.Cache.Enabled {
-		valkeyClient, err := infra.NewValkeyClient(ctx, &redis.Options{
+	valkeyNeeded := config.Cache.Enabled || config.Monitoring.Backend == "valkey"
+	var valkeyClient *redis.Client
+	if valkeyNeeded {
+		valkeyClient, err = infra.NewValkeyClient(ctx, &redis.Options{
 			Addr:     config.Valkey.Addr(),
 			Username: config.Valkey.Username,
 			Password: config.Valkey.Password,
 			DB:       config.Valkey.DB,
 		})
 		if err != nil {
-			logger.Error("failed to dial valkey for progress cache", "addr", config.Valkey.Addr(), "error", err)
+			logger.Error("failed to dial valkey", "addr", config.Valkey.Addr(), "error", err)
 			os.Exit(1)
 		}
 		defer func() { _ = valkeyClient.Close() }()
+	}
+
+	statusMonitor := api.StatusMonitor(api.NewInMemoryMonitor(config.Monitoring.Mode))
+	if config.Monitoring.Backend == "valkey" {
+		statusMonitor, err = api.NewValkeyMonitor(valkeyClient, config.Monitoring.Mode, config.Monitoring.StatusKey)
+		if err != nil {
+			logger.Error("failed to construct valkey status monitor", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("status monitor backend enabled", "backend", "valkey", "key", config.Monitoring.StatusKey)
+	}
+
+	serverOpts := []api.ServerOption{
+		api.WithStatusMonitor(statusMonitor),
+	}
+
+	if config.Cache.Enabled {
 		cache, err := api.NewValkeyProgressCache(valkeyClient, config.Cache.LiveTTL, config.Cache.TerminalTTL)
 		if err != nil {
 			logger.Error("failed to construct progress cache", "error", err)

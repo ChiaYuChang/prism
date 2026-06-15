@@ -44,7 +44,7 @@ services:
     networks:
       - prism-net
     volumes:
-      - worker_logs:/logs
+      - ../runtime/logs/scheduler-slow:/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,7 +80,7 @@ services:
     networks:
       - prism-net
     volumes:
-      - worker_logs:/logs
+      - ../runtime/logs/scheduler-fast:/logs
     depends_on:
       scheduler-slow:
         condition: service_started
@@ -115,7 +115,7 @@ services:
     networks:
       - prism-net
     volumes:
-      - worker_logs:/logs
+      - ../runtime/logs/discovery:/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -151,7 +151,7 @@ services:
       PRISM_COLLECTOR_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     volumes:
       - worker_archives:/app/archives
-      - worker_logs:/logs
+      - ../runtime/logs/collector:/logs
     networks:
       - prism-net
     depends_on:
@@ -195,7 +195,7 @@ services:
     networks:
       - prism-net
     volumes:
-      - worker_logs:/logs
+      - ../runtime/logs/planner:/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -226,4 +226,3 @@ services:
 
 volumes:
   worker_archives:
-  worker_logs:

@@ -55,6 +55,8 @@ tasks:
       COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
     cmds:
       - mkdir -p {{.TASK_DIR}}
+      - mkdir -p runtime/logs/{api-server,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - chmod 0777 runtime/logs runtime/logs/{api-server,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
       - docker compose -f {{.COMPOSE_MERGED}} up -d
       - "echo {{.MODE}} > {{.MODE_FILE}}"
       - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"

@@ -147,6 +147,7 @@ services:
   otel-collector:
     profiles: [ obs ]
     image: otel/opentelemetry-collector-contrib:0.141.0
+    user: "0:0"
     command: [ "--config=/etc/otelcol-contrib/otel.yaml" ]
     depends_on:
       victoria-metrics:
@@ -159,7 +160,8 @@ services:
       - "127.0.0.1:${OTEL_COLLECTOR_HEALTH_PORT:-13133}:13133"
     volumes:
       - ./otel-collector/test/otel.yaml:/etc/otelcol-contrib/otel.yaml:ro
-      - worker_logs:/logs:ro
+      - ../runtime/logs:/logs:ro
+      - otel_storage:/var/lib/otelcol
       - otel_backup:/var/log/app
     healthcheck:
       test: [ "CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol-contrib/otel.yaml" ]
@@ -221,5 +223,5 @@ volumes:
   vt-data:
   grafana_data:
   ollama_data:
-  worker_logs:
+  otel_storage:
   otel_backup:

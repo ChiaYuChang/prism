@@ -24,10 +24,78 @@ import (
 var ErrParamMissing = errors.New("param missing")
 
 type Monitor struct {
-	Mode     string
+	mode     string
 	mu       sync.RWMutex
-	Statuses map[string]obs.HealthStatus
+	statuses map[string]obs.HealthStatus
 }
+
+// StatusMonitor stores service health snapshots for GET/POST status routes.
+type StatusMonitor interface {
+	Mode() string
+	SetMode(mode string)
+	InitializeStatuses(ctx context.Context, services []string) error
+	SetStatus(ctx context.Context, service string, status obs.HealthStatus) error
+	Statuses(ctx context.Context) (map[string]obs.HealthStatus, error)
+}
+
+// NewInMemoryMonitor returns the default process-local status monitor.
+func NewInMemoryMonitor(mode string) *Monitor {
+	return &Monitor{
+		mode:     mode,
+		statuses: make(map[string]obs.HealthStatus),
+	}
+}
+
+func (m *Monitor) SetMode(mode string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.mode = mode
+}
+
+func (m *Monitor) InitializeStatuses(_ context.Context, services []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, name := range services {
+		if _, ok := m.statuses[name]; ok {
+			continue
+		}
+		m.statuses[name] = obs.HealthStatus{
+			Level:     obs.LevelStarting,
+			Message:   "Waiting for first heartbeat",
+			Timestamp: time.Now(),
+		}
+	}
+	return nil
+}
+
+func (m *Monitor) SetStatus(_ context.Context, service string, status obs.HealthStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statuses[service] = status
+	return nil
+}
+
+func (m *Monitor) StatusesSnapshot(_ context.Context) (map[string]obs.HealthStatus, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	statuses := make(map[string]obs.HealthStatus, len(m.statuses))
+	for service, status := range m.statuses {
+		statuses[service] = status
+	}
+	return statuses, nil
+}
+
+func (m *Monitor) Statuses(ctx context.Context) (map[string]obs.HealthStatus, error) {
+	return m.StatusesSnapshot(ctx)
+}
+
+func (m *Monitor) CurrentMode() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.mode
+}
+
+func (m *Monitor) Mode() string { return m.CurrentMode() }
 
 type MonitorTarget struct {
 	URL         string        `mapstructure:"url"            validate:"required,url"`
@@ -77,7 +145,17 @@ func WithGetFetchLimiter(l middleware.IPLimiter) ServerOption {
 // WithMonitorMode configures the server's status monitoring mode ("pull" or "push").
 func WithMonitorMode(mode string) ServerOption {
 	return func(s *Server) {
-		s.Monitor.Mode = mode
+		s.Monitor.SetMode(mode)
+	}
+}
+
+// WithStatusMonitor attaches a status monitor backend. When unset, the server
+// uses an in-memory backend.
+func WithStatusMonitor(m StatusMonitor) ServerOption {
+	return func(s *Server) {
+		if m != nil {
+			s.Monitor = m
+		}
 	}
 }
 
@@ -90,7 +168,7 @@ type Server struct {
 	UserFetches     repo.UserFetches
 	Cache           ProgressCache
 	GetFetchLimiter middleware.IPLimiter
-	Monitor         *Monitor
+	Monitor         StatusMonitor
 }
 
 // NewServer validates dependencies and returns a ready-to-register Server.
@@ -118,9 +196,7 @@ func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline
 		UserFetches:     userFetches,
 		Cache:           NoOpProgressCache{},
 		GetFetchLimiter: middleware.NoOpIPLimiter{},
-		Monitor: &Monitor{
-			Statuses: make(map[string]obs.HealthStatus),
-		},
+		Monitor:         NewInMemoryMonitor(""),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -146,21 +222,15 @@ func (s *Server) RegisterPublic(mux *http.ServeMux, mws ...middleware.Middleware
 // RegisterInternal wires private routes for internal administration/push telemetry.
 func (s *Server) RegisterInternal(mux *http.ServeMux, mws ...middleware.Middleware) {
 	wrap := middleware.Chain(mws...)
-	if s.Monitor.Mode == "push" {
+	if s.Monitor.Mode() == "push" {
 		mux.Handle("POST /api/v1/status", wrap(http.HandlerFunc(s.PostStatus)))
 	}
 }
 
 // InitializeStatuses registers expected service names and sets their initial health status to LevelStarting.
 func (s *Server) InitializeStatuses(services []string) {
-	s.Monitor.mu.Lock()
-	defer s.Monitor.mu.Unlock()
-	for _, name := range services {
-		s.Monitor.Statuses[name] = obs.HealthStatus{
-			Level:     obs.LevelStarting,
-			Message:   "Waiting for first heartbeat",
-			Timestamp: time.Now(),
-		}
+	if err := s.Monitor.InitializeStatuses(context.Background(), services); err != nil {
+		s.Logger.Error("failed to initialize monitor statuses", "error", err)
 	}
 }
 
@@ -195,10 +265,9 @@ func (s *Server) StartMonitor(ctx context.Context, interval time.Duration, targe
 			go func(n string, t MonitorTarget) {
 				defer wg.Done()
 				status := s.pingTarget(ctx, client, t.URL, t.Timeout)
-
-				s.Monitor.mu.Lock()
-				s.Monitor.Statuses[n] = status
-				s.Monitor.mu.Unlock()
+				if err := s.Monitor.SetStatus(ctx, n, status); err != nil {
+					s.Logger.Error("failed to store monitor status", "service", n, "error", err)
+				}
 			}(name, target)
 		}
 		wg.Wait()
@@ -267,10 +336,12 @@ func (s *Server) pingTarget(ctx context.Context, client *http.Client, url string
 
 // GetStatus returns the cached health status of monitored services.
 func (s *Server) GetStatus(w http.ResponseWriter, r *http.Request) {
-	s.Monitor.mu.RLock()
-	defer s.Monitor.mu.RUnlock()
-
-	writeJSON(w, http.StatusOK, s.Monitor.Statuses)
+	statuses, err := s.Monitor.Statuses(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load status")
+		return
+	}
+	writeJSON(w, http.StatusOK, statuses)
 }
 
 // PostStatusPayload defines the body structure for updating worker/app status.
@@ -304,14 +375,16 @@ func (s *Server) PostStatus(w http.ResponseWriter, r *http.Request) {
 		timestamp = time.Now()
 	}
 
-	s.Monitor.mu.Lock()
-	s.Monitor.Statuses[payload.Service] = obs.HealthStatus{
+	status := obs.HealthStatus{
 		Level:     payload.Level,
 		Message:   payload.Message,
 		Uptime:    payload.Uptime,
 		Timestamp: timestamp,
 	}
-	s.Monitor.mu.Unlock()
+	if err := s.Monitor.SetStatus(r.Context(), payload.Service, status); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to record status")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "recorded"})
 }

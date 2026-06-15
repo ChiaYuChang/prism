@@ -3,12 +3,15 @@ package obs
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
 	"time"
 
 	prismlogger "github.com/ChiaYuChang/prism/pkg/logger"
+	"github.com/ChiaYuChang/prism/pkg/rotatingfile"
+	"github.com/ChiaYuChang/prism/pkg/units"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
@@ -17,6 +20,12 @@ import (
 	logsdk "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
+
+// LogFile is the interface satisfied by active log files (including FilePool).
+type LogFile interface {
+	io.Closer
+	Sync() error
+}
 
 // LoggingConfig configures slog handler fan-out. Console is human-readable text,
 // file is structured JSON, and OTEL is a native slog.Handler sink.
@@ -37,9 +46,11 @@ type ConsoleLogConfig struct {
 }
 
 type FileLogConfig struct {
-	Enable bool   `mapstructure:"enable"`
-	File   string `mapstructure:"file"   validate:"omitempty,filepath"`
-	Level  string `mapstructure:"level"  validate:"omitempty,oneof=debug info warn error"`
+	Enable   bool        `mapstructure:"enable"`
+	File     string      `mapstructure:"file"     validate:"omitempty,filepath"`
+	Level    string      `mapstructure:"level"    validate:"omitempty,oneof=debug info warn error"`
+	MaxSize  units.Bytes `mapstructure:"max-size"`
+	MaxFiles int         `mapstructure:"max-files" validate:"min=1"`
 }
 
 type OTELLogConfig struct {
@@ -58,6 +69,10 @@ func DefaultLoggingConfig(serviceName ...string) LoggingConfig {
 		Level: "info",
 		Console: ConsoleLogConfig{
 			Enable: true,
+		},
+		File: FileLogConfig{
+			MaxSize:  units.Bytes("10MiB"),
+			MaxFiles: 5,
 		},
 		OTEL: OTELLogConfig{
 			URL:      "otel-collector:4317",
@@ -81,6 +96,8 @@ func RegisterLoggingFlags(fs *pflag.FlagSet, defaults LoggingConfig) {
 	fs.Bool("log-file-enable", defaults.File.Enable, "Enable file JSON logging")
 	fs.String("log-file-file", defaults.File.File, "File log path")
 	fs.String("log-file-level", defaults.File.Level, "File log level override (debug, info, warn, error)")
+	fs.String("log-file-max-size", defaults.File.MaxSize.String(), "Maximum file log size before startup rotation (for example 10MB, 10MiB); 0 disables size limiting")
+	fs.Int("log-file-max-files", defaults.File.MaxFiles, "Maximum number of rotated file log slots (ring buffer)")
 	fs.Bool("log-otel-enable", defaults.OTEL.Enable, "Enable OTLP log export")
 	fs.String("log-otel-url", defaults.OTEL.URL, "OTLP log exporter gRPC endpoint host:port")
 	fs.String("log-otel-level", defaults.OTEL.Level, "OTLP log level override (debug, info, warn, error)")
@@ -105,9 +122,11 @@ func LoadLoggingConfig(v *viper.Viper) (LoggingConfig, error) {
 			Level:  v.GetString("logger.console.level"),
 		},
 		File: FileLogConfig{
-			Enable: v.GetBool("logger.file.enable"),
-			File:   v.GetString("logger.file.file"),
-			Level:  v.GetString("logger.file.level"),
+			Enable:   v.GetBool("logger.file.enable"),
+			File:     v.GetString("logger.file.file"),
+			Level:    v.GetString("logger.file.level"),
+			MaxSize:  firstBytes(v.GetString("logger.file.max-size"), v.GetString("logger.file.max.size"), legacyBytes(v.GetInt64("logger.file.max-size-bytes")), legacyBytes(v.GetInt64("logger.file.max.size.bytes"))),
+			MaxFiles: firstInt(v.GetInt("logger.file.max-files"), v.GetInt("logger.file.max.files"), 5),
 		},
 		OTEL: OTELLogConfig{
 			Enable:      v.GetBool("logger.otel.enable"),
@@ -136,6 +155,31 @@ func firstString(values ...string) string {
 	return ""
 }
 
+func firstBytes(values ...string) units.Bytes {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return units.Bytes(strings.TrimSpace(value))
+		}
+	}
+	return ""
+}
+
+func firstInt(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func legacyBytes(value int64) string {
+	if value == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", value)
+}
+
 func bindPrefixedFlags(v *viper.Viper, fs *pflag.FlagSet, prefix, target string) error {
 	var bindErr error
 	fs.VisitAll(func(f *pflag.Flag) {
@@ -155,8 +199,8 @@ func (c LoggingConfig) LevelValue() slog.Level {
 }
 
 func (c LoggingConfig) String() string {
-	return fmt.Sprintf("level=%s console={enable=%t level=%s} file={enable=%t file=%s level=%s} otel={%s}",
-		c.Level, c.Console.Enable, c.Console.Level, c.File.Enable, c.File.File, c.File.Level, c.OTEL.String())
+	return fmt.Sprintf("level=%s console={enable=%t level=%s} file={enable=%t file=%s level=%s max_size=%s max_files=%d} otel={%s}",
+		c.Level, c.Console.Enable, c.Console.Level, c.File.Enable, c.File.File, c.File.Level, c.File.MaxSize, c.File.MaxFiles, c.OTEL.String())
 }
 
 func (c LoggingConfig) LogValue() slog.Value {
@@ -180,6 +224,8 @@ func (c FileLogConfig) LogValue() slog.Value {
 		slog.Bool("enable", c.Enable),
 		slog.String("file", c.File),
 		slog.String("level", c.Level),
+		slog.String("max_size", c.MaxSize.String()),
+		slog.Int("max_files", c.MaxFiles),
 	)
 }
 
@@ -206,10 +252,11 @@ func (c OTELLogConfig) String() string {
 
 // BuildLoggingHandlers builds console/file/OTEL slog handlers. The caller owns
 // constructing the *slog.Logger, usually via pkg/logger.NewLoggerFromHandlers.
-func BuildLoggingHandlers(ctx context.Context, cfg LoggingConfig) ([]slog.Handler, *os.File, func(context.Context) error, error) {
+func BuildLoggingHandlers(ctx context.Context, cfg LoggingConfig) ([]slog.Handler, LogFile, func(context.Context) error, error) {
 	globalLevel := cfg.LevelValue()
 	var handlers []slog.Handler
-	var file *os.File
+	var file LogFile
+	createdLogSlots := 0
 	shutdown := func(context.Context) error { return nil }
 
 	if cfg.Console.Enable {
@@ -219,12 +266,17 @@ func BuildLoggingHandlers(ctx context.Context, cfg LoggingConfig) ([]slog.Handle
 		if cfg.File.File == "" {
 			return nil, nil, nil, fmt.Errorf("logger file enabled but file path is empty")
 		}
-		f, err := os.OpenFile(cfg.File.File, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		rf, err := rotatingfile.New(rotatingfile.Config{
+			Path:     cfg.File.File,
+			MaxSize:  cfg.File.MaxSize,
+			MaxFiles: cfg.File.MaxFiles,
+		})
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("open log file: %w", err)
+			return nil, nil, nil, fmt.Errorf("initialize rotating log file: %w", err)
 		}
-		file = f
-		handlers = append(handlers, prismlogger.NewJSONHandler(f, parseSlogLevel(cfg.File.Level, globalLevel)))
+		file = rf
+		createdLogSlots = rf.CreatedSlots()
+		handlers = append(handlers, prismlogger.NewJSONHandler(rf, parseSlogLevel(cfg.File.Level, globalLevel)))
 	}
 	if cfg.OTEL.Enable {
 		h, stop, err := NewOTELLogHandler(ctx, cfg.OTEL, globalLevel)
@@ -240,6 +292,12 @@ func BuildLoggingHandlers(ctx context.Context, cfg LoggingConfig) ([]slog.Handle
 
 	if len(handlers) == 0 {
 		handlers = append(handlers, prismlogger.NewTextHandler(os.Stdout, globalLevel))
+	}
+	if createdLogSlots > 0 {
+		prismlogger.NewLoggerFromHandlers(handlers).Info("log file pool expanded",
+			"file", cfg.File.File,
+			"max_files", cfg.File.MaxFiles,
+			"created_slots", createdLogSlots)
 	}
 
 	return handlers, file, shutdown, nil

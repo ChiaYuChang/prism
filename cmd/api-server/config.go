@@ -126,10 +126,12 @@ func (t MonitoringTarget) Normalized(defaultTimeout time.Duration) MonitoringTar
 }
 
 type MonitoringConfig struct {
+	Backend      string                      `mapstructure:"backend"          validate:"required,oneof=memory valkey"`
 	Mode         string                      `mapstructure:"mode"             validate:"required,oneof=pull push"`
 	Interval     time.Duration               `mapstructure:"interval"         validate:"required,min=1s"`
 	Timeout      time.Duration               `mapstructure:"timeout"          validate:"required,min=100ms"`
 	Targets      map[string]MonitoringTarget `mapstructure:"targets"`
+	StatusKey    string                      `mapstructure:"status-key"`
 	InternalPort int                         `mapstructure:"internal-port"    validate:"required_if=Mode push,omitempty,min=1024,max=65535"`
 }
 
@@ -140,8 +142,10 @@ func LoadConfig(args []string) (*Config, error) {
 	v.AutomaticEnv()
 
 	v.SetDefault("monitoring.mode", "pull")
+	v.SetDefault("monitoring.backend", "memory")
 	v.SetDefault("monitoring.interval", 10*time.Second)
 	v.SetDefault("monitoring.timeout", 2*time.Second)
+	v.SetDefault("monitoring.status-key", "api:status")
 	v.SetDefault("monitoring.internal-port", 8089)
 
 	fs := pflag.NewFlagSet("api-server", pflag.ContinueOnError)
@@ -184,8 +188,10 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("auth-token-file", "", "Path to allowed X-PRISM-TOKEN file (one token per line)")
 
 	fs.String("monitoring-mode", "pull", "Monitoring mode: pull or push")
+	fs.String("monitoring-backend", "memory", "Monitoring status backend: memory or valkey")
 	fs.Duration("monitoring-interval", 10*time.Second, "Interval to ping worker/app health endpoints in pull mode")
 	fs.Duration("monitoring-timeout", 2*time.Second, "Timeout for monitoring pings")
+	fs.String("monitoring-status-key", "api:status", "Valkey hash key for monitoring statuses")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("failed to parse flags: %w", err)
@@ -239,7 +245,7 @@ func LoadConfig(args []string) (*Config, error) {
 	}
 	cfg.Telemetry = telemetryCfg
 
-	if cfg.Cache.Enabled {
+	if cfg.Cache.Enabled || cfg.Monitoring.Backend == "valkey" {
 		if err := cfg.Valkey.ResolveSecrets(); err != nil {
 			return nil, fmt.Errorf("valkey secrets: %w", err)
 		}
@@ -323,9 +329,11 @@ func bindAuthFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 
 func bindMonitoringFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 	for flag, key := range map[string]string{
+		"monitoring-backend":       "monitoring.backend",
 		"monitoring-mode":          "monitoring.mode",
 		"monitoring-interval":      "monitoring.interval",
 		"monitoring-timeout":       "monitoring.timeout",
+		"monitoring-status-key":    "monitoring.status-key",
 		"monitoring-internal-port": "monitoring.internal-port",
 	} {
 		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {

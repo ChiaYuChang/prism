@@ -32,7 +32,7 @@ func TestLoadConfig_ShippedConfig(t *testing.T) {
 	assert.Equal(t, time.Minute, cfg.Interval)
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
 	assert.Equal(t, "prism.batch.detector", cfg.Telemetry.ServiceName)
-	assert.Equal(t, "/logs/batch-detector.json", cfg.Logger.File.File)
+	assert.Equal(t, "/logs/app.log", cfg.Logger.File.File)
 }
 
 func setShippedConfigEnv(t *testing.T) {

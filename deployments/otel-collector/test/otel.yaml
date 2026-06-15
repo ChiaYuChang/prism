@@ -1,12 +1,17 @@
 receivers:
   filelog/app:
     include:
-      - /logs/*.json
-    start_at: end
+      - /logs/*/*.log*
+    start_at: beginning
     include_file_path: true
+    storage: file_storage
     operators:
       - type: json_parser
         parse_from: body
+        parse_to: attributes
+      - type: regex_parser
+        parse_from: attributes["log.file.path"]
+        regex: '^/logs/(?P<service_name>[^/]+)/'
         parse_to: attributes
 
   otlp:
@@ -18,10 +23,19 @@ receivers:
 
 processors:
   batch:
+  transform/logs:
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["service.name"], log.attributes["service_name"])
+          - delete_key(log.attributes, "service_name")
 
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
+  file_storage:
+    directory: /var/lib/otelcol/file_storage
+    create_directory: true
 
 exporters:
   otlphttp/victorialogs:
@@ -46,12 +60,12 @@ exporters:
     traces_endpoint: http://victoria-traces:10428/insert/opentelemetry/v1/traces
 
 service:
-  extensions: [health_check]
+  extensions: [health_check, file_storage]
 
   pipelines:
     logs:
       receivers: [filelog/app]
-      processors: [batch]
+      processors: [transform/logs, batch]
       exporters: [file/local_backup, otlphttp/victorialogs]
 
     metrics:
