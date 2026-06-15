@@ -320,3 +320,48 @@ Commits:
 - `92d6a3e` fix(lint): address unchecked errors in tooling tests
 - `38a51da` feat(obs): add LLM provider metrics
 - `a14086d` feat(obs): add search provider metrics
+
+## Phase 4.1 (Cont.) — Security, HTTP Middleware, Config Templates, API Monitoring, and Bounded Log Rotation (2026-06)
+
+Shipped HTTP security/observability middlewares, unified auth headers, templated runtime configurations, modular taskfiles, target status monitoring with Valkey persistence, and bounded slot-ring log rotation.
+
+* [x] **HTTP Security & Authentication**:
+  * Added IP filter middleware (`ipfilter.go`) restricting API access to configured subnets.
+  * Implemented a public HTTP client guard (`public.go` in `internal/http/client`) rejecting outbound SSRF targets.
+  * Added token-based Authorization list middleware and unified the `Authorization: Bearer <token>` header checking.
+  * Split HTTP middleware implementations into separate files (`auth.go`, `cors.go`, `logger.go`, `recoverer.go`).
+* [x] **HTTP Observability & Fetcher Robustness**:
+  * Added HTTP metrics middleware to capture API request stats (total requests, duration, outcomes).
+  * Updated HTTP fetcher to parse and honor `Retry-After` headers and handle request cancellations properly.
+* [x] **Config Modularization, Templating, and Compose Split**:
+  * Promoted deploy runtime configurations to target-aligned paths under `configs/` and `assets/`.
+  * Supported Go template rendering in configuration files before parsing via Viper to enable env-based defaults.
+  * Split monolithic `Taskfile.yml` into modular taskfiles under `taskfile/`.
+  * Split application (API, batch trigger) and worker containers into distinct Docker Compose stacks.
+* [x] **API Status Monitoring**:
+  * Configured status monitoring targets with configurable modes (push/pull) and timeouts.
+  * Added storage backends (in-memory and Valkey) to persist and query target status health.
+* [x] **Bounded Slot-Ring Log Rotation and OTel Collection**:
+  * Implemented a reusable `pkg/rotatingfile` package with `FilePool` supporting cyclic slot writes (`app.log.0`, `app.log.1`, etc.).
+  * Updated logging setup in `internal/obs/logging.go` to use `FilePool` for file logs and transitioned extensions from `.json` to `.log`.
+  * Configured OTel `filelog` receiver to track `/logs/*/*.log*` with `start_at: beginning` and checkpoint offset persistence using a `file_storage` extension.
+  * Added `max-files: 5` configurations across all microservice configs and updated docker-compose files to use isolated host bind mounts.
+  * Created an integration test script `test_pipeline.sh` verifying slot truncation, wrap-around tracking, and restart safety.
+
+Commits:
+- `52169e5` feat(obs): add bounded file logs and valkey status monitor
+- `139eaf8` refactor(api): unify token auth header
+- `5f824b8` feat(api): configure status monitoring targets
+- `6cc96f8` chore(config): support templated runtime config
+- `5d94819` chore(config): promote deploy runtime configs
+- `c9ca19e` chore(deploy): split app and worker compose stacks
+- `a7e9e26` test(taskfile): clarify automated test entrypoints
+- `b598da1` refactor(taskfile): split tasks into modules
+- `1ec1d55` chore(obs): configure otel collector deployment
+- `96e6b9b` refactor(middleware): split HTTP middleware implementations
+- `9204efb` refactor(http): move HTTP client guard package
+- `5d7f88d` feat(auth): add token list auth middleware
+- `082bfe7` feat(obs): add HTTP observability middleware
+- `3c51e70` fix(fetcher): honor Retry-After cancellation
+- `6300946` fix(security): add IP filter middleware
+

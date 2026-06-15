@@ -48,7 +48,7 @@ Phase A (`ArticleParser` removal + tests for kept components), the 2026-05 layer
 * [ ] 4.1 Operational Monitoring:
   * [ ] **Remaining command telemetry bootstrap:** recover and any RSS/operator tails still need an explicit decision; scheduler, API, discovery, collector, planner, batch detector/publisher, and backfiller now use the shared telemetry runtime.
   * [ ] **Trace conventions:** root span per API request, scheduler tick, worker message, and recover run; child spans for fetch, parse, LLM/search provider calls, DB-heavy operations, and publish steps. Fix planner to inject propagated `trace_id` before starting its span.
-  * [ ] **Remaining app metric instruments:** API metrics, queue/cache gauges, and any DB-heavy operation metrics remain open. Scheduler task/tick metrics, discovery/collector worker task metrics, LLM provider metrics, and search provider metrics are shipped.
+  * [ ] **Remaining app metric instruments:** queue/cache gauges and any DB-heavy operation metrics remain open. HTTP API server metrics, scheduler task/tick metrics, discovery/collector worker task metrics, LLM provider metrics, and search provider metrics are shipped.
   * [ ] **Dashboards and alerting:** starter Grafana datasource wiring exists, but review-ready dashboards and alerts for scheduler, worker, LLM/search provider, and API health remain open.
 * [ ] 4.2 Admin Operations:
   * [ ] Pause/resume discovery.
