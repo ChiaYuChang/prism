@@ -2,15 +2,23 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	neturl "net/url"
+	"path"
+	"strings"
 
 	"github.com/ChiaYuChang/prism/internal/collector"
 	"github.com/ChiaYuChang/prism/internal/llm"
 )
 
-var ErrParamMissing = errors.New("param missing")
+var (
+	ErrParamMissing = errors.New("param missing")
+)
 
 // Parser extracts an Article from arbitrary text via an LLM. Used as the
 // fallback parser when no host-specific entry matches in parsers.yaml. The
@@ -51,6 +59,23 @@ func NewParser(generator llm.Generator, logger *slog.Logger, model, prompt strin
 func (*Parser) String() string { return "LLMParser" }
 
 func (p *Parser) Parse(ctx context.Context, url string, data string) (*collector.Article, error) {
+	u, err := neturl.Parse(url)
+	if err != nil {
+		return nil, fmt.Errorf("parse url: %w", err)
+	}
+	ext := strings.ToLower(path.Ext(u.Path))
+	if ext == ".json" || ext == ".xml" {
+		return nil, fmt.Errorf("%w: %s", collector.ErrUnsupportedFallbackType, ext)
+	}
+
+	trimmedData := strings.TrimSpace(data)
+	if isJSONPayload(trimmedData) {
+		return nil, fmt.Errorf("%w: JSON payload detected", collector.ErrUnsupportedFallbackType)
+	}
+	if isXMLPayload(trimmedData) {
+		return nil, fmt.Errorf("%w: XML payload detected", collector.ErrUnsupportedFallbackType)
+	}
+
 	req := &llm.GenerateRequest{
 		Model:             p.model,
 		SystemInstruction: p.prompt,
@@ -78,4 +103,31 @@ func (p *Parser) Parse(ctx context.Context, url string, data string) (*collector
 	)
 
 	return out.ToArticleContent(url), nil
+}
+
+func isJSONPayload(data string) bool {
+	if !strings.HasPrefix(data, "{") && !strings.HasPrefix(data, "[") {
+		return false
+	}
+	return json.Valid([]byte(data))
+}
+
+func isXMLPayload(data string) bool {
+	if strings.HasPrefix(strings.ToLower(data), "<?xml") {
+		return true
+	}
+	if !strings.HasPrefix(data, "<") {
+		return false
+	}
+	limitReader := io.LimitReader(strings.NewReader(data), 8192)
+	decoder := xml.NewDecoder(limitReader)
+	for {
+		t, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		if se, ok := t.(xml.StartElement); ok {
+			return !strings.EqualFold(se.Name.Local, "html")
+		}
+	}
 }

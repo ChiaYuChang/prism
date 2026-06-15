@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/ChiaYuChang/prism/internal/collector"
 	parserllm "github.com/ChiaYuChang/prism/internal/collector/parser/llm"
 	"github.com/ChiaYuChang/prism/internal/llm"
 	"github.com/stretchr/testify/assert"
@@ -106,6 +107,150 @@ func TestParser_Parse_DecodeError(t *testing.T) {
 	_, err = p.Parse(context.Background(), "https://example.com/", "<html></html>")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "llm decode")
+}
+
+func TestParser_Parse_InputTypeValidation(t *testing.T) {
+	const cannedJSON = `{
+  "title": [{"selector": "h1", "value": "Example Headline"}],
+  "author": [],
+  "published_at": [],
+  "date_layouts": [],
+  "content": [{"selector": "p", "value": "Content body"}]
+}`
+	gen := &fakeGenerator{
+		resp: &llm.GenerateResponse{
+			Model:      "test-model",
+			Text:       cannedJSON,
+			JsonSchema: parserllm.ParserConfigJSONSchema,
+		},
+	}
+
+	p, err := parserllm.NewParser(gen, discardLogger(), "test-model", "stub prompt")
+	require.NoError(t, err)
+
+	tests := []struct {
+		url     string
+		wantErr bool
+	}{
+		{"https://example.com/post/1.html", false},
+		{"https://example.com/post/1.htm", false},
+		{"https://example.com/post/1", false},
+		{"https://example.com/post/1/", false},
+		{"https://example.com/post/1.json", true},
+		{"https://example.com/post/1.xml", true},
+		{"https://example.com/post/1.JSON", true},
+		{"https://example.com/post/1.XML", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.url, func(t *testing.T) {
+			article, err := p.Parse(context.Background(), tt.url, "<html></html>")
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, collector.ErrUnsupportedFallbackType)
+				assert.Nil(t, article)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, article)
+			}
+		})
+	}
+}
+
+func TestParser_Parse_PayloadTypeValidation(t *testing.T) {
+	const cannedJSON = `{
+  "title": [{"selector": "h1", "value": "Example Headline"}],
+  "author": [],
+  "published_at": [],
+  "date_layouts": [],
+  "content": [{"selector": "p", "value": "Content body"}]
+}`
+	gen := &fakeGenerator{
+		resp: &llm.GenerateResponse{
+			Model:      "test-model",
+			Text:       cannedJSON,
+			JsonSchema: parserllm.ParserConfigJSONSchema,
+		},
+	}
+
+	p, err := parserllm.NewParser(gen, discardLogger(), "test-model", "stub prompt")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name    string
+		url     string
+		data    string
+		wantErr bool
+	}{
+		{
+			name:    "valid HTML",
+			url:     "https://example.com/post/1",
+			data:    "<html><body><h1>Hello</h1></body></html>",
+			wantErr: false,
+		},
+		{
+			name:    "valid HTML with doctype",
+			url:     "https://example.com/post/1",
+			data:    "<!DOCTYPE html><html><body><h1>Hello</h1></body></html>",
+			wantErr: false,
+		},
+		{
+			name:    "valid JSON object payload",
+			url:     "https://example.com/api/v1/news",
+			data:    `  { "title": "news title", "content": "body" }  `,
+			wantErr: true,
+		},
+		{
+			name:    "valid JSON array payload",
+			url:     "https://example.com/api/v1/news",
+			data:    `[{"title": "news"}]`,
+			wantErr: true,
+		},
+		{
+			name:    "valid XML proc-inst rss payload",
+			url:     "https://example.com/feed",
+			data:    `<?xml version="1.0" encoding="UTF-8"?><rss><channel><title>RSS</title></channel></rss>`,
+			wantErr: true,
+		},
+		{
+			name:    "valid XML rss payload without proc-inst",
+			url:     "https://example.com/feed",
+			data:    ` <rss version="2.0"><channel><title>RSS</title></channel></rss> `,
+			wantErr: true,
+		},
+		{
+			name:    "valid XML atom payload without proc-inst",
+			url:     "https://example.com/feed",
+			data:    `<feed><title>Atom</title></feed>`,
+			wantErr: true,
+		},
+		{
+			name:    "invalid xml (looks like xml but is actually malformed html)",
+			url:     "https://example.com/post/1",
+			data:    `<html><meta charset="utf-8"><br></html>`,
+			wantErr: false,
+		},
+		{
+			name:    "plain text",
+			url:     "https://example.com/post/1",
+			data:    `This is plain text and not JSON or XML`,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			article, err := p.Parse(context.Background(), tt.url, tt.data)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, collector.ErrUnsupportedFallbackType)
+				assert.Nil(t, article)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, article)
+			}
+		})
+	}
 }
 
 func TestParser_String(t *testing.T) {

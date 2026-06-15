@@ -13,6 +13,9 @@ import (
 // ErrInvalidArticle is returned when a parsed article does not meet the minimum requirements (Title and Content).
 var ErrInvalidArticle = errors.New("invalid article")
 
+// ErrUnsupportedFallbackType is returned when the input type or extension is not supported.
+var ErrUnsupportedFallbackType = errors.New("unsupported fallback input type")
+
 var validate = validator.New()
 
 // NormalizeArticle applies string normalization to Title, Content, and Author fields.

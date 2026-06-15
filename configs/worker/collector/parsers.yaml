@@ -17,6 +17,8 @@ version: 1
 #     key_file: /run/secrets/llm_key
 #     timeout: 30s
 
+# Parsers mapping. Keyed by hostname. Format is implicitly selected by the
+# configuration block present (e.g., `html:`). Currently only `html` is supported.
 parsers:
   www.dpp.org.tw:
     enabled: true

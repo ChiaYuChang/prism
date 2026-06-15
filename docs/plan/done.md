@@ -382,4 +382,17 @@ Shipped strict article validation, empty output guards for fetch/minify stages, 
   * Covered empty raw, empty minified, nil article, empty title, empty content, whitespace-only title, whitespace-only content, and normalization output assertions in unit tests.
   * Verified that canonical intermediate payloads remain unmodified on invalid article parse failures.
 
+## Phase 2.9 (Cont.) — LLM Fallback Input Validation and Registry Strictness (2026-06)
+
+Shipped input-type validation for the LLM fallback parser (rejecting non-HTML inputs/payloads) and registry configuration strictness (implicit format selection verification).
+
+* [x] **LLM Fallback Input-Type Validation**:
+  * Implemented URL path extension checks on incoming links (rejecting `.json`, `.xml` with `ErrUnsupportedFallbackType`).
+  * Implemented fast stream-based XML detection using `xml.Decoder` + 8KB `io.LimitReader` and JSON validation on input payloads, returning `ErrUnsupportedFallbackType` to prevent non-HTML feeds/payloads from reaching the LLM parser.
+* [x] **Parser Registry Configuration Strictness**:
+  * Transitioned the `HTML` rule block under `ParserConfig` to an optional pointer `*html.RuleConfig`.
+  * Enforced validation at startup (`BuildRegistry`) rejecting configurations missing the `HTML` block or specifying unsupported formats.
+* [x] **Future Integration Documentation**:
+  * Added detailed implementation notes in `docs/plan/future.md` detailing the YAML schema design, configuration structures, and registry wiring required for introducing concrete JSON/XML parsers in the future.
+
 

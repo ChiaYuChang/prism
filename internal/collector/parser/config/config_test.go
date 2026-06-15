@@ -12,6 +12,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/collector"
 	"github.com/ChiaYuChang/prism/internal/collector/parser"
 	"github.com/ChiaYuChang/prism/internal/collector/parser/config"
+	"github.com/ChiaYuChang/prism/internal/collector/parser/html"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -67,8 +68,8 @@ func TestBuildRegistry_DisabledHostSkipped(t *testing.T) {
 	enabled := true
 	cfg := config.Config{
 		Parsers: map[string]config.ParserConfig{
-			"on.example":  {Enabled: &enabled},
-			"off.example": {Enabled: &disabled},
+			"on.example":  {Enabled: &enabled, HTML: &html.RuleConfig{}},
+			"off.example": {Enabled: &disabled, HTML: &html.RuleConfig{}},
 		},
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -89,7 +90,7 @@ func TestBuildRegistry_DisabledHostSkipped(t *testing.T) {
 func TestBuildRegistry_JSONLDComposite(t *testing.T) {
 	cfg := config.Config{
 		Parsers: map[string]config.ParserConfig{
-			"jsonld.example": {JSONLD: true},
+			"jsonld.example": {JSONLD: true, HTML: &html.RuleConfig{}},
 		},
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -102,6 +103,21 @@ func TestBuildRegistry_JSONLDComposite(t *testing.T) {
 	// "no matching parser" — exact extraction is the parser package's job.
 	_, err = reg.Parse(context.Background(), "https://jsonld.example/", "<html></html>")
 	require.NoError(t, err)
+}
+
+func TestBuildRegistry_UnsupportedFormats(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	tracer := noop.NewTracerProvider().Tracer("test")
+
+	cfg := config.Config{
+		Parsers: map[string]config.ParserConfig{
+			"bad.example": {HTML: nil},
+		},
+	}
+	_, err := config.BuildRegistry(cfg, logger, tracer, nil)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, collector.ErrUnsupportedFallbackType)
+	assert.Contains(t, err.Error(), "missing html rules for host bad.example")
 }
 
 func TestBuildRegistry_NilLogger_PropagatesRegistryErr(t *testing.T) {

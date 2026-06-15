@@ -27,7 +27,7 @@ type Config struct {
 // a planned extension; v1 assumes HTML-shape text input.
 type FallbackConfig struct {
 	Enable bool                `yaml:"enable"      json:"enable,omitempty"`
-	LLM    appconfig.LLMConfig `yaml:"llm"         json:"llm,omitempty"`
+	LLM    appconfig.LLMConfig `yaml:"llm"         json:"llm"`
 
 	// PromptFile is the path to the system-instruction text passed to the
 	// LLM (typically assets/prompts/collector/article_parser.md, which is
@@ -38,10 +38,10 @@ type FallbackConfig struct {
 }
 
 type ParserConfig struct {
-	Enabled     *bool           `yaml:"enabled"      json:"enabled,omitempty"`
-	JSONLD      bool            `yaml:"jsonld"       json:"jsonld,omitempty"`
-	DateLayouts []string        `yaml:"date_layouts" json:"date_layouts,omitempty"`
-	HTML        html.RuleConfig `yaml:"html"         json:"html,omitempty"`
+	Enabled     *bool            `yaml:"enabled"        json:"enabled,omitempty"`
+	JSONLD      bool             `yaml:"jsonld"         json:"jsonld,omitempty"`
+	DateLayouts []string         `yaml:"date_layouts"   json:"date_layouts,omitempty"`
+	HTML        *html.RuleConfig `yaml:"html,omitempty" json:"html,omitempty"`
 }
 
 func LoadConfig(path string) (cfg Config, err error) {

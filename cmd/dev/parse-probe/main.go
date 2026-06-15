@@ -124,7 +124,10 @@ func run(ctx context.Context, p collector.Parser, url, data string) Result {
 }
 
 func buildParser(p config.ParserConfig, logger *slog.Logger) collector.Parser {
-	h := html.New(p.HTML, p.DateLayouts)
+	if p.HTML == nil {
+		die("missing html rules in config")
+	}
+	h := html.New(*p.HTML, p.DateLayouts)
 	if !p.JSONLD {
 		return h
 	}

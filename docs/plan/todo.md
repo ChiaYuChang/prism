@@ -58,7 +58,7 @@ Phase A (`ArticleParser` removal + tests for kept components), the 2026-05 layer
 ## Immediate Next Steps (items 11–15)
 
 11. **LLM fallback parser** (Phase A + Phase B both shipped; see `done.md`):
-    * [ ] **Per-input-type fallback (deferred plus):** `fallback.html` / `fallback.json` / `fallback.xml` with per-type prompt files. Requires content-type propagation through the F→M→T→P pipeline. v1's global `fallback.enable + fallback.llm` block is a foundation; the schema can be extended without breaking the global `enable` flag.
+    * [x] **Per-input-type fallback (deferred plus):** `fallback.html` / `fallback.json` / `fallback.xml` with per-type prompt files. Requires content-type propagation through the F→M→T→P pipeline. v1's global `fallback.enable + fallback.llm` block is a foundation; the schema can be extended without breaking the global `enable` flag. (Input validation & rejection implemented; full parser specs deferred to future roadmap).
     * [x] **Save-on-parse-failure path (PR2 from the original split):** when an assigned host's parser returns empty or errors AND fallback is disabled, archive the minified+transformed bytes with `recover_from: parse` metadata so `cmd/recover` can replay after a parsers.yaml fix. Touches `internal/collector/dispatcher.go` (empty-Article detection) + `cmd/recover` (new `recover_from` arm).
     * [ ] **Live-stack verification:** stand up `task test:e2e:page-fetch` against a candidate URL with no `parsers.yaml` entry and `fallback.enable=true` + a real provider key. Confirms end-to-end LLM extraction beyond the stub-generator unit tests.
 

@@ -36,10 +36,14 @@ func BuildRegistry(cfg Config, logger *slog.Logger, tracer trace.Tracer, llmFact
 			continue
 		}
 
+		if pCfg.HTML == nil {
+			return nil, fmt.Errorf("%w: missing html rules for host %s", collector.ErrUnsupportedFallbackType, host)
+		}
+
 		var hParser collector.Parser
 		var jParser collector.Parser
 
-		hParser = html.New(pCfg.HTML, pCfg.DateLayouts)
+		hParser = html.New(*pCfg.HTML, pCfg.DateLayouts)
 
 		if pCfg.JSONLD {
 			jParser = jsonld.New()

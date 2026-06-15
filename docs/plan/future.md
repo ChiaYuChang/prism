@@ -124,8 +124,70 @@ Deferred refactors, dual-mode deployment plans, archive catalog refactor, and cl
     * Do not keep `meta.json` sidecar as a "compatibility layer" during transition — production has no S3 data yet, do the cutover cleanly.
     * Do not put archive payload bytes into PG. PG is the catalog only; bytes stay in storage layer.
     * Do not write application-level retry/circuit-breaker for PG outages. Use pgx's built-in retry, set per-query `context.WithTimeout`, and let the broker handle redelivery on failure. PG HA is solved at infra layer.
-  * **When:** **defer implementation; lock the interface direction now.** Pipeline end-to-end correctness (archive publisher wiring, recover.go dual-path, layer 1 unit test gaps in Immediate Next Steps #11) is higher priority than this refactor. Concrete principle: keep the current `Archiver` shape as-is for daily work, but
-    * Do not add new `Scan`-heavy callers — recover is the only legitimate caller and is already known.
+  * **When:** **defer implementation; lock the interface direction now.** Pipeline end-to-end correctness (archive publisher wiring, recover.go dual-path, layer 1 unit test gaps in Immediate Next Steps #11) is higher priority than this refactor. Concrete principle: keep the current `Archiver` shape as-is for daily work, but:
     * Do not add new fields to `meta.json` — push new metadata into PG `contents` or related tables instead so it is already in the right place when the cutover happens.
     * Treat the current `Scan` / `Remove` / `Meta` / sidecar design as deprecated-in-place; document the deprecation in archiver code.
-    Schedule the actual cutover for the week before promoting S3 to production (the migration cost is zero only while no real data exists at scale, and that window will not stay open forever). Bundle it with the SQS+Lambda dual-mode rollout above.
+    * Schedule the actual cutover for the week before promoting S3 to production (the migration cost is zero only while no real data exists at scale, and that window will not stay open forever). Bundle it with the SQS+Lambda dual-mode rollout above.
+* [ ] **Integrating JSON/XML parsing into the collector.**
+  * **Design & Config pattern:** Following the **Option 4 (Implicit Format Selection)** model, adding JSON or XML parsing in the future should follow these steps:
+    1. **YAML Schema Design (`configs/worker/collector/parsers.yaml`)**:
+       Format is implicitly selected by the presence of a format-specific config block (e.g., `html:`, `json:`, or `xml:`).
+       ```yaml
+       parsers:
+         www.example-json.com:
+           enabled: true
+           date_layouts:
+             - "2006-01-02T15:04:05Z"
+           json:
+             title: ["$.article.title"]
+             date: ["$.article.published_at"]
+             content: ["$.article.body"]
+
+         www.example-xml.com:
+           enabled: true
+           xml:
+             title: ["/feed/entry/title"]
+             date: ["/feed/entry/published"]
+             content: ["/feed/entry/content"]
+       ```
+    2. **Define Go Configuration Structures (`internal/collector/parser/config/config.go`)**:
+       Add optional pointer fields for `JSON` and `XML` rule configs in `ParserConfig`:
+       ```go
+       type ParserConfig struct {
+           Enabled     *bool            `yaml:"enabled"        json:"enabled,omitempty"`
+           JSONLD      bool             `yaml:"jsonld"         json:"jsonld,omitempty"`
+           DateLayouts []string         `yaml:"date_layouts"   json:"date_layouts,omitempty"`
+           HTML        *html.RuleConfig `yaml:"html,omitempty" json:"html,omitempty"`
+           JSON        *json.RuleConfig `yaml:"json,omitempty" json:"json,omitempty"`
+           XML         *xml.RuleConfig  `yaml:"xml,omitempty"  json:"xml,omitempty"`
+       }
+       ```
+    3. **Enforce Mutual Exclusion and Startup Validation**:
+       Update the validation logic (either in `LoadConfig` or `BuildRegistry`) to enforce that exactly one format-specific rule block is non-nil for each registered host:
+       ```go
+       // Ensure exactly one parser format block is configured
+       formatCount := 0
+       if pCfg.HTML != nil { formatCount++ }
+       if pCfg.JSON != nil { formatCount++ }
+       if pCfg.XML != nil { formatCount++ }
+
+       if formatCount == 0 {
+           return nil, fmt.Errorf("missing parser configuration (html, json, or xml) for host %s", host)
+       }
+       if formatCount > 1 {
+           return nil, fmt.Errorf("multiple parser configurations specified for host %s; only one format is allowed", host)
+       }
+       ```
+    4. **Register and Build Parsers in `BuildRegistry` (`internal/collector/parser/config/factory.go`)**:
+       Instantiate the appropriate parser concrete implementation based on which pointer is non-nil:
+       ```go
+       var baseParser collector.Parser
+       if pCfg.HTML != nil {
+           baseParser = html.New(*pCfg.HTML, pCfg.DateLayouts)
+       } else if pCfg.JSON != nil {
+           baseParser = json.New(*pCfg.JSON, pCfg.DateLayouts)
+       } else if pCfg.XML != nil {
+           baseParser = xml.New(*pCfg.XML, pCfg.DateLayouts)
+       }
+       ```
+       Then compose it with the JSON-LD parser if `pCfg.JSONLD` is enabled.
