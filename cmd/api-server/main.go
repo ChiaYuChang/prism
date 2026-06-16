@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,6 +27,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 	prismlogger "github.com/ChiaYuChang/prism/pkg/logger"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -212,25 +214,32 @@ func main() {
 		}
 	}()
 
-	var internalServer *http.Server
+	internalMux := http.NewServeMux()
 	if config.Monitoring.Mode == "push" {
-		internalMux := http.NewServeMux()
 		apiServer.RegisterInternal(internalMux, apiMiddleware...)
-
-		internalServer = &http.Server{
-			Addr:         fmt.Sprintf(":%d", config.Monitoring.InternalPort),
-			Handler:      chain(internalMux),
-			ReadTimeout:  config.ReadTimeout,
-			WriteTimeout: config.WriteTimeout,
-		}
-
-		go func() {
-			logger.Info("internal api server listening", "port", config.Monitoring.InternalPort)
-			if err := internalServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				serverErr <- fmt.Errorf("internal api server failed: %w", err)
-			}
-		}()
 	}
+
+	// Register pprof handlers internally on the internal port for secure monitoring
+	internalMux.HandleFunc("/debug/pprof/", pprof.Index)
+	internalMux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	internalMux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	internalMux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	internalMux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	internalMux.Handle("/metrics", promhttp.Handler())
+
+	internalServer := &http.Server{
+		Addr:         fmt.Sprintf(":%d", config.Monitoring.InternalPort),
+		Handler:      chain(internalMux),
+		ReadTimeout:  config.ReadTimeout,
+		WriteTimeout: config.WriteTimeout,
+	}
+
+	go func() {
+		logger.Info("internal api server listening", "port", config.Monitoring.InternalPort)
+		if err := internalServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- fmt.Errorf("internal api server failed: %w", err)
+		}
+	}()
 
 	select {
 	case err := <-serverErr:

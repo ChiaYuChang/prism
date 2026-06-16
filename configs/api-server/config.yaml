@@ -9,6 +9,7 @@ postgres:
   username: '{{ env "POSTGRES_APP_USER" "prism" }}'
   db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
+  metrics-enabled: true
 valkey:
   host: '{{ env "VALKEY_HOST" "valkey" }}'
   port: {{ env "VALKEY_PORT" "6379" }}

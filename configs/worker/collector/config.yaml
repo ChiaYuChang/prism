@@ -17,6 +17,7 @@ postgres:
   username: '{{ env "POSTGRES_APP_USER" "prism" }}'
   db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
+  metrics-enabled: true
 telemetry:
   enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   service-name: prism.collector

@@ -26,6 +26,9 @@ type PostgresConfig struct {
 	MinConns        int32         `mapstructure:"min-conns"     validate:"min=0"`
 	MaxConnIdleTime time.Duration `mapstructure:"max-idle-time" validate:"min=0"`
 	MaxConnLifetime time.Duration `mapstructure:"max-lifetime"  validate:"min=0"`
+
+	// MetricsEnabled enables pgx Prometheus collectors for this repository.
+	MetricsEnabled bool `mapstructure:"metrics-enabled"`
 }
 
 // ResolveSecrets loads PasswordFile if set, replacing Password. Call after
@@ -48,7 +51,7 @@ func (p *PostgresConfig) ConnString() string {
 }
 
 func (p PostgresConfig) String() string {
-	return fmt.Sprintf("host=%s port=%d username=%s password=%s db=%s sslmode=%s max_conns=%d min_conns=%d max_idle=%s max_lifetime=%s",
+	return fmt.Sprintf("host=%s port=%d username=%s password=%s db=%s sslmode=%s max_conns=%d min_conns=%d max_idle=%s max_lifetime=%s metrics_enabled=%t",
 		p.Host, p.Port, p.Username, prismlogger.SecretMask(p.Password), p.DB, p.SSLMode,
-		p.MaxConns, p.MinConns, p.MaxConnIdleTime, p.MaxConnLifetime)
+		p.MaxConns, p.MinConns, p.MaxConnIdleTime, p.MaxConnLifetime, p.MetricsEnabled)
 }

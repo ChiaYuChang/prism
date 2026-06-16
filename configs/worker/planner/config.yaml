@@ -12,6 +12,7 @@ postgres:
   username: '{{ env "POSTGRES_APP_USER" "prism" }}'
   db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
+  metrics-enabled: true
 llm:
   provider: '{{ env "PRISM_PLANNER_LLM_PROVIDER" "gemini" }}'
   model: '{{ env "PRISM_PLANNER_LLM_MODEL" "gemini-2.0-flash" }}'

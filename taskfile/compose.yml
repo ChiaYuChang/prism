@@ -69,7 +69,7 @@ tasks:
       Waits for healthy/running containers in the currently baked compose stack.
       Core services are always checked: postgres, nats, valkey, seaweedfs.
       When COMPOSE_PROFILES includes obs, also checks the Victoria stack:
-      victoria-metrics, victoria-logs, victoria-traces, otel-collector, grafana.
+      victoria-metrics, vmagent, victoria-logs, victoria-traces, otel-collector, grafana.
     deps: [ bake ]
     vars:
       TIMEOUT: "{{.TIMEOUT | default 30}}"
@@ -81,7 +81,7 @@ tasks:
         SERVICES=(postgres nats valkey seaweedfs)
         PROFILES=",{{.COMPOSE_PROFILES}},"
         if [[ "$PROFILES" == *",obs,"* ]]; then
-          SERVICES+=(victoria-metrics victoria-logs victoria-traces otel-collector grafana)
+          SERVICES+=(victoria-metrics vmagent victoria-logs victoria-traces otel-collector grafana)
         fi
         for svc in "${SERVICES[@]}"; do
           CID=$(docker compose -f {{.COMPOSE_MERGED}} ps -q $svc)
@@ -433,6 +433,6 @@ tasks:
       COMPOSE_PROFILES: "{{.EFFECTIVE_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} stop pgadmin nats-nui redisinsight
-        victoria-logs grafana
+        victoria-metrics vmagent victoria-logs victoria-traces otel-collector grafana
       - docker compose -f {{.COMPOSE_MERGED}} rm -f pgadmin nats-nui redisinsight
-        victoria-logs grafana
+        victoria-metrics vmagent victoria-logs victoria-traces otel-collector grafana

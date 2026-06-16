@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // HealthLevel defines the severity of the service health.
@@ -74,6 +77,15 @@ func (h *HealthMonitor) Uptime() time.Duration {
 // It uses the provided monitor to report the current status.
 func StartHealthServer(ctx context.Context, port int, monitor *HealthMonitor) {
 	mux := http.NewServeMux()
+
+	// Register pprof handlers internally on the health port for secure monitoring
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	mux.Handle("/metrics", promhttp.Handler())
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		level, message := monitor.Status()
 
