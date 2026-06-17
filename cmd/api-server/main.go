@@ -93,11 +93,14 @@ func main() {
 	valkeyNeeded := config.Cache.Enabled || config.Monitoring.Backend == "valkey"
 	var valkeyClient *redis.Client
 	if valkeyNeeded {
-		valkeyClient, err = infra.NewValkeyClient(ctx, &redis.Options{
-			Addr:     config.Valkey.Addr(),
-			Username: config.Valkey.Username,
-			Password: config.Valkey.Password,
-			DB:       config.Valkey.DB,
+		valkeyClient, err = infra.NewValkeyClient(ctx, infra.ValkeyClientConfig{
+			Addr:           config.Valkey.Addr(),
+			Username:       config.Valkey.Username,
+			Password:       config.Valkey.Password,
+			DB:             config.Valkey.DB,
+			ClientName:     config.Valkey.ClientName,
+			TracingEnabled: config.Valkey.TracingEnabled,
+			MetricsEnabled: config.Valkey.MetricsEnabled,
 		})
 		if err != nil {
 			logger.Error("failed to dial valkey", "addr", config.Valkey.Addr(), "error", err)

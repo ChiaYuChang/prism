@@ -15,6 +15,9 @@ valkey:
   port: {{ env "VALKEY_PORT" "6379" }}
   username: '{{ env "VALKEY_APP_USER" "prism" }}'
   db: 0
+  client-name: api-shared
+  tracing-enabled: true
+  metrics-enabled: true
 cache:
   enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   live-ttl: 2s

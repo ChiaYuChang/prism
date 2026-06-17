@@ -22,6 +22,9 @@ valkey:
   port: {{ env "VALKEY_PORT" "6379" }}
   username: '{{ env "VALKEY_APP_USER" "prism" }}'
   db: 0
+  client-name: scheduler-fast-lock
+  tracing-enabled: true
+  metrics-enabled: true
 telemetry:
   enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   service-name: prism.scheduler.fast

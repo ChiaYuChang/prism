@@ -30,7 +30,6 @@ import (
 	lg "github.com/ChiaYuChang/prism/pkg/logger"
 
 	wm "github.com/ThreeDotsLabs/watermill/message"
-	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -423,11 +422,14 @@ func main() {
 	}
 
 	// 5. Valkey + Distributed Locker
-	vClient, err := infra.NewValkeyClient(ctx, &redis.Options{
-		Addr:     config.Valkey.Addr(),
-		Username: config.Valkey.Username,
-		Password: config.Valkey.Password,
-		DB:       config.Valkey.DB,
+	vClient, err := infra.NewValkeyClient(ctx, infra.ValkeyClientConfig{
+		Addr:           config.Valkey.Addr(),
+		Username:       config.Valkey.Username,
+		Password:       config.Valkey.Password,
+		DB:             config.Valkey.DB,
+		ClientName:     config.Valkey.ClientName,
+		TracingEnabled: config.Valkey.TracingEnabled,
+		MetricsEnabled: config.Valkey.MetricsEnabled,
 	})
 	if err != nil {
 		slog.Error("failed to connect to Valkey", "addr", config.Valkey.Addr(), "error", err)
