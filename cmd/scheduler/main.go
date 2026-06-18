@@ -304,6 +304,13 @@ func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error 
 
 		msg := wm.NewMessage(uuid.Must(uuid.NewV7()).String(), payload)
 		msg.Metadata.Set("trace_id", task.TraceID)
+		if err := message.InjectTraceContext(ctx, msg); err != nil {
+			span.RecordError(err)
+			result = "error"
+			s.metrics.recordTask(ctx, task, "trace_context_failed")
+			tLogger.Error("failed to inject trace context", "error", err)
+			continue
+		}
 
 		if err := s.publisher.Publish(message.TaskTopic, msg); err != nil {
 			span.RecordError(err)

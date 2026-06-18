@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 
 	"go.opentelemetry.io/otel/metric"
@@ -101,6 +104,8 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 // InitTelemetry configures shared OTLP trace and metric export. Disabled
 // telemetry returns no-op providers and never attempts to connect to OTLP.
 func InitTelemetry(ctx context.Context, cfg TelemetryConfig) (*Telemetry, error) {
+	configureTextMapPropagator()
+
 	tracing, err := InitTracing(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -109,6 +114,16 @@ func InitTelemetry(ctx context.Context, cfg TelemetryConfig) (*Telemetry, error)
 	if err != nil {
 		return nil, errors.Join(err, tracing.Shutdown(ctx))
 	}
+
+	if cfg.Enabled {
+		if err := runtime.Start(
+			runtime.WithMinimumReadMemStatsInterval(15*time.Second),
+			runtime.WithMeterProvider(otel.GetMeterProvider()),
+		); err != nil {
+			return nil, fmt.Errorf("initialize go runtime metrics: %w", err)
+		}
+	}
+
 	return &Telemetry{Tracing: tracing, Metrics: metrics}, nil
 }
 
@@ -145,6 +160,15 @@ func InitTracing(ctx context.Context, cfg TelemetryConfig) (Tracing, error) {
 	otel.SetTracerProvider(provider)
 
 	return Tracing{provider: provider, shutdown: provider.Shutdown}, nil
+}
+
+func configureTextMapPropagator() {
+	otel.SetTextMapPropagator(
+		propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		),
+	)
 }
 
 // InitMetrics configures shared OTLP metric export. Disabled telemetry returns

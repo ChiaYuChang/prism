@@ -57,6 +57,9 @@ func (p *WatermillBatchCompletedPublisher) PublishBatchCompleted(ctx context.Con
 
 	msg := wm.NewMessage(msgID.String(), payload)
 	msg.Metadata.Set("trace_id", sig.TraceID)
+	if err := InjectTraceContext(ctx, msg); err != nil {
+		return fmt.Errorf("inject batch completed trace context: %w", err)
+	}
 	if err := p.publisher.Publish(BatchCompletedTopic, msg); err != nil {
 		return fmt.Errorf("publish batch completed signal: %w", err)
 	}

@@ -152,6 +152,11 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 		return true, nil
 	}
 
+	ctx, traceErr := message.ExtractTraceContext(ctx, msg)
+	if traceErr != nil {
+		h.metrics.recordTask(ctx, sig, "invalid", started)
+		return true, fmt.Errorf("extract trace context: %w", traceErr)
+	}
 	ctx = obs.WithTraceID(ctx, sig.TraceID)
 	ctx, span := h.tracer.Start(ctx, SpanNameHandleMessage)
 	defer span.End()
@@ -319,6 +324,9 @@ func (h *Handler) publishArchive(ctx context.Context, logger *slog.Logger, conte
 	msgID := uuid.Must(uuid.NewV7()).String()
 	wmMsg := wm.NewMessage(msgID, payload)
 	wmMsg.Metadata.Set("trace_id", sig.TraceID)
+	if err := message.InjectTraceContext(ctx, wmMsg); err != nil {
+		return fmt.Errorf("inject archive trace context: %w", err)
+	}
 
 	if err := h.archivePublisher.Publish(message.ArchiveTopic, wmMsg); err != nil {
 		return fmt.Errorf("publish to %s: %w", message.ArchiveTopic, err)

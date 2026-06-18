@@ -51,6 +51,10 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 		return true, fmt.Errorf("%w: batch_id is empty", ErrInvalidSignal)
 	}
 
+	ctx, err := message.ExtractTraceContext(ctx, msg)
+	if err != nil {
+		return true, fmt.Errorf("extract trace context: %w", err)
+	}
 	ctx, span := h.tracer.Start(ctx, "worker.planner.handle_message")
 	defer span.End()
 
