@@ -294,7 +294,7 @@ func BuildLoggingHandlers(ctx context.Context, cfg LoggingConfig) ([]slog.Handle
 		handlers = append(handlers, prismlogger.NewTextHandler(os.Stdout, globalLevel))
 	}
 	if createdLogSlots > 0 {
-		prismlogger.NewLoggerFromHandlers(handlers).Info("log file pool expanded",
+		NewLoggerFromHandlers(handlers).Info("log file pool expanded",
 			"file", cfg.File.File,
 			"max_files", cfg.File.MaxFiles,
 			"created_slots", createdLogSlots)

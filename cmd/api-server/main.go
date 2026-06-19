@@ -26,7 +26,6 @@ import (
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
-	prismlogger "github.com/ChiaYuChang/prism/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -49,7 +48,7 @@ func main() {
 		slog.Error("failed to initialize logger", "error", err)
 		os.Exit(1)
 	}
-	logger := prismlogger.NewLoggerFromHandlers(handlers)
+	logger := obs.NewLoggerFromHandlers(handlers)
 	slog.SetDefault(logger)
 	appconfig.FlushPendingLogs()
 	if config.Monitoring.Mode == "push" {

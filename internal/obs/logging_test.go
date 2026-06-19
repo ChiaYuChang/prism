@@ -1,6 +1,7 @@
 package obs
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	prismlogger "github.com/ChiaYuChang/prism/pkg/logger"
 	"github.com/ChiaYuChang/prism/pkg/units"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -42,6 +42,18 @@ func TestLoggingConfig_NoOTELHeaderLeak(t *testing.T) {
 	assert.NotContains(t, buf.String(), header)
 }
 
+func TestNewLoggerFromHandlersInjectsTraceID(t *testing.T) {
+	var buf bytes.Buffer
+	logger := NewLoggerFromHandlers([]slog.Handler{slog.NewJSONHandler(&buf, nil)})
+
+	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	logger.InfoContext(WithTraceID(context.Background(), traceID), "with trace")
+
+	var record map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &record))
+	assert.Equal(t, traceID, record["trace_id"])
+}
+
 func TestBuildLoggingHandlers_FileOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "prism.log")
 	handlers, file, shutdown, err := BuildLoggingHandlers(context.Background(), LoggingConfig{
@@ -52,7 +64,7 @@ func TestBuildLoggingHandlers_FileOnly(t *testing.T) {
 	require.NotNil(t, file)
 	defer func() { _ = file.Close() }()
 	defer func() { _ = shutdown(context.Background()) }()
-	logger := prismlogger.NewLoggerFromHandlers(handlers)
+	logger := NewLoggerFromHandlers(handlers)
 
 	logger.Info("file-only", slog.String("key", "value"))
 	require.NoError(t, file.Sync())
@@ -72,7 +84,7 @@ func TestBuildLoggingHandlers_FileUsesJSON(t *testing.T) {
 	require.NotNil(t, file)
 	defer func() { _ = file.Close() }()
 	defer func() { _ = shutdown(context.Background()) }()
-	logger := prismlogger.NewLoggerFromHandlers(handlers)
+	logger := NewLoggerFromHandlers(handlers)
 
 	logger.Info("json-file", slog.String("key", "value"))
 	require.NoError(t, file.Sync())
@@ -97,7 +109,7 @@ func TestBuildLoggingHandlers_RotatesSlot(t *testing.T) {
 	defer func() { _ = file.Close() }()
 	defer func() { _ = shutdown(context.Background()) }()
 
-	logger := prismlogger.NewLoggerFromHandlers(handlers)
+	logger := NewLoggerFromHandlers(handlers)
 	logger.Info("some logs that will exceed fifty bytes limit")
 	logger.Info("more logs to ensure rotation happens")
 	require.NoError(t, file.Sync())

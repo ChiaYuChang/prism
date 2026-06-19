@@ -13,7 +13,6 @@ import (
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
-	prismlogger "github.com/ChiaYuChang/prism/pkg/logger"
 )
 
 const (
@@ -35,7 +34,7 @@ func main() {
 		slog.Error("failed to initialize logger", "error", err)
 		os.Exit(1)
 	}
-	logger := prismlogger.NewLoggerFromHandlers(handlers)
+	logger := obs.NewLoggerFromHandlers(handlers)
 	slog.SetDefault(logger)
 	appconfig.FlushPendingLogs()
 	defer func() {

@@ -376,7 +376,7 @@ func main() {
 		slog.Error("failed to initialize logger", "error", err)
 		os.Exit(1)
 	}
-	logger := lg.NewLoggerFromHandlers(handlers)
+	logger := obs.NewLoggerFromHandlers(handlers)
 	slog.SetDefault(logger)
 	appconfig.FlushPendingLogs()
 	defer func() {
