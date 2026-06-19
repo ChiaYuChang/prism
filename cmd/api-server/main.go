@@ -190,6 +190,7 @@ func main() {
 
 	chain := middleware.Chain(
 		middleware.RequestID(),
+		middleware.HTTPTracing(),
 		middleware.HTTPMetrics(httpMetrics),
 		middleware.Logger(logger),
 		middleware.Recoverer(logger),

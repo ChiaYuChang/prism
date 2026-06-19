@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,9 @@ import (
 
 	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestIsPublicAddr(t *testing.T) {
@@ -79,4 +83,28 @@ func TestNewPublicClientTimeout(t *testing.T) {
 	}
 	require.Error(t, err)
 	require.ErrorContains(t, err, "Client.Timeout exceeded")
+}
+
+func TestNewPublicClientTracesOutboundRequests(t *testing.T) {
+	previousProvider := otel.GetTracerProvider()
+	t.Cleanup(func() { otel.SetTracerProvider(previousProvider) })
+
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	otel.SetTracerProvider(tp)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	client := httpclient.NewPublicClient(time.Second, httpclient.WithPrivateNetworks())
+	resp, err := client.Get(srv.URL)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	require.Equal(t, "HTTP GET", spans[0].Name)
 }

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
@@ -256,7 +257,7 @@ func (s *Server) StartMonitor(ctx context.Context, interval time.Duration, targe
 		return
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Transport: httpclient.NewTracingTransport(http.DefaultTransport)}
 
 	pingFunc := func() {
 		var wg sync.WaitGroup

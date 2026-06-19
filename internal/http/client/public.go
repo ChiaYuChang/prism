@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/netip"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 const DefaultTimeout = 30 * time.Second
@@ -37,8 +39,16 @@ func NewPublicClient(timeout time.Duration, opts ...Option) *http.Client {
 	}
 	return &http.Client{
 		Timeout:   timeout,
-		Transport: NewPublicTransport(nil, opts...),
+		Transport: NewTracingTransport(NewPublicTransport(nil, opts...)),
 	}
+}
+
+// NewTracingTransport wraps base with OpenTelemetry outbound HTTP tracing.
+func NewTracingTransport(base http.RoundTripper) http.RoundTripper {
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return otelhttp.NewTransport(base)
 }
 
 // NewPublicTransport clones base and installs a public-network-only dialer.
