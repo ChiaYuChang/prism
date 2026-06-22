@@ -3,6 +3,7 @@ package client_test
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -82,7 +83,9 @@ func TestNewPublicClientTimeout(t *testing.T) {
 		_ = resp.Body.Close()
 	}
 	require.Error(t, err)
-	require.ErrorContains(t, err, "Client.Timeout exceeded")
+	var netErr net.Error
+	require.ErrorAs(t, err, &netErr)
+	require.True(t, netErr.Timeout())
 }
 
 func TestNewPublicClientTracesOutboundRequests(t *testing.T) {
