@@ -108,6 +108,7 @@ services:
       PRISM_API_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     ports:
       - "8090:8090"
+      - "127.0.0.1:${API_INTERNAL_PORT:-8089}:8089"
     networks:
       - prism-net
     volumes:
@@ -118,5 +119,4 @@ services:
       valkey:
         condition: service_healthy
     restart: unless-stopped
-
 

@@ -67,7 +67,7 @@ The `tasks` table represents one executable request — one source-aware fetch i
 
 | `kind` | `source_type` | Who creates it | Description |
 |---|---|---|---|
-| `DIRECTORY_FETCH` | `PARTY` | Scheduler (cron) | Scout crawls party press release directory pages (HTML/RSS/Atom) |
+| `DIRECTORY_FETCH` | `PARTY` | Schedule trigger | Scout crawls party press release directory pages (HTML/RSS/Atom) |
 | `DIRECTORY_FETCH` | `MEDIA` | _reserved_ | Scout crawls media directory pages (future) |
 | `KEYWORD_SEARCH` | `MEDIA` | Planner (auto, after PARTY batch) | Scout calls search API (Google Custom Search etc.) with extracted keyword phrases |
 | `PAGE_FETCH` | `PARTY` | Discovery Worker (auto, after PARTY candidate created) | Collector fetches full press release text |
@@ -106,15 +106,37 @@ More generally, Prism uses multiple trigger classes:
 * `resource` trigger: state/lifecycle observation such as batch completion or insert-driven follow-up work
 * `manual` trigger: operator or user initiated actions such as backfill or explicit selection
 
-`cmd/scheduler` is one concrete `schedule` trigger implementation.
+`cmd/trigger/schedule` materializes recurring schedule intent into concrete task rows. `cmd/scheduler` is the task dispatcher: it claims runnable rows from `tasks` and publishes them to workers.
+
+### Schedule Materialization
+
+Recurring discovery is stored as schedule state, not as in-memory Go tickers and not as PostgreSQL `pg_cron` jobs. `schedules.yaml` is read-only desired configuration; runtime state lives in PostgreSQL.
+
+Schedule identity is an operator-provided UUIDv7 per schedule. Human labels (`name`) and routing metadata (`source_abbr`) are mutable and are not used as durable identity. Removing a YAML entry marks its DB row as not config-present; runtime history is not deleted automatically.
+
+`cmd/trigger/schedule` runs a single heartbeat loop. On each tick it claims due rows from `schedules` with `FOR UPDATE SKIP LOCKED`, then in the same transaction creates or recovers a concrete task and advances schedule state:
+
+```
+schedules.yaml
+ └─► config sync into schedules
+      └─► cmd/trigger/schedule heartbeat
+           └─► BEGIN
+                ├─► SELECT due schedules FOR UPDATE SKIP LOCKED
+                ├─► CreateTask / recover active task
+                ├─► UPDATE schedules.next_fire_at, last_materialized_task_id
+                └─► COMMIT
+                     └─► cmd/scheduler claims task → Watermill → worker
+```
+
+Schedule columns use schedule-specific names (`next_fire_at`, `last_fire_at`, `last_materialized_at`, `last_materialized_task_id`) to avoid semantic overlap with `tasks.next_run_at` and `tasks.last_run_at`. Watermill is not used between schedules and task insertion; the database transaction is the durability and concurrency boundary.
 
 ## 2.3 High-Level Flow
 
 ### Party Press Release Intake
 
 ```
-cron
- └─► CreateTask(PARTY + DIRECTORY_FETCH) in tasks
+cmd/trigger/schedule
+ └─► materializes due schedule into CreateTask(PARTY + DIRECTORY_FETCH)
       └─► scheduler-slow claims → publishes TaskSignal → [prism.task]
            └─► Discovery Worker: Scout crawls party directory pages
                 └─► candidates (PARTY) persisted

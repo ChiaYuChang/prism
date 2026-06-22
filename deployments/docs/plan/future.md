@@ -28,7 +28,45 @@ Deferred refactors, dual-mode deployment plans, archive catalog refactor, and cl
 * [ ] TUI and Web dashboard.
   * TUI: `cmd/tui` (2.8) — Bubble Tea, single Go binary for operator use.
   * Web: Alpine.js + server-side Go templates, static assets `//go:embed`-ed into `cmd/api-server`. Keep the API JSON-only; Alpine consumes the same `/api/v1/*` endpoints as TUI — no separate HTML-fragment endpoints (would be the HTMX alternative). One API surface, two renderers.
-* [ ] Email / webhook notification on user-triggered batch completion (builds on 2.7 `GET /batches/{batch_id}`). Batch meta should reserve a `notify` field (`{email, webhook_url}`) so `POST /page_fetch` callers can opt in without a schema change later.
+* [ ] **Admin schedule API v2.**
+  * **When:** after `cmd/trigger/schedule` is deployed and recurring `DIRECTORY_FETCH` is stable.
+  * **Why:** schedule creation and run-now are admin/control-plane behavior, not public user API behavior. v1 should keep schedule identity in YAML using operator-provided UUIDv7 values.
+  * **What:** add authenticated admin endpoints for listing schedules, fuzzy lookup, run-now, pause/resume, and controlled edits: `GET /admin/schedules`, `GET /admin/schedules/search?q=...`, `POST /admin/schedules/{id}/run-now`, `POST /admin/schedules/{id}/pause`, `POST /admin/schedules/{id}/resume`, and eventually `PATCH /admin/schedules/{id}`.
+  * **Fuzzy lookup:** search by UUID exact/prefix, name, `source_abbr`, `kind`, `source_type`, and URL fragment so operators can recover schedule IDs from human-known fields. Start with simple `ILIKE`; add `pg_trgm` only if schedule count makes it necessary.
+  * **Anti-goals:** do not expose raw public task creation first, do not use `name` or `source_abbr` as durable identity, and do not let runtime code write back to `schedules.yaml`.
+* [ ] **Schedule groups and advanced materialization policy.**
+  * Add schedule groups such as `party-daily` only if planner semantics require DPP/TPP/KMT to share one business batch. v1 uses one due schedule → one batch → one task.
+  * Add overlap/catch-up policies only after observing operational need. v1 treats `ErrTaskAlreadyActive` as success and advances `next_fire_at`; future policies may include `skip`, `enqueue`, or bounded catch-up.
+* [ ] **Post-deployment fetch completion notifier (email/webhook).**
+  * **When:** after laptop and home-server deployment are working. v1 remains client-side polling via `GET /fetches/{id}`.
+  * **Why:** autonomous email/webhook delivery needs persisted completion transitions. Today `GET /fetches/{id}` computes `terminal` on demand and `fetches.completed_at` is intentionally unused.
+  * **What:** add a small DB-polling notifier (`cmd/worker/notifier` or `cmd/trigger/user-fetch`) that combines transition detection and claiming in one SQL statement:
+    ```sql
+    UPDATE fetches f
+    SET completed_at = NOW()
+    WHERE f.completed_at IS NULL
+      AND EXISTS (
+        SELECT 1 FROM fetch_items i WHERE i.fetch_id = f.id
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM fetch_items i
+        LEFT JOIN tasks t ON t.id = i.task_id
+        WHERE i.fetch_id = f.id
+          AND COALESCE(i.snapshot_status, t.status::text)
+              NOT IN ('COMPLETED', 'FAILED', 'ALREADY_COMPLETE')
+      )
+    RETURNING *;
+    ```
+    The returned rows are newly observed terminal fetches; the notifier sends email/webhook for those rows.
+  * **Delivery safety:** before this becomes more than a single-user convenience, add `notification_deliveries(fetch_id, channel, recipient, status, attempts, last_error, sent_at)` so crashes between marking complete and sending do not lose or duplicate notifications.
+  * **Anti-goals:** do not send email from the collector (one task can serve many fetches), and do not make normal `GET /fetches/{id}` responsible for notification side effects.
+* [ ] **Podman home-server deployment hardening.**
+  * **When:** after the Docker-based laptop deployment path is green.
+  * **Why:** the development laptop uses Docker/Compose, while the home server uses Podman. Keep application behavior identical, but expect runtime differences around Compose compatibility, networking, secrets, volume ownership, health checks, and restart/systemd integration.
+  * **What:** validate the existing baked Compose output under Podman/Podman Compose, document any required command substitutions, and prefer deployment-script or Taskfile adaptations over application-code changes.
+  * **Checks:** confirm Postgres/NATS/Valkey/SeaweedFS startup, app/worker container startup, internal networking and DNS names, mounted `.secrets` permissions, persistent volume ownership, `/healthz`, `/readyz`, `/metrics`, and one end-to-end `page_fetch`.
+  * **System integration:** after manual Podman deployment works, add systemd user/service units or `podman generate systemd` guidance for restart-on-boot. Do not add this before the manual path is proven.
 * [ ] JS-rendered scraping via Playwright where legally and operationally acceptable.
 * [ ] Persist rolling-window seed clustering as analysis assets.
 * [ ] Model cluster lineage as a directed graph or DAG for issue evolution analysis.

@@ -1,0 +1,74 @@
+version: "3"
+
+tasks:
+  test:
+    desc: one-command local test-stage deployment with Docker Compose
+    summary: |
+      Preflights required local secret files, bakes env/local/test.local.env and
+      build/infra runtime config, then starts the full containerized stack via
+      the existing compose:start flow. This intentionally uses a fresh nested
+      `task` process after baking secrets so Task's dotenv layer reloads the
+      generated env/local/test.local.env file.
+    vars:
+      DEPLOY_ENV: test
+      DEPLOY_PROFILES: '{{.COMPOSE_PROFILES | default "dev,obs"}}'
+    cmds:
+      - task: preflight:test
+      - ENV={{.DEPLOY_ENV}} ./script/secrets-bake.sh
+      - ENV={{.DEPLOY_ENV}} ./script/infra-bake.sh
+      - task compose:start ENV={{.DEPLOY_ENV}} COMPOSE_PROFILES={{.DEPLOY_PROFILES}}
+      - |
+        printf '\nLocal test stack is starting/running.\n'
+        printf 'API health:   http://localhost:8090/healthz\n'
+        printf 'API ready:    http://localhost:8090/readyz\n'
+        printf 'API metrics:  http://localhost:8089/metrics\n'
+        printf 'API pprof:    http://localhost:8089/debug/pprof/\n'
+        printf 'Grafana:      http://localhost:3100\n'
+        printf 'Teardown:     task compose:down ENV=test\n'
+
+  preflight:test:
+    desc: check local prerequisites for deploy:test
+    cmds:
+      - |
+        missing=0
+
+        require_cmd() {
+          if ! command -v "$1" >/dev/null 2>&1; then
+            printf 'missing command: %s\n' "$1" >&2
+            missing=1
+          fi
+        }
+
+        require_file() {
+          if [ ! -f "$1" ]; then
+            printf 'missing file: %s\n' "$1" >&2
+            missing=1
+          fi
+        }
+
+        require_cmd docker
+        require_cmd task
+        require_cmd sha256sum
+
+        if command -v docker >/dev/null 2>&1; then
+          if ! docker compose version >/dev/null 2>&1; then
+            printf 'docker compose plugin is unavailable\n' >&2
+            missing=1
+          fi
+        fi
+
+        require_file .secrets/pg-admin
+        require_file .secrets/pg-prism
+        require_file .secrets/nats-auth-token
+        require_file .secrets/seaweedfs
+        require_file .secrets/valkey_prism
+
+        if [ -f {{.MODE_FILE}} ]; then
+          printf 'stack %s is already up; run `task compose:down ENV=test` first\n' "$(cat {{.MODE_FILE}})" >&2
+          missing=1
+        fi
+
+        if [ "$missing" -ne 0 ]; then
+          printf '\nCannot deploy local test stack yet. Create the missing local files and retry `task deploy:test`.\n' >&2
+          exit 1
+        fi

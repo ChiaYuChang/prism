@@ -53,6 +53,14 @@ tasks:
     env:
       COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
       COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
+      NATS_AUTH_TOKEN:
+        sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
+      POSTGRES_APP_PASSWORD:
+        sh: "cat {{.POSTGRES_APP_PASSWORD_FILE}}"
+      VALKEY_APP_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
+      POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
+      VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
     cmds:
       - mkdir -p {{.TASK_DIR}}
       - mkdir -p runtime/logs/{api-server,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
@@ -76,6 +84,14 @@ tasks:
     env:
       COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
       COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
+      NATS_AUTH_TOKEN:
+        sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
+      POSTGRES_APP_PASSWORD:
+        sh: "cat {{.POSTGRES_APP_PASSWORD_FILE}}"
+      VALKEY_APP_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
+      POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
+      VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
     cmds:
       - |
         SERVICES=(postgres nats valkey seaweedfs)
@@ -212,6 +228,7 @@ tasks:
       POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
       VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
       WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
+      API_INTERNAL_PORT: '{{.API_INTERNAL_PORT | default "8089"}}'
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} build batch-detector
         batch-publisher prism-api

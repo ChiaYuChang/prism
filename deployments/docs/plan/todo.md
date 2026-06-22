@@ -53,13 +53,14 @@ Phase A (`ArticleParser` removal + tests for kept components), the 2026-05 layer
   * [ ] **Dashboards and alerting:** starter Grafana datasource wiring exists, but review-ready dashboards and alerts for scheduler, worker, LLM/search provider, API health, Postgres, and Valkey remain open.
   * [ ] **CI lint job:** add a separate GitHub Actions job for `golangci-lint run ./...` after checking the local lint version and confirming `rtk golangci-lint run ./...` passes. Pin the action/tool version, keep the current short-test job unchanged, commit separately, and do not push without explicit approval. If signed push fails, stop instead of bypassing signing.
 * [ ] 4.2 Admin Operations:
-  * [ ] **Laptop deployment runbook:** document exact commands for secrets bake, compose bake/up, migrations, app/worker startup, health checks, and teardown.
+  * [ ] **Laptop deployment runbook:** document `task deploy:test` plus the underlying secrets bake, runtime-config bake, compose bake/up, migrations, app/worker startup, health checks, and teardown.
   * [ ] **Recover verification:** run `cmd/recover status/list/run --dry-run` against local archives and confirm the operator path still works after the synthetic-fixture split.
   * [ ] **State inspection:** document DB/API queries for runnable/failed tasks, recent candidates, fetch progress, and content ingestion status. Build a CLI/TUI only if manual queries become painful.
   * [ ] **Pause/restart policy:** use Docker Compose/service lifecycle for now. Defer API-level pause/resume discovery until the deployed system needs finer-grained control.
 * [ ] 4.3 Laptop/Home-Server Deployment:
-  * [ ] **Laptop first:** deploy the real stack locally with persistent volumes, run migrations, start app + workers, submit one `page_fetch`, poll `GET /fetches/{id}` to terminal, and confirm a `contents` row plus archive/log/metric visibility.
-  * [ ] **Home server next:** copy the validated laptop flow, secure `.secrets`, restrict exposed ports, choose persistent volume locations, and verify restart behavior.
+  * [ ] **Schedule-triggered DIRECTORY_FETCH:** add `schedules` table, config sync from `configs/trigger/schedule/schedules.yaml`, and `cmd/trigger/schedule` heartbeat materializer. The trigger claims due schedules with `FOR UPDATE SKIP LOCKED`, creates/recover tasks and advances `next_fire_at` in one transaction, then leaves dispatch to the existing `cmd/scheduler` → Watermill → worker path.
+  * [ ] **Laptop first (Docker):** deploy the real stack locally with `task deploy:test`, persistent volumes, migrations, app + workers, one `page_fetch`, `GET /fetches/{id}` polling to terminal, and content/archive/log/metric visibility checks.
+  * [ ] **Home server next (Podman):** port the validated laptop flow to Podman/Podman Compose, secure `.secrets`, restrict exposed ports, choose persistent volume locations, and verify restart behavior. Track Docker-vs-Podman gaps explicitly before changing application code.
   * [ ] **Backup plan:** define minimum backup/restore for Postgres and archive/object storage before treating the home-server deployment as durable.
 
 ## Immediate Next Steps (items 11–15)

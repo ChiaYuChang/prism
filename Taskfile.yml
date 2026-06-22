@@ -102,6 +102,9 @@ includes:
   worker:
     taskfile: ./taskfile/worker.yml
     dir: .
+  deploy:
+    taskfile: ./taskfile/deploy.yml
+    dir: .
   testtasks:
     taskfile: ./taskfile/test.yml
     dir: .
