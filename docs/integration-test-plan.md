@@ -36,12 +36,12 @@ interpreter doesn't return real OS PIDs from `$!`).
 - [x] `task worker:start` — launch **two scheduler instances** (slow=DIRECTORY_FETCH+KEYWORD_SEARCH, fast=PAGE_FETCH) + discovery + collector, all detached
   - Logs in `logs/<name>.log` (`scheduler-slow.log`, `scheduler-fast.log`, `discovery.log`, `collector.log`)
   - Health endpoints: scheduler-slow:8090, scheduler-fast:8091, discovery:8092, collector:8093
-  - Discovery + collector both start with `--capture-dir=testdata/fixtures`; collector also archives to `file://./tmp/archives`
+  - Discovery + collector both start with `--capture-dir=testdata/real`; collector also archives to `file://./tmp/archives`
 - [x] `tail -f logs/*.log` — watch ~26 articles flow through (drained at ~3/min due to rate limiter)
 - [x] Verify after run (run on 2026-04-30):
   - `candidates`: dpp=10, kmt=10, tpp=6 (total 26)
   - `contents`: dpp=10, kmt=10, tpp=6 (total 26 — zero loss)
-  - `testdata/fixtures/www.{dpp,tpp,kmt}.org.tw/...` holds the captured HTML
+  - `testdata/real/www.{dpp,tpp,kmt}.org.tw/...` holds the captured HTML
   - `./tmp/archives/` has the minified archives (normal success path)
 - [x] `task worker:stop` — `pkill -f` against argv pattern (no PID files involved)
 - [x] `task test:e2e:teardown` — drop the e2e stack including volumes (subsequent runs start clean, so seed SQL stays non-idempotent on purpose)
@@ -55,7 +55,7 @@ interpreter doesn't return real OS PIDs from `$!`).
 
 Code committed in `322a012`; end-to-end run not yet verified.
 
-- [x] Add `cmd/dev/fixture-server/main.go` — `http.FileServer` serving `testdata/fixtures`
+- [x] Add `cmd/dev/fixture-server/main.go` — `http.FileServer` serving `testdata/real`
 - [x] Add URL rewriter in fetcher: `internal/dev/replay.go` — `WrapClientReplay` transforms `https://<host>/<path>` → `<fixture-base>/<host>/<path>`. Shared by discovery + collector via `--fixture-base` flag.
 - [x] Taskfile entries `fixture:start/stop` and `worker:start:replay` wired with pgrep-based lifecycle.
 - [x] Re-run pipeline with `task fixture:start` + `task worker:start:replay`, confirm same 26/26 output with zero real-site traffic (capture-dir does not grow).
@@ -221,7 +221,7 @@ isolated `prism-e2e` stack. Verify before assuming work needed:
   already includes a `prism-api` service or whether one must be added
   (Stage 3 only added flags, not the compose service).
 - **fixture-server** — `cmd/dev/fixture-server` exists and serves
-  `testdata/fixtures/<host>/<path>.html`. It runs as a host process in
+  `testdata/real/<host>/<path>.html`. It runs as a host process in
   Phase 2 (`task fixture:start`); for Phase 6 it must run
   inside compose so the collector resolves
   `http://fixture-server:8080/...` from its own network. Add a

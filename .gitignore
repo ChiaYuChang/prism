@@ -53,6 +53,7 @@ tmp/
 # integration test fixtures (rebuild with `go run ./cmd/dev/downloader`)
 testdata/fixtures/
 **/testdata/fixtures/
+testdata/real/
 
 # Editor/IDE
 .idea/

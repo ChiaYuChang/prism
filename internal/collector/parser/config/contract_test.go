@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -23,18 +24,17 @@ import (
 // own RuleConfig in test code.
 //
 // This test wires the REAL parsers.yaml through BuildRegistry → Registry.Parse
-// against one pinned fixture per host, so a selector that no longer matches
-// the target site's DOM (because the site changed, or the yaml entry was
-// mis-copied from an index page) fails CI instead of silently producing empty
-// Title/Content in prod.
+// against synthetic fixtures in testdata/synthetic. Optional local real captures
+// under testdata/real run when present and are skipped otherwise.
 //
 // The assertions are intentionally loose (non-empty / non-zero / min length)
 // because *content correctness* is the job of the per-parser unit tests.
 // What this guards is: "does this host's config still extract SOMETHING from
 // a known-good page?"
 
-// hostFixtures maps hosts in parsers.yaml → a pinned fixture in _testdata/.
-// When adding a host to parsers.yaml, add at least one fixture entry here.
+// hostFixtures maps hosts in parsers.yaml to mirrored fixture names under
+// testdata/{synthetic,real}/collector/parser.
+// When adding a host to parsers.yaml, add at least one synthetic fixture entry here.
 // A host without a fixture skips with a clear message — CI won't fail, but
 // the skip is visible in test output so drift is still observable.
 var hostFixtures = map[string]struct {
@@ -44,12 +44,26 @@ var hostFixtures = map[string]struct {
 	"www.dpp.org.tw": {"dpp_11545.html", "https://www.dpp.org.tw/media/contents/11545"},
 	"www.tpp.org.tw": {"tpp_4530.html", "https://www.tpp.org.tw/newsdetail/4530"},
 	"www.kmt.org.tw": {"kmt_blog-post_20.html", "https://www.kmt.org.tw/2026/04/blog-post_20.html"},
-	// tw.news.yahoo.com: no fixture yet. Download with
-	//   go run ./cmd/dev/downloader -source yahoo
-	// then copy one article page into _testdata/yahoo_<id>.html.
+	// tw.news.yahoo.com: no parser fixture yet; discovery uses a custom scout.
 }
 
 func TestParsersConfig_ContractEachHost(t *testing.T) {
+	runParsersConfigContract(t, parserFixtureRoot("synthetic"), true)
+}
+
+func TestParsersConfig_RealContractEachHost(t *testing.T) {
+	runParsersConfigContract(t, parserFixtureRoot("real"), false)
+}
+
+func runParsersConfigContract(t *testing.T, fixtureRoot string, required bool) {
+	t.Helper()
+	if _, err := os.Stat(fixtureRoot); err != nil {
+		if !required && errors.Is(err, os.ErrNotExist) {
+			t.Skipf("real parser fixtures not found at %s; local captures are optional", fixtureRoot)
+		}
+		require.NoError(t, err)
+	}
+
 	body, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "configs", "worker", "collector", "parsers.yaml"))
 	require.NoError(t, err)
 
@@ -70,10 +84,13 @@ func TestParsersConfig_ContractEachHost(t *testing.T) {
 		t.Run(host, func(t *testing.T) {
 			fx, ok := hostFixtures[host]
 			if !ok {
-				t.Skipf("no pinned fixture for %s — add one to hostFixtures in contract_test.go to guard against selector drift", host)
+				t.Skipf("no fixture for %s — add one to hostFixtures in contract_test.go to guard against selector drift", host)
 			}
 
-			data, err := os.ReadFile(filepath.Join("..", "_testdata", fx.fixture))
+			data, err := os.ReadFile(filepath.Join(fixtureRoot, fx.fixture))
+			if !required && errors.Is(err, os.ErrNotExist) {
+				t.Skipf("real fixture %s not found under %s", fx.fixture, fixtureRoot)
+			}
 			require.NoError(t, err)
 
 			article, err := registry.Parse(context.Background(), fx.url, string(data))
@@ -88,4 +105,8 @@ func TestParsersConfig_ContractEachHost(t *testing.T) {
 				"content for %s is only %d chars — content selector may have drifted", host, len(article.Content))
 		})
 	}
+}
+
+func parserFixtureRoot(kind string) string {
+	return filepath.Join("..", "..", "..", "..", "testdata", kind, "collector", "parser")
 }

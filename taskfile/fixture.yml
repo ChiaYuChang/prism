@@ -8,11 +8,11 @@ tasks:
         ./{{.CMD_DIR}}/dev/fixture-server
 
   start:
-    desc: start fixture-server in background on :9999 serving testdata/fixtures
+    desc: start fixture-server in background on :9999 serving testdata/real
     deps: [ build ]
     vars:
       FIXTURE_ADDR: '{{.FIXTURE_ADDR | default ":9999"}}'
-      FIXTURE_ROOT: '{{.FIXTURE_ROOT | default "testdata/fixtures"}}'
+      FIXTURE_ROOT: '{{.FIXTURE_ROOT | default "testdata/real"}}'
     preconditions:
       - sh: "! pgrep -f '^\\./bin/dev/fixture-server ' >/dev/null"
         msg: "fixture-server already running. Run 'task fixture:stop' first."

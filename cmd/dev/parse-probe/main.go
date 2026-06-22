@@ -3,7 +3,7 @@
 //
 //	go run ./cmd/dev/parse-probe \
 //	    -url https://www.dpp.org.tw/media/contents/11545 \
-//	    -input testdata/fixtures/dpp/11545.html
+//	    -input testdata/real/collector/parser/dpp_11545.html
 //
 // Use -all-parsers to ignore host routing and run every configured host's
 // parser plus the generic fallback — useful for comparing extractors when

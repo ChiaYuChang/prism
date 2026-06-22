@@ -203,7 +203,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # fixture-server — serves testdata/fixtures over HTTP for the e2e replay path.
+  # fixture-server — serves testdata/real over HTTP for the e2e replay path.
   # It is isolated behind the `fixture` profile and is not part of the normal
   # real-world collection stack.
   fixture-server:
@@ -219,7 +219,7 @@ services:
       - --addr=:9999
       - --root=/fixtures
     volumes:
-      - ../testdata/fixtures:/fixtures:ro
+      - ../testdata/real:/fixtures:ro
     networks:
       - prism-net
     restart: unless-stopped

@@ -1,4 +1,4 @@
-// Command fixture-server serves testdata/fixtures over HTTP so worker
+// Command fixture-server serves testdata/real over HTTP so worker
 // binaries running with --fixture-base=http://localhost:<port> can replay
 // the captured corpus end-to-end without touching real sites. Dev-only.
 package main
@@ -11,7 +11,7 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":9999", "listen address (host:port)")
-	root := flag.String("root", "testdata/fixtures", "fixture root directory")
+	root := flag.String("root", "testdata/real", "fixture root directory")
 	flag.Parse()
 
 	log.Printf("fixture-server: serving %s on %s", *root, *addr)

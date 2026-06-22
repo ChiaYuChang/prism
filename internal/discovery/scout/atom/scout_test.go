@@ -45,10 +45,10 @@ func TestScoutDiscover(t *testing.T) {
 				PubDate string
 				Count   int
 			}{
-				URL:     "https://news.pts.org.tw/article/801147",
-				Title:   "明汽柴油再調漲 中油已吸收逾69.9億元",
+				URL:     "https://news.pts.org.tw/article/synthetic-001",
+				Title:   "Synthetic PTS Atom Item 1",
 				PubDate: "2026-03-29",
-				Count:   25,
+				Count:   2,
 			},
 		},
 		{
@@ -66,10 +66,10 @@ func TestScoutDiscover(t *testing.T) {
 				PubDate string
 				Count   int
 			}{
-				URL:     "https://www.kmt.org.tw/2025/09/blog-post_10.html",
-				Title:   "朱立倫主席：遲來的交保不是正義，應給柯文哲空間證明清白",
-				PubDate: "2025-09-10",
-				Count:   10,
+				URL:     "https://www.kmt.org.tw/2026/03/synthetic-001.html",
+				Title:   "Synthetic KMT Atom Item 1",
+				PubDate: "2026-03-29",
+				Count:   2,
 			},
 		},
 	}
@@ -78,7 +78,7 @@ func TestScoutDiscover(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			body, err := os.ReadFile(filepath.Join("..", "_testdata", c.fixture))
+			body, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "testdata", "synthetic", "discovery", "scout", c.fixture))
 			require.NoError(t, err)
 
 			client := &http.Client{

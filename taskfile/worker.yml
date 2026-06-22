@@ -25,7 +25,7 @@ tasks:
       - task: :build:discovery
       - task: :build:collector
     cmds:
-      - mkdir -p logs tmp/archives testdata/fixtures
+      - mkdir -p logs tmp/archives testdata/real
       - |
         ./{{.BUILD_DIR}}/scheduler --messenger-type nats \
           --nats-host localhost --nats-port 4222 \
@@ -54,7 +54,7 @@ tasks:
       - |
         ./{{.BUILD_DIR}}/discovery --messenger-type nats \
           --nats-host localhost --nats-port 4222 \
-          --capture-dir testdata/fixtures \
+          --capture-dir testdata/real \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} \
           --pg-db {{.POSTGRES_APP_DB}} \
@@ -62,7 +62,7 @@ tasks:
       - |
         ./{{.BUILD_DIR}}/collector --messenger-type nats \
           --nats-host localhost --nats-port 4222 \
-          --capture-dir testdata/fixtures \
+          --capture-dir testdata/real \
           --archive "file://$(pwd)/tmp/archives" \
           --pg-host {{.POSTGRES_HOST}} --pg-port {{.POSTGRES_PORT}} \
           --pg-username {{.POSTGRES_APP_USER}} \

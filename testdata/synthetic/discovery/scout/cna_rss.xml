@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <title>Synthetic CNA RSS</title>
+  <item><title>Synthetic CNA RSS Item 1</title><link>https://www.cna.com.tw/news/synthetic/001.aspx</link><description>Synthetic RSS description one.</description><pubDate>Sun, 29 Mar 2026 10:00:00 +0800</pubDate></item>
+  <item><title>Synthetic CNA RSS Item 2</title><link>https://www.cna.com.tw/news/synthetic/002.aspx</link><description>Synthetic RSS description two.</description><pubDate>Sat, 28 Mar 2026 10:00:00 +0800</pubDate></item>
+</channel></rss>

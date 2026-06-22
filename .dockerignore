@@ -34,5 +34,5 @@ env/local
 # Compose / docs / dev-only fixtures (not needed for binary builds)
 deployments/docker-compose*.yaml
 docs
-testdata/fixtures
+testdata/real
 data

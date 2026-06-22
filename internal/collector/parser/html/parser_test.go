@@ -12,16 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Fixtures live in ../_testdata/ (shared across parser/html and parser/jsonld
-// since the same HTML page may be parsed by both). They are pinned snapshots
-// with hand-extracted expected values — do not regenerate from downloader
-// output, or the exact-match assertions below will drift.
+// Fixtures live in testdata/synthetic/collector/parser. They are small,
+// hand-written pages that preserve selector shape without copying third-party
+// website text.
 //
 // To add a new fixture:
-//   1. cp testdata/fixtures/<host>/<path> internal/collector/parser/_testdata/<source>_<id>.html
-//   2. Open the file, find the h3.news_list_title / div.list_name etc. and
-//      manually copy the trimmed text into the expected struct.
-//   3. Pick 2-3 short, article-specific phrases for ContentContains.
+//   1. Add a synthetic page under testdata/synthetic/collector/parser.
+//   2. Preserve the target site's selector structure with original fake text.
+//   3. Pick 2-3 short, synthetic phrases for ContentContains.
 
 type expected struct {
 	URL             string
@@ -50,14 +48,13 @@ func TestHTMLParser_DPP(t *testing.T) {
 			fixture: "dpp_11545.html",
 			expected: expected{
 				URL:         "https://www.dpp.org.tw/media/contents/11545",
-				Title:       "邊喊要公開透明邊蹺班不開會　民進黨：戳破其「理性監督」的假象，國民黨擺明惡意卡國防",
+				Title:       "Synthetic DPP Article 11545",
 				Author:      "",
 				PublishedAt: "2026-04-21",
 				ContentContains: []string{
-					"國防部昨日為回應在野黨要求",
-					"立委竟全程缺席",
-					"開會不來、審預算喊不知情",
-					"厚植國家防衛韌性",
+					"Synthetic DPP paragraph alpha",
+					"verify extraction length",
+					"Synthetic DPP phrase 11545",
 				},
 				ContentMinLen: 200,
 			},
@@ -67,14 +64,13 @@ func TestHTMLParser_DPP(t *testing.T) {
 			fixture: "dpp_11550.html",
 			expected: expected{
 				URL:         "https://www.dpp.org.tw/media/contents/11550",
-				Title:       "鄭麗文再度附和中國「一中政策」　民進黨：與國際脫節、嚴重違背國家路線",
+				Title:       "Synthetic DPP Article 11550",
 				Author:      "",
 				PublishedAt: "2026-04-22",
 				ContentContains: []string{
-					"賴清德總統出訪受阻",
-					"面對中國粗暴施壓",
-					"力挺台灣走向國際舞台",
-					"違背中華民國台灣優先的國家路線",
+					"Synthetic DPP paragraph gamma",
+					"copyright safe",
+					"Synthetic DPP phrase 11550",
 				},
 				ContentMinLen: 200,
 			},
@@ -102,15 +98,13 @@ func TestHTMLParser_TPP(t *testing.T) {
 			fixture: "tpp_4530.html",
 			expected: expected{
 				URL:         "https://www.tpp.org.tw/newsdetail/4530",
-				Title:       "【中央評議委員會公告】眾評決字第115000003號",
+				Title:       "Synthetic TPP Announcement 4530",
 				Author:      "",
 				PublishedAt: "2026-04-14",
 				ContentContains: []string{
-					"本黨中央委員會移請本會處置",
-					"諸多言論與行徑嚴重影響黨聲譽",
-					"連續性違紀",
-					"嚴重毀損國家公職之公益本質",
-					"評議裁決準則第四十八條規定",
+					"Synthetic TPP paragraph alpha",
+					"verify extraction length",
+					"Synthetic TPP phrase 4530",
 				},
 				ContentMinLen: 200,
 			},
@@ -120,13 +114,13 @@ func TestHTMLParser_TPP(t *testing.T) {
 			fixture: "tpp_4540.html",
 			expected: expected{
 				URL:         "https://www.tpp.org.tw/newsdetail/4540",
-				Title:       "與民同在、彰化我來！民眾彰化隊出發！",
+				Title:       "Synthetic TPP Announcement 4540",
 				Author:      "",
 				PublishedAt: "2026-04-17",
 				ContentContains: []string{
-					"彰化縣黨部主委 温宗諭",
-					"從資深服務到年輕新血",
-					"台灣民眾黨深信",
+					"Synthetic TPP paragraph gamma",
+					"safe to commit",
+					"Synthetic TPP phrase 4540",
 				},
 				ContentMinLen: 200,
 			},
@@ -158,15 +152,13 @@ func TestHTMLParser_KMT(t *testing.T) {
 			fixture: "kmt_blog-post_20.html",
 			expected: expected{
 				URL:         "https://www.kmt.org.tw/2026/04/blog-post_20.html",
-				Title:       "國民黨呼籲民進黨拋開抗中意識型態的束縛  讓台灣人民共享兩岸交流帶來的實質效益",
+				Title:       "Synthetic KMT Blog Post 20",
 				Author:      "",
 				PublishedAt: "2026-04-20",
 				ContentContains: []string{
-					"商總呼籲民進黨政府",
-					"涵蓋兩岸直航",
-					"攸關無數家庭收入與基層產業存續",
-					"農漁產品與食品輸銷等領域",
-					"六大重點及相關交流合作事項",
+					"Synthetic KMT paragraph alpha",
+					"verify extraction length",
+					"Synthetic KMT phrase post 20",
 				},
 				ContentMinLen: 200,
 			},
@@ -176,14 +168,13 @@ func TestHTMLParser_KMT(t *testing.T) {
 			fixture: "kmt_blog-post_50.html",
 			expected: expected{
 				URL:         "https://www.kmt.org.tw/2026/04/blog-post_50.html",
-				Title:       "民進黨見兩岸利多就抹黑　國民黨：應以民為念，莫讓意識形態凌駕民生",
+				Title:       "Synthetic KMT Blog Post 50",
 				Author:      "",
 				PublishedAt: "2026-04-12",
 				ContentContains: []string{
-					"大陸方面宣布十項對台措施",
-					"兩岸關係惡化",
-					"透過政府既有機制處理",
-					"抹黑扯後腿",
+					"Synthetic KMT paragraph gamma",
+					"safe to commit",
+					"Synthetic KMT phrase post 50",
 				},
 				ContentMinLen: 200,
 			},
@@ -204,7 +195,7 @@ func runCases(t *testing.T, rules htmlparser.RuleConfig, dateLayouts []string, c
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			body, err := os.ReadFile(filepath.Join("..", "_testdata", c.fixture))
+			body, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "testdata", "synthetic", "collector", "parser", c.fixture))
 			require.NoError(t, err)
 
 			article, err := p.Parse(context.Background(), c.expected.URL, string(body))

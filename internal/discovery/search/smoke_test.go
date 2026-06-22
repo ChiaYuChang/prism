@@ -24,7 +24,7 @@ import (
 const (
 	smokeQuery      = "computex"
 	smokeSite       = "tw.news.yahoo.com"
-	smokeCaptureDir = "testdata/fixtures/search-smoke"
+	smokeCaptureDir = "testdata/real/search-smoke"
 )
 
 func TestSearchProvidersSmokeCapture(t *testing.T) {

@@ -7,7 +7,7 @@
 --
 -- Three PARTY sources are seeded (dpp / tpp / kmt). Each source's index
 -- page yields ~10 candidates, totaling ~30 articles into the fixture
--- corpus when run with --capture-dir=testdata/fixtures.
+-- corpus when run with --capture-dir=testdata/real.
 --
 -- Usage:
 --   psql "$PRISM_DSN" -f testdata/seed-tasks.sql
