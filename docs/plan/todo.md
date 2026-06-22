@@ -13,7 +13,8 @@ Current sprint and pending checklist. Items move to `done.md` as they complete. 
 
 Stages 1–4 complete; see `done.md` §"Phase 2.7 — User-Fetch Model" for the breakdown. Design rationale stays in `spec.md` §6 (`fetches` / `fetch_items`, three-status `POST /page_fetch` response, cross-user privacy). Unblocks Phase 2.8 (Operator TUI fetch monitor view) and `prism-mcp` bootstrap.
 
-* [ ] **Notification (v2):** `fetches.completed_at` column persisted but unused in v1; v2 sets via sweeper or compute-on-write transition and fires webhook/email.
+* [ ] **Client-side fetch notification (v1):** keep notification as client polling for now. API clients and the future TUI poll `GET /fetches/{id}` until `terminal=true`; no server-side delivery worker is required for laptop/home-server deployment.
+* [ ] **Server-side notification (v2, deferred):** webhook/email/SMS after fetch terminal transition. Requires persisted `completed_at`, transition detection, retry/backoff, delivery audit rows/logs, and operator-visible failure handling.
 
 ## Phase 2.8 — Operator TUI (`cmd/tui`)
 
@@ -46,14 +47,20 @@ Phase A (`ArticleParser` removal + tests for kept components), the 2026-05 layer
 ## Phase 4 — Monitoring and Operations
 
 * [ ] 4.1 Operational Monitoring:
-  * [ ] **Remaining command telemetry bootstrap:** recover and any RSS/operator tails still need an explicit decision; scheduler, API, discovery, collector, planner, batch detector/publisher, and backfiller now use the shared telemetry runtime.
-  * [ ] **Trace conventions:** root span per API request, scheduler tick, worker message, and recover run; child spans for fetch, parse, LLM/search provider calls, DB-heavy operations, and publish steps. Fix planner to inject propagated `trace_id` before starting its span.
-  * [ ] **Remaining app metric instruments:** queue/cache gauges and any DB-heavy operation metrics remain open. HTTP API server metrics, scheduler task/tick metrics, discovery/collector worker task metrics, LLM provider metrics, and search provider metrics are shipped.
-  * [ ] **Dashboards and alerting:** starter Grafana datasource wiring exists, but review-ready dashboards and alerts for scheduler, worker, LLM/search provider, and API health remain open.
+  * [ ] **Deployment observability smoke:** on laptop deployment, verify `/healthz`, `/readyz`, `/metrics`, service logs, trace propagation, and `trace_id` log correlation across API → scheduler → worker flows.
+  * [ ] **Remaining command telemetry decision:** decide whether `cmd/recover`, RSS/dev commands, and operator-only tails should initialize full telemetry or stay lightweight/noop. Main long-running services already use the shared telemetry runtime.
+  * [ ] **Remaining app metric instruments:** add queue/cache gauges only if deployment shows an operational need. HTTP API metrics, scheduler task/tick metrics, discovery/collector worker metrics, LLM/search metrics, pgx metrics, and Valkey metrics are shipped.
+  * [ ] **Dashboards and alerting:** starter Grafana datasource wiring exists, but review-ready dashboards and alerts for scheduler, worker, LLM/search provider, API health, Postgres, and Valkey remain open.
+  * [ ] **CI lint job:** add a separate GitHub Actions job for `golangci-lint run ./...` after checking the local lint version and confirming `rtk golangci-lint run ./...` passes. Pin the action/tool version, keep the current short-test job unchanged, commit separately, and do not push without explicit approval. If signed push fails, stop instead of bypassing signing.
 * [ ] 4.2 Admin Operations:
-  * [ ] Pause/resume discovery.
-  * [ ] Replay failed tasks.
-  * [ ] Inspect candidate and content ingestion state.
+  * [ ] **Laptop deployment runbook:** document exact commands for secrets bake, compose bake/up, migrations, app/worker startup, health checks, and teardown.
+  * [ ] **Recover verification:** run `cmd/recover status/list/run --dry-run` against local archives and confirm the operator path still works after the synthetic-fixture split.
+  * [ ] **State inspection:** document DB/API queries for runnable/failed tasks, recent candidates, fetch progress, and content ingestion status. Build a CLI/TUI only if manual queries become painful.
+  * [ ] **Pause/restart policy:** use Docker Compose/service lifecycle for now. Defer API-level pause/resume discovery until the deployed system needs finer-grained control.
+* [ ] 4.3 Laptop/Home-Server Deployment:
+  * [ ] **Laptop first:** deploy the real stack locally with persistent volumes, run migrations, start app + workers, submit one `page_fetch`, poll `GET /fetches/{id}` to terminal, and confirm a `contents` row plus archive/log/metric visibility.
+  * [ ] **Home server next:** copy the validated laptop flow, secure `.secrets`, restrict exposed ports, choose persistent volume locations, and verify restart behavior.
+  * [ ] **Backup plan:** define minimum backup/restore for Postgres and archive/object storage before treating the home-server deployment as durable.
 
 ## Immediate Next Steps (items 11–15)
 
