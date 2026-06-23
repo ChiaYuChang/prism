@@ -2,6 +2,7 @@ package pg
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 
@@ -15,12 +16,13 @@ import (
 
 // Root repository constructor.
 func NewPostgresRepository(db DBTX) *PGRepository {
-	return &PGRepository{q: New(db)}
+	return &PGRepository{db: db, q: New(db)}
 }
 
 // Repository roots.
 type PGRepository struct {
-	q *Queries
+	db DBTX
+	q  *Queries
 }
 
 // Worker-scoped repository adapters.
@@ -56,6 +58,15 @@ type PGUserFetches struct {
 	q *Queries
 }
 
+type PGSchedules struct {
+	db DBTX
+	q  *Queries
+}
+
+type pgBeginner interface {
+	Begin(context.Context) (pgx.Tx, error)
+}
+
 var _ repo.Repository = (*PGRepository)(nil)
 var _ repo.Scheduler = (*PGScheduler)(nil)
 var _ repo.Scout = (*PGScout)(nil)
@@ -65,6 +76,7 @@ var _ repo.Embeddings = (*PGEmbeddings)(nil)
 var _ repo.Analysis = (*PGAnalysis)(nil)
 var _ repo.BatchTrigger = (*PGBatchTrigger)(nil)
 var _ repo.UserFetches = (*PGUserFetches)(nil)
+var _ repo.Schedules = (*PGSchedules)(nil)
 
 // Repository root getters.
 func (r *PGRepository) Scheduler() repo.Scheduler {
@@ -97,6 +109,10 @@ func (r *PGRepository) BatchTrigger() repo.BatchTrigger {
 
 func (r *PGRepository) UserFetches() repo.UserFetches {
 	return &PGUserFetches{q: r.q}
+}
+
+func (r *PGRepository) Schedules() repo.Schedules {
+	return &PGSchedules{db: r.db, q: r.q}
 }
 
 // Scheduler repository.
@@ -279,11 +295,15 @@ func (r *PGTasks) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 }
 
 func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
-	if err := r.q.EnsureBatchExists(ctx, repoCreateTaskParamsToEnsureBatchExists(arg)); err != nil {
+	return createTaskRepo(ctx, r.q, arg)
+}
+
+func createTaskRepo(ctx context.Context, q *Queries, arg repo.CreateTaskParams) (repo.Task, error) {
+	if err := q.EnsureBatchExists(ctx, repoCreateTaskParamsToEnsureBatchExists(arg)); err != nil {
 		return repo.Task{}, fmt.Errorf("ensure batch %s exists: %w", arg.BatchID, err)
 	}
 
-	row, err := r.q.CreateTask(ctx, repoCreateTaskParamsToDB(arg))
+	row, err := q.CreateTask(ctx, repoCreateTaskParamsToDB(arg))
 	if err != nil {
 		// Zero rows = conflict at insert AND no PENDING/RUNNING row by SELECT
 		// time. Race window where the colliding task transitioned to terminal
@@ -304,6 +324,145 @@ func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (re
 
 func (r *PGTasks) ExtendActiveTaskExpiry(ctx context.Context, arg repo.ExtendActiveTaskExpiryParams) error {
 	return r.q.ExtendActiveTaskExpiry(ctx, repoExtendActiveTaskExpiryParamsToDB(arg))
+}
+
+// Schedules repository.
+func (r *PGSchedules) SyncSchedules(ctx context.Context, schedules []repo.UpsertScheduleParams) ([]repo.Schedule, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return nil, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := r.q.WithTx(tx)
+	if err := qtx.MarkSchedulesConfigAbsent(ctx); err != nil {
+		return nil, err
+	}
+	out := make([]repo.Schedule, len(schedules))
+	for i, schedule := range schedules {
+		row, err := qtx.UpsertSchedule(ctx, repoUpsertScheduleParamsToDB(schedule))
+		if err != nil {
+			return nil, err
+		}
+		out[i] = dbScheduleToRepoSchedule(row)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *PGSchedules) UpsertSchedule(ctx context.Context, arg repo.UpsertScheduleParams) (repo.Schedule, error) {
+	row, err := r.q.UpsertSchedule(ctx, repoUpsertScheduleParamsToDB(arg))
+	if err != nil {
+		return repo.Schedule{}, err
+	}
+	return dbScheduleToRepoSchedule(row), nil
+}
+
+func (r *PGSchedules) ListSchedules(ctx context.Context, limit int32) ([]repo.Schedule, error) {
+	rows, err := r.q.ListSchedules(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Schedule, len(rows))
+	for i, row := range rows {
+		out[i] = dbScheduleToRepoSchedule(row)
+	}
+	return out, nil
+}
+
+func (r *PGSchedules) MaterializeDueSchedules(ctx context.Context, arg repo.MaterializeDueSchedulesParams) ([]repo.ScheduleMaterialization, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return nil, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := r.q.WithTx(tx)
+	rows, err := qtx.ClaimDueSchedules(ctx, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.ScheduleMaterialization, 0, len(rows))
+	for _, row := range rows {
+		schedule := dbScheduleToRepoSchedule(row)
+		payloadHash := schedulePayloadHash(schedule.ID, schedule.ConfigHash)
+		task, taskErr := qtx.GetActiveTaskByPayloadDedup(ctx, GetActiveTaskByPayloadDedupParams{
+			SourceAbbr:  schedule.SourceAbbr,
+			Kind:        TaskKind(schedule.Kind),
+			PayloadHash: pgconv.StringPtrToPgText(&payloadHash),
+		})
+		active := false
+		var materializedTask repo.Task
+		if taskErr == nil {
+			active = true
+			materializedTask = dbTaskToRepoTask(task)
+		} else if errors.Is(taskErr, pgx.ErrNoRows) {
+			batchID, err := uuid.NewV7()
+			if err != nil {
+				return nil, err
+			}
+			materializedTask, taskErr = createTaskRepo(ctx, qtx, repo.CreateTaskParams{
+				BatchID:     batchID,
+				Kind:        schedule.Kind,
+				SourceType:  schedule.SourceType,
+				SourceAbbr:  schedule.SourceAbbr,
+				URL:         schedule.URL,
+				Payload:     schedule.Payload,
+				PayloadHash: &payloadHash,
+				Meta:        schedule.Meta,
+				TraceID:     fmt.Sprintf("%s-%s", arg.TraceIDPrefix, schedule.ID.String()),
+			})
+			if errors.Is(taskErr, repo.ErrTaskAlreadyActive) {
+				active = true
+			}
+		}
+		if taskErr != nil {
+			if !errors.Is(taskErr, repo.ErrTaskAlreadyActive) || materializedTask.ID == uuid.Nil {
+				markErr := qtx.MarkScheduleError(ctx, MarkScheduleErrorParams{
+					LastError: pgconv.StringPtrToPgText(errorStringPtr(taskErr)),
+					ID:        schedule.ID,
+				})
+				if markErr != nil {
+					return nil, fmt.Errorf("mark schedule %s error after task failure %w: %w", schedule.ID, taskErr, markErr)
+				}
+				continue
+			}
+		}
+		if err := qtx.MarkScheduleMaterialized(ctx, MarkScheduleMaterializedParams{
+			TaskID: pgconv.UUIDToPgUUID(materializedTask.ID),
+			ID:     schedule.ID,
+		}); err != nil {
+			return nil, err
+		}
+		out = append(out, repo.ScheduleMaterialization{Schedule: schedule, Task: materializedTask, Active: active})
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func schedulePayloadHash(id uuid.UUID, configHash string) string {
+	sum := sha256.Sum256([]byte(id.String() + ":" + configHash))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func errorStringPtr(err error) *string {
+	if err == nil {
+		return nil
+	}
+	s := err.Error()
+	return &s
 }
 
 // Pipeline repository.

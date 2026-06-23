@@ -4,7 +4,7 @@
 
 
 -- Dumped from database version 18.3 (Debian 18.3-1.pgdg12+1)
--- Dumped by pg_dump version 18.3
+-- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -577,6 +577,71 @@ COMMENT ON TABLE public.prompts IS 'Prompt asset registry. hash = SHA-256(body),
 
 
 --
+-- Name: schedules; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.schedules (
+    id uuid NOT NULL,
+    name text NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    config_present boolean DEFAULT true NOT NULL,
+    config_hash character(64) NOT NULL,
+    kind public.task_kind NOT NULL,
+    source_type public.source_type NOT NULL,
+    source_abbr character varying(16) NOT NULL,
+    url text NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    meta jsonb,
+    frequency interval second(0) NOT NULL,
+    run_on_insert boolean DEFAULT false NOT NULL,
+    next_fire_at timestamp with time zone NOT NULL,
+    last_fire_at timestamp with time zone,
+    last_materialized_at timestamp with time zone,
+    last_materialized_task_id uuid,
+    last_error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.schedules OWNER TO postgres;
+
+--
+-- Name: TABLE schedules; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.schedules IS 'Recurring schedule intent that materializes concrete task rows.';
+
+
+--
+-- Name: COLUMN schedules.id; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.schedules.id IS 'Stable operator-provided UUIDv7 identity. Names and source_abbr are not durable identity.';
+
+
+--
+-- Name: COLUMN schedules.config_present; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.schedules.config_present IS 'False when a previously synced YAML schedule is absent from the latest config load; absent schedules do not fire.';
+
+
+--
+-- Name: COLUMN schedules.next_fire_at; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.schedules.next_fire_at IS 'Next time the schedule trigger should materialize a concrete task.';
+
+
+--
+-- Name: COLUMN schedules.last_materialized_task_id; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.schedules.last_materialized_task_id IS 'Latest task inserted or recovered by the schedule trigger.';
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -839,6 +904,14 @@ ALTER TABLE ONLY public.prompts
 
 ALTER TABLE ONLY public.prompts
     ADD CONSTRAINT prompts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schedules schedules_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.schedules
+    ADD CONSTRAINT schedules_pkey PRIMARY KEY (id);
 
 
 --
@@ -1223,6 +1296,20 @@ CREATE INDEX idx_tasks_url ON public.tasks USING btree (url);
 
 
 --
+-- Name: schedules_due_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX schedules_due_idx ON public.schedules USING btree (next_fire_at, id) WHERE ((enabled = true) AND (config_present = true));
+
+
+--
+-- Name: schedules_source_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX schedules_source_idx ON public.schedules USING btree (source_type, source_abbr);
+
+
+--
 -- Name: uq_content_extraction_phrases; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1394,6 +1481,22 @@ ALTER TABLE ONLY public.fetch_items
 
 
 --
+-- Name: schedules schedules_last_materialized_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.schedules
+    ADD CONSTRAINT schedules_last_materialized_task_id_fkey FOREIGN KEY (last_materialized_task_id) REFERENCES public.tasks(id) ON DELETE SET NULL;
+
+
+--
+-- Name: schedules schedules_source_abbr_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.schedules
+    ADD CONSTRAINT schedules_source_abbr_fkey FOREIGN KEY (source_abbr) REFERENCES public.sources(abbr);
+
+
+--
 -- Name: tasks tasks_source_abbr_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1539,6 +1642,13 @@ GRANT ALL ON SEQUENCE public.models_id_seq TO prism;
 --
 
 GRANT ALL ON TABLE public.prompts TO prism;
+
+
+--
+-- Name: TABLE schedules; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.schedules TO prism;
 
 
 --

@@ -266,6 +266,52 @@ func (_c *MockRepository_Scheduler_Call) RunAndReturn(run func() repo.Scheduler)
 	return _c
 }
 
+// Schedules provides a mock function for the type MockRepository
+func (_mock *MockRepository) Schedules() repo.Schedules {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Schedules")
+	}
+
+	var r0 repo.Schedules
+	if returnFunc, ok := ret.Get(0).(func() repo.Schedules); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Schedules)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Schedules_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Schedules'
+type MockRepository_Schedules_Call struct {
+	*mock.Call
+}
+
+// Schedules is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Schedules() *MockRepository_Schedules_Call {
+	return &MockRepository_Schedules_Call{Call: _e.mock.On("Schedules")}
+}
+
+func (_c *MockRepository_Schedules_Call) Run(run func()) *MockRepository_Schedules_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Schedules_Call) Return(schedules repo.Schedules) *MockRepository_Schedules_Call {
+	_c.Call.Return(schedules)
+	return _c
+}
+
+func (_c *MockRepository_Schedules_Call) RunAndReturn(run func() repo.Schedules) *MockRepository_Schedules_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Scout provides a mock function for the type MockRepository
 func (_mock *MockRepository) Scout() repo.Scout {
 	ret := _mock.Called()

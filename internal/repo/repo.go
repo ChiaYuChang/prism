@@ -15,6 +15,7 @@ type Repository interface {
 	Analysis() Analysis
 	BatchTrigger() BatchTrigger
 	UserFetches() UserFetches
+	Schedules() Schedules
 }
 
 // TaskReporter is the push side of the task lifecycle: workers use it to
@@ -57,6 +58,13 @@ type Tasks interface {
 	// (e.g. the user-fetch handler) avoid a second round-trip.
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
+}
+
+type Schedules interface {
+	SyncSchedules(ctx context.Context, schedules []UpsertScheduleParams) ([]Schedule, error)
+	UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) (Schedule, error)
+	ListSchedules(ctx context.Context, limit int32) ([]Schedule, error)
+	MaterializeDueSchedules(ctx context.Context, arg MaterializeDueSchedulesParams) ([]ScheduleMaterialization, error)
 }
 
 type Pipeline interface {

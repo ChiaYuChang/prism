@@ -1,0 +1,34 @@
+interval: 1m
+once: false
+batch-size: 20
+health-port: 8085
+schedules-file: /app/configs/trigger/schedule/schedules.yaml
+trace-id-prefix: schedule
+postgres:
+  host: '{{ env "POSTGRES_HOST" "postgres" }}'
+  port: {{ env "POSTGRES_PORT" "5432" }}
+  username: '{{ env "POSTGRES_APP_USER" "prism" }}'
+  db: '{{ env "POSTGRES_APP_DB" "prism" }}'
+  sslmode: disable
+  metrics-enabled: true
+telemetry:
+  enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
+  service-name: prism.trigger.schedule
+  environment: local
+  endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
+  insecure: true
+  sample-ratio: 1
+  timeout: 10s
+logger:
+  level: info
+  console:
+    enable: true
+  file:
+    enable: true
+    file: /logs/app.log
+    max-size: 10MiB
+    max-files: 5
+  otel:
+    url: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
+    insecure: true
+    timeout: 10s

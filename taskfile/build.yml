@@ -4,7 +4,7 @@ tasks:
   all:
     desc: build all microservice binaries
     deps:
-      - for: [scheduler, discovery, collector, planner, batch-detector, batch-publisher]
+      - for: [scheduler, discovery, collector, planner, schedule-trigger, batch-detector, batch-publisher]
         task: '{{.ITEM}}'
 
   scheduler:
@@ -31,6 +31,12 @@ tasks:
     cmds:
       - go build -o {{.BUILD_DIR}}/batch/detector
         ./{{.CMD_DIR}}/batch/detector/*.go
+
+  schedule-trigger:
+    desc: build schedule trigger binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/trigger/schedule
+        ./{{.CMD_DIR}}/trigger/schedule/*.go
 
   batch-publisher:
     desc: build batch publisher binary

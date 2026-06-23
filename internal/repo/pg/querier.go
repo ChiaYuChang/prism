@@ -12,6 +12,7 @@ import (
 )
 
 type Querier interface {
+	ClaimDueSchedules(ctx context.Context, lim int32) ([]Schedule, error)
 	ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task, error)
 	CompleteTask(ctx context.Context, id uuid.UUID) error
 	CountCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) (int64, error)
@@ -37,6 +38,7 @@ type Querier interface {
 	FailTask(ctx context.Context, id uuid.UUID) error
 	// Finds batches where all tasks are completed and all candidates are promoted to contents.
 	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
+	GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
 	GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]Candidate, error)
@@ -66,6 +68,7 @@ type Querier interface {
 	ListReadyToPublishBatches(ctx context.Context, arg ListReadyToPublishBatchesParams) ([]Batch, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
+	ListSchedules(ctx context.Context, lim int32) ([]Schedule, error)
 	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
 	ListUserFetchItems(ctx context.Context, fetchID uuid.UUID) ([]ListUserFetchItemsRow, error)
@@ -74,6 +77,9 @@ type Querier interface {
 	// (0). Only the winner should publish the batch.completed signal.
 	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) (int64, error)
 	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
+	MarkScheduleError(ctx context.Context, arg MarkScheduleErrorParams) error
+	MarkScheduleMaterialized(ctx context.Context, arg MarkScheduleMaterializedParams) error
+	MarkSchedulesConfigAbsent(ctx context.Context) error
 	// Sets completed_at on transition to terminal. Idempotent (WHERE clause
 	// guards against double-set). v1 callers may skip this — progress endpoint
 	// computes terminal on-the-fly. Reserved for v2 notification dispatcher.
@@ -92,6 +98,7 @@ type Querier interface {
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 	UpsertEntity(ctx context.Context, arg UpsertEntityParams) (Entity, error)
 	UpsertPrompt(ctx context.Context, arg UpsertPromptParams) (Prompt, error)
+	UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) (Schedule, error)
 }
 
 var _ Querier = (*Queries)(nil)

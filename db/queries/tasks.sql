@@ -10,6 +10,15 @@ FROM tasks
 WHERE batch_id = $1
 ORDER BY created_at ASC, next_run_at ASC;
 
+-- name: GetActiveTaskByPayloadDedup :one
+SELECT *
+FROM tasks
+WHERE source_abbr = sqlc.arg(source_abbr)
+  AND kind = sqlc.arg(kind)
+  AND payload_hash = sqlc.arg(payload_hash)
+  AND status IN ('PENDING', 'RUNNING')
+LIMIT 1;
+
 -- name: EnsureBatchExists :exec
 INSERT INTO batches (id, source_type, trace_id)
 VALUES ($1, $2, $3)

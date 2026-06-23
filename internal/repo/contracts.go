@@ -169,6 +169,34 @@ type UserFetchProgress struct {
 	Terminal                    bool
 }
 
+type Schedule struct {
+	ID                     uuid.UUID
+	Name                   string
+	Enabled                bool
+	ConfigPresent          bool
+	ConfigHash             string
+	Kind                   string
+	SourceType             string
+	SourceAbbr             string
+	URL                    string
+	Payload                []byte
+	Meta                   []byte
+	RunOnInsert            bool
+	NextFireAt             time.Time
+	LastFireAt             *time.Time
+	LastMaterializedAt     *time.Time
+	LastMaterializedTaskID *uuid.UUID
+	LastError              *string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+type ScheduleMaterialization struct {
+	Schedule Schedule
+	Task     Task
+	Active   bool
+}
+
 // UserFetchItemSnapshotAlreadyComplete is the only snapshot value used in v1.
 // Items in this state were promoted to contents before the request was
 // created, so they do not reference an active task.

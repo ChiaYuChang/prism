@@ -3,6 +3,38 @@
 # `task compose:app` or `docker compose --profile app up`.
 
 services:
+  schedule-trigger:
+    profiles: [ app ]
+    image: prism/schedule-trigger:latest
+    user: "0:0"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: trigger/schedule
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --config=/app/configs/trigger/schedule/config.yaml
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_SCHEDULE_TRIGGER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_SCHEDULE_TRIGGER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_SCHEDULE_TRIGGER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_SCHEDULE_TRIGGER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+    networks:
+      - prism-net
+    volumes:
+      - ../runtime/logs/schedule-trigger:/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   batch-detector:
     profiles: [ app ]
     image: prism/batch-detector:latest
@@ -119,4 +151,3 @@ services:
       valkey:
         condition: service_healthy
     restart: unless-stopped
-

@@ -52,6 +52,30 @@ func dbTaskToRepoTask(task Task) repo.Task {
 	}
 }
 
+func dbScheduleToRepoSchedule(s Schedule) repo.Schedule {
+	return repo.Schedule{
+		ID:                     s.ID,
+		Name:                   s.Name,
+		Enabled:                s.Enabled,
+		ConfigPresent:          s.ConfigPresent,
+		ConfigHash:             s.ConfigHash,
+		Kind:                   string(s.Kind),
+		SourceType:             string(s.SourceType),
+		SourceAbbr:             s.SourceAbbr,
+		URL:                    s.Url,
+		Payload:                s.Payload,
+		Meta:                   s.Meta,
+		RunOnInsert:            s.RunOnInsert,
+		NextFireAt:             *pgconv.PgTimestamptzToTimePtr(s.NextFireAt),
+		LastFireAt:             pgconv.PgTimestamptzToTimePtr(s.LastFireAt),
+		LastMaterializedAt:     pgconv.PgTimestamptzToTimePtr(s.LastMaterializedAt),
+		LastMaterializedTaskID: pgconv.PgUUIDToUUIDPtr(s.LastMaterializedTaskID),
+		LastError:              pgconv.PgTextToStringPtr(s.LastError),
+		CreatedAt:              *pgconv.PgTimestamptzToTimePtr(s.CreatedAt),
+		UpdatedAt:              *pgconv.PgTimestamptzToTimePtr(s.UpdatedAt),
+	}
+}
+
 func dbBatchToRepoBatch(
 	id uuid.UUID,
 	sourceType string,

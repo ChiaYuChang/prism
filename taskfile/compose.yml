@@ -63,8 +63,8 @@ tasks:
       VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
     cmds:
       - mkdir -p {{.TASK_DIR}}
-      - mkdir -p runtime/logs/{api-server,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
-      - chmod 0777 runtime/logs runtime/logs/{api-server,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - mkdir -p runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - chmod 0777 runtime/logs runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
       - docker compose -f {{.COMPOSE_MERGED}} up -d
       - "echo {{.MODE}} > {{.MODE_FILE}}"
       - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"
@@ -230,10 +230,10 @@ tasks:
       WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
       API_INTERNAL_PORT: '{{.API_INTERNAL_PORT | default "8089"}}'
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} build batch-detector
-        batch-publisher prism-api
-      - docker compose -f {{.COMPOSE_MERGED}} up -d batch-detector
-        batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} build schedule-trigger
+        batch-detector batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} up -d schedule-trigger
+        batch-detector batch-publisher prism-api
       - "echo {{.APP_PROFILES}} > {{.PROFILES_FILE}}"
 
   worker:
@@ -296,8 +296,8 @@ tasks:
     env:
       COMPOSE_PROFILES: "{{.APP_PROFILES}}"
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} stop batch-detector batch-publisher prism-api
-      - docker compose -f {{.COMPOSE_MERGED}} rm -f batch-detector batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} stop schedule-trigger batch-detector batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} rm -f schedule-trigger batch-detector batch-publisher prism-api
 
   app:logs:
     desc: tail logs from containerized app services
@@ -319,8 +319,8 @@ tasks:
     env:
       COMPOSE_PROFILES: "{{.APP_PROFILES}}"
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} logs -f batch-detector
-        batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} logs -f schedule-trigger
+        batch-detector batch-publisher prism-api
 
   fixture:
     desc: build and start containerized fixture server (replay/e2e only)

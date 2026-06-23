@@ -31,18 +31,18 @@ type ListCandidatesParams struct {
 }
 
 type CreateTaskParams struct {
-	BatchID    uuid.UUID      `validate:"required"`
-	Kind       string         `validate:"required"`
-	SourceType string         `validate:"required"`
-	SourceAbbr string         `validate:"required"`
-	URL        string         `validate:"required,url"`
+	BatchID     uuid.UUID      `validate:"required"`
+	Kind        string         `validate:"required"`
+	SourceType  string         `validate:"required"`
+	SourceAbbr  string         `validate:"required"`
+	URL         string         `validate:"required,url"`
 	Payload     []byte         `validate:"omitempty"`
 	PayloadHash *string        `validate:"omitempty,len=64"`
 	Meta        []byte         `validate:"omitempty"`
 	TraceID     string         `validate:"required"`
-	Frequency  *time.Duration `validate:"omitempty"`
-	NextRunAt  *time.Time     `validate:"omitempty"`
-	ExpiresAt  *time.Time     `validate:"omitempty"`
+	Frequency   *time.Duration `validate:"omitempty"`
+	NextRunAt   *time.Time     `validate:"omitempty"`
+	ExpiresAt   *time.Time     `validate:"omitempty"`
 }
 
 type ExtendActiveTaskExpiryParams struct {
@@ -52,19 +52,39 @@ type ExtendActiveTaskExpiryParams struct {
 	ExpiresAt   *time.Time `validate:"omitempty"`
 }
 
+type UpsertScheduleParams struct {
+	ID          uuid.UUID     `validate:"required"`
+	Name        string        `validate:"required"`
+	Enabled     bool          `validate:"omitempty"`
+	ConfigHash  string        `validate:"required,len=64"`
+	Kind        string        `validate:"required"`
+	SourceType  string        `validate:"required"`
+	SourceAbbr  string        `validate:"required"`
+	URL         string        `validate:"required,url"`
+	Payload     []byte        `validate:"omitempty"`
+	Meta        []byte        `validate:"omitempty"`
+	Frequency   time.Duration `validate:"required"`
+	RunOnInsert bool          `validate:"omitempty"`
+}
+
+type MaterializeDueSchedulesParams struct {
+	Limit         int32  `validate:"required,min=1,max=200"`
+	TraceIDPrefix string `validate:"required"`
+}
+
 type CreateContentParams struct {
-	BatchID     uuid.UUID  `validate:"omitempty"`
-	Type        string     `validate:"required"`
-	SourceAbbr  string     `validate:"required"`
-	CandidateID uuid.UUID  `validate:"omitempty"`
-	URL         string     `validate:"required,url"`
-	Title       string     `validate:"required"`
-	Content     string     `validate:"required"`
-	Author      *string    `validate:"omitempty"`
-	TraceID     string     `validate:"required"`
-	PublishedAt time.Time  `validate:"required"`
-	FetchedAt   time.Time  `validate:"required"`
-	Metadata    []byte     `validate:"omitempty"`
+	BatchID     uuid.UUID `validate:"omitempty"`
+	Type        string    `validate:"required"`
+	SourceAbbr  string    `validate:"required"`
+	CandidateID uuid.UUID `validate:"omitempty"`
+	URL         string    `validate:"required,url"`
+	Title       string    `validate:"required"`
+	Content     string    `validate:"required"`
+	Author      *string   `validate:"omitempty"`
+	TraceID     string    `validate:"required"`
+	PublishedAt time.Time `validate:"required"`
+	FetchedAt   time.Time `validate:"required"`
+	Metadata    []byte    `validate:"omitempty"`
 }
 
 type UpdateContentMetadataParams struct {

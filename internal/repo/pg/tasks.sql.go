@@ -309,6 +309,48 @@ func (q *Queries) FailTask(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getActiveTaskByPayloadDedup = `-- name: GetActiveTaskByPayloadDedup :one
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+FROM tasks
+WHERE source_abbr = $1
+  AND kind = $2
+  AND payload_hash = $3
+  AND status IN ('PENDING', 'RUNNING')
+LIMIT 1
+`
+
+type GetActiveTaskByPayloadDedupParams struct {
+	SourceAbbr  string      `db:"source_abbr" json:"source_abbr"`
+	Kind        TaskKind    `db:"kind" json:"kind"`
+	PayloadHash pgtype.Text `db:"payload_hash" json:"payload_hash"`
+}
+
+func (q *Queries) GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error) {
+	row := q.db.QueryRow(ctx, getActiveTaskByPayloadDedup, arg.SourceAbbr, arg.Kind, arg.PayloadHash)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.BatchID,
+		&i.Kind,
+		&i.SourceType,
+		&i.SourceAbbr,
+		&i.Url,
+		&i.Payload,
+		&i.PayloadHash,
+		&i.Meta,
+		&i.TraceID,
+		&i.Frequency,
+		&i.NextRunAt,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.RetryCount,
+		&i.LastRunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getTaskByID = `-- name: GetTaskByID :one
 SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
 FROM tasks

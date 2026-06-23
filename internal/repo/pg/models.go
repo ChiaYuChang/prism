@@ -686,6 +686,34 @@ type Prompt struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+// Recurring schedule intent that materializes concrete task rows.
+type Schedule struct {
+	// Stable operator-provided UUIDv7 identity. Names and source_abbr are not durable identity.
+	ID      uuid.UUID `db:"id" json:"id"`
+	Name    string    `db:"name" json:"name"`
+	Enabled bool      `db:"enabled" json:"enabled"`
+	// False when a previously synced YAML schedule is absent from the latest config load; absent schedules do not fire.
+	ConfigPresent bool            `db:"config_present" json:"config_present"`
+	ConfigHash    string          `db:"config_hash" json:"config_hash"`
+	Kind          TaskKind        `db:"kind" json:"kind"`
+	SourceType    SourceType      `db:"source_type" json:"source_type"`
+	SourceAbbr    string          `db:"source_abbr" json:"source_abbr"`
+	Url           string          `db:"url" json:"url"`
+	Payload       []byte          `db:"payload" json:"payload"`
+	Meta          []byte          `db:"meta" json:"meta"`
+	Frequency     pgtype.Interval `db:"frequency" json:"frequency"`
+	RunOnInsert   bool            `db:"run_on_insert" json:"run_on_insert"`
+	// Next time the schedule trigger should materialize a concrete task.
+	NextFireAt         pgtype.Timestamptz `db:"next_fire_at" json:"next_fire_at"`
+	LastFireAt         pgtype.Timestamptz `db:"last_fire_at" json:"last_fire_at"`
+	LastMaterializedAt pgtype.Timestamptz `db:"last_materialized_at" json:"last_materialized_at"`
+	// Latest task inserted or recovered by the schedule trigger.
+	LastMaterializedTaskID pgtype.UUID        `db:"last_materialized_task_id" json:"last_materialized_task_id"`
+	LastError              pgtype.Text        `db:"last_error" json:"last_error"`
+	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type SchemaMigration struct {
 	Version int64 `db:"version" json:"version"`
 	Dirty   bool  `db:"dirty" json:"dirty"`

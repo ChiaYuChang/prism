@@ -50,6 +50,23 @@ func repoExtendActiveTaskExpiryParamsToDB(arg repo.ExtendActiveTaskExpiryParams)
 	}
 }
 
+func repoUpsertScheduleParamsToDB(arg repo.UpsertScheduleParams) UpsertScheduleParams {
+	return UpsertScheduleParams{
+		ID:          arg.ID,
+		Name:        arg.Name,
+		Enabled:     arg.Enabled,
+		ConfigHash:  arg.ConfigHash,
+		Kind:        TaskKind(arg.Kind),
+		SourceType:  SourceType(arg.SourceType),
+		SourceAbbr:  arg.SourceAbbr,
+		Url:         arg.URL,
+		Payload:     arg.Payload,
+		Meta:        arg.Meta,
+		Frequency:   pgconv.DurationPtrToPgInterval(&arg.Frequency),
+		RunOnInsert: arg.RunOnInsert,
+	}
+}
+
 func repoCreateContentParamsToDB(arg repo.CreateContentParams) CreateContentParams {
 	return CreateContentParams{
 		BatchID:     pgconv.UUIDToPgUUID(arg.BatchID),
