@@ -47,6 +47,7 @@ credentials.json
 # temporary files
 .*.docker-compose.merged.yaml
 .docker-compose.merged.yaml
+.getxfer.*.mega
 compose-bake
 tmp/
 
@@ -75,6 +76,7 @@ docs/why
 # build infrastructure configs
 build/infra/nats/nats.conf
 build/infra/otel/otel.yaml
+build/infra/grafana/custom.ini
 build/infra/valkey/valkey.conf
 build/infra/valkey/valkey_acl
 

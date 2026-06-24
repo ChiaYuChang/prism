@@ -62,6 +62,11 @@ tasks:
         require_file .secrets/nats-auth-token
         require_file .secrets/seaweedfs
         require_file .secrets/valkey_prism
+        require_file .secrets/grafana
+
+        case ",{{.DEPLOY_PROFILES}}," in
+          *,ai,*) require_file .secrets/opencode ;;
+        esac
 
         if [ -f {{.MODE_FILE}} ]; then
           printf 'stack %s is already up; run `task compose:down ENV=test` first\n' "$(cat {{.MODE_FILE}})" >&2
