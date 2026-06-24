@@ -17,12 +17,20 @@ import (
 	"github.com/ChiaYuChang/prism/internal/llm/gemini"
 	"github.com/ChiaYuChang/prism/internal/llm/ollama"
 	"github.com/ChiaYuChang/prism/internal/llm/openai"
+	"github.com/ChiaYuChang/prism/internal/llm/opencode"
 	"github.com/go-playground/mold/v4"
 	"github.com/go-playground/validator/v10"
 	"go.opentelemetry.io/otel"
 )
 
 const defaultTimeout = 30 * time.Second
+
+var providerDecoders = map[string]llm.ProviderConfigDecoder{
+	"gemini":   gemini.Decoder{},
+	"openai":   openai.Decoder{},
+	"ollama":   ollama.Decoder{},
+	"opencode": opencode.Decoder{},
+}
 
 // NewGenerator instantiates an llm.Generator from the supplied LLMConfig.
 // Promoted from cmd/worker/planner so the same construction path is shared
@@ -39,7 +47,11 @@ func NewEmbedder(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logg
 
 // NewProvider instantiates an instrumented llm.Provider from the supplied LLMConfig.
 func NewProvider(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logger) (llm.Provider, error) {
-	provider, err := newProvider(ctx, cfg, logger)
+	providerName, err := cfg.ProviderName()
+	if err != nil {
+		return nil, err
+	}
+	provider, err := newProvider(ctx, cfg, logger, providerName)
 	if err != nil {
 		return nil, err
 	}
@@ -47,35 +59,37 @@ func NewProvider(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logg
 	if err != nil {
 		return nil, fmt.Errorf("create LLM metrics: %w", err)
 	}
-	return llm.InstrumentProvider(provider, metrics, "llm."+cfg.Provider), nil
+	return llm.InstrumentProvider(provider, metrics, "llm."+providerName), nil
 }
 
-func newProvider(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logger) (llm.Provider, error) {
+func newProvider(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logger, providerName string) (llm.Provider, error) {
 	timeout := cfg.Timeout
 	if timeout == 0 {
 		timeout = defaultTimeout
 	}
-
-	v := validator.New()
-	m := mold.New()
-	hc := &http.Client{Timeout: timeout}
-
-	switch cfg.Provider {
-	case "gemini":
-		return gemini.New(ctx, logger, infra.Tracer(), v, m, hc, gemini.Config{
-			APIKey:  cfg.Key,
-			Timeout: timeout,
-		})
-	case "openai":
-		return openai.New(ctx, logger, infra.Tracer(), v, m, hc, openai.Config{
-			APIKey:  cfg.Key,
-			Timeout: timeout,
-		})
-	case "ollama":
-		return ollama.New(ctx, logger, infra.Tracer(), v, m, hc, ollama.Config{
-			Timeout: timeout,
-		})
-	default:
-		return nil, fmt.Errorf("unsupported LLM provider: %s", cfg.Provider)
+	rawCfg, err := cfg.ProviderConfig()
+	if err != nil {
+		return nil, err
 	}
+
+	decoder, ok := providerDecoders[providerName]
+	if !ok {
+		return nil, fmt.Errorf("unsupported LLM provider: %s", providerName)
+	}
+	providerCfg, err := decoder.Decode(rawCfg)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s config: %w", providerName, err)
+	}
+
+	return providerCfg.Build(ctx, llm.BuildDeps{
+		Logger:      logger,
+		Tracer:      infra.Tracer(),
+		Validator:   validator.New(),
+		Transformer: mold.New(),
+		HTTPClient:  &http.Client{Timeout: timeout},
+	}, llm.BuildConfig{
+		Model:   cfg.Model,
+		Key:     cfg.Key,
+		Timeout: timeout,
+	})
 }

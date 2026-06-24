@@ -12,7 +12,8 @@ version: 1
 #   enable: true
 #   prompt_file: /app/assets/worker/collector/prompts/collector/article_parser.md
 #   llm:
-#     provider: gemini       # gemini | openai | ollama
+#     provider:
+#       gemini: {}           # gemini | openai | ollama | opencode
 #     model: gemini-2.0-flash
 #     key_file: /run/secrets/llm_key
 #     timeout: 30s

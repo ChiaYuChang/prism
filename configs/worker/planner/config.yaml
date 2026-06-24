@@ -14,7 +14,8 @@ postgres:
   sslmode: disable
   metrics-enabled: true
 llm:
-  provider: '{{ env "PRISM_PLANNER_LLM_PROVIDER" "gemini" }}'
+  provider:
+    gemini: {}
   model: '{{ env "PRISM_PLANNER_LLM_MODEL" "gemini-2.0-flash" }}'
   timeout: 30s
 search:

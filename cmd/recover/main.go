@@ -104,10 +104,15 @@ func main() {
 					"path", cfg.Fallback.PromptFile, "error", perr)
 				os.Exit(1)
 			}
+			providerName, perr := cfg.Fallback.LLM.ProviderName()
+			if perr != nil {
+				logger.Error("failed to resolve fallback LLM provider", "error", perr)
+				os.Exit(1)
+			}
 			gen, gerr := llmfactory.NewGenerator(ctx, cfg.Fallback.LLM, logger)
 			if gerr != nil {
 				logger.Error("failed to initialize fallback LLM generator",
-					"provider", cfg.Fallback.LLM.Provider, "error", gerr)
+					"provider", providerName, "error", gerr)
 				os.Exit(1)
 			}
 			model := cfg.Fallback.LLM.Model

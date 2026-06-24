@@ -169,11 +169,17 @@ func main() {
 			monitor.SetStatus(obs.LevelError, "Failed to load fallback prompt")
 			os.Exit(1)
 		}
+		providerName, perr := pCfg.Fallback.LLM.ProviderName()
+		if perr != nil {
+			logger.Error("failed to resolve fallback LLM provider", "error", perr)
+			monitor.SetStatus(obs.LevelError, "Failed to resolve fallback LLM provider")
+			os.Exit(1)
+		}
 		gen, gerr := llmfactory.NewGenerator(ctx, pCfg.Fallback.LLM, logger)
 		if gerr != nil {
 			logger.Error(
 				"failed to initialize fallback LLM generator",
-				"provider", pCfg.Fallback.LLM.Provider,
+				"provider", providerName,
 				"error", gerr,
 			)
 			monitor.SetStatus(obs.LevelError, "Failed to initialize fallback LLM generator")
@@ -184,7 +190,7 @@ func main() {
 			return parserllm.NewParser(gen, logger, model, prompt)
 		}
 		logger.Info("parser fallback enabled",
-			"provider", pCfg.Fallback.LLM.Provider, "model", model,
+			"provider", providerName, "model", model,
 			"prompt_file", pCfg.Fallback.PromptFile)
 	}
 

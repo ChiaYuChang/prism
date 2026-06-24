@@ -17,24 +17,24 @@ func discardLogger() *slog.Logger {
 }
 
 func TestNewGenerator_UnsupportedProvider(t *testing.T) {
-	cfg := appconfig.LLMConfig{Provider: "not-a-real-provider", Model: "x", Key: "y"}
+	cfg := appconfig.LLMConfig{Provider: map[string]any{"not-a-real-provider": map[string]any{}}, Model: "x", Key: "y"}
 	_, err := llmfactory.NewGenerator(context.Background(), cfg, discardLogger())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "unsupported LLM provider")
+	assert.ErrorContains(t, err, "llm provider is unsupported")
 }
 
 func TestNewEmbedder_UnsupportedProvider(t *testing.T) {
-	cfg := appconfig.LLMConfig{Provider: "not-a-real-provider", Model: "x", Key: "y"}
+	cfg := appconfig.LLMConfig{Provider: map[string]any{"not-a-real-provider": map[string]any{}}, Model: "x", Key: "y"}
 	_, err := llmfactory.NewEmbedder(context.Background(), cfg, discardLogger())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "unsupported LLM provider")
+	assert.ErrorContains(t, err, "llm provider is unsupported")
 }
 
 func TestNewProvider_UnsupportedProvider(t *testing.T) {
-	cfg := appconfig.LLMConfig{Provider: "not-a-real-provider", Model: "x", Key: "y"}
+	cfg := appconfig.LLMConfig{Provider: map[string]any{"not-a-real-provider": map[string]any{}}, Model: "x", Key: "y"}
 	_, err := llmfactory.NewProvider(context.Background(), cfg, discardLogger())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "unsupported LLM provider")
+	assert.ErrorContains(t, err, "llm provider is unsupported")
 }
 
 // Provider construction success paths are covered by the per-provider

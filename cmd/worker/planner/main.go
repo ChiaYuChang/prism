@@ -80,9 +80,16 @@ func main() {
 	}
 	defer func() { _ = dbRepoCloser.Close() }()
 
+	providerName, err := config.LLM.ProviderName()
+	if err != nil {
+		logger.Error("failed to resolve LLM provider", "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to resolve LLM provider")
+		os.Exit(1)
+	}
+
 	generator, err := llmfactory.NewGenerator(ctx, config.LLM, logger)
 	if err != nil {
-		logger.Error("failed to initialize LLM generator", "provider", config.LLM.Provider, "error", err)
+		logger.Error("failed to initialize LLM generator", "provider", providerName, "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize LLM generator")
 		os.Exit(1)
 	}
@@ -126,7 +133,7 @@ func main() {
 	logger.Info("planner worker started",
 		"topic", message.BatchCompletedTopic,
 		"messenger", config.MessengerType,
-		"llm_provider", config.LLM.Provider,
+		"llm_provider", providerName,
 		"llm_model", config.LLM.Model,
 		"prompt_path", config.PromptPath,
 	)

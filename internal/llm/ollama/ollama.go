@@ -30,6 +30,24 @@ type Config struct {
 	HttpHeader map[string]string `json:"http_header" mod:"trim"`
 }
 
+// Decoder decodes raw provider config for Ollama.
+type Decoder struct{}
+
+// Decode converts raw provider config into a typed Ollama config.
+func (Decoder) Decode(raw map[string]any) (llm.ProviderConfig, error) {
+	var cfg Config
+	if err := llm.DecodeProviderConfig(raw, &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// Build constructs an Ollama provider from config and shared dependencies.
+func (cfg Config) Build(ctx context.Context, deps llm.BuildDeps, buildCfg llm.BuildConfig) (llm.Provider, error) {
+	cfg.Timeout = buildCfg.Timeout
+	return New(ctx, deps.Logger, deps.Tracer, deps.Validator, deps.Transformer, deps.HTTPClient, cfg)
+}
+
 // Provider implements both llm.Generator and llm.Embedder for Ollama.
 type Provider struct {
 	client      *api.Client

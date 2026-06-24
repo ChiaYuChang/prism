@@ -33,7 +33,7 @@ func (LoggerConfig) BindFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 // e.g. llm-key → llm.key, llm-model → llm.model
 func (LLMConfig) BindFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 	return bindWithReplacer(v, fs, "llm-",
-		strings.NewReplacer("llm-", "llm.", "-", "."))
+		strings.NewReplacer("llm-", "llm."))
 }
 
 // BindFlags binds all pflags prefixed with "s3-" to nested viper keys under "s3.".

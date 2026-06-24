@@ -18,7 +18,9 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 	require.Equal(t, 8094, cfg.HealthPort)
 	require.Equal(t, "/app/assets/worker/planner/prompts/analysis/extractor.md", cfg.PromptPath)
 	require.Equal(t, "postgres", cfg.Postgres.Host)
-	require.Equal(t, "gemini", cfg.LLM.Provider)
+	providerName, err := cfg.LLM.ProviderName()
+	require.NoError(t, err)
+	require.Equal(t, "gemini", providerName)
 	require.Equal(t, "gemini-2.0-flash", cfg.LLM.Model)
 	require.Equal(t, "prism.planner", cfg.Telemetry.ServiceName)
 }
@@ -29,7 +31,6 @@ func setShippedConfigEnv(t *testing.T) {
 	t.Setenv("POSTGRES_PORT", "5432")
 	t.Setenv("POSTGRES_APP_USER", "prism")
 	t.Setenv("POSTGRES_APP_DB", "prism")
-	t.Setenv("PRISM_PLANNER_LLM_PROVIDER", "gemini")
 	t.Setenv("PRISM_PLANNER_LLM_MODEL", "gemini-2.0-flash")
 	t.Setenv("PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE", "true")
 	t.Setenv("PRISM_WORKER_OTEL_ENABLED", "true")
@@ -80,6 +81,44 @@ func TestLoadConfigTelemetryFlags(t *testing.T) {
 	require.Equal(t, 0.5, cfg.Telemetry.SampleRatio)
 	require.Equal(t, "masked-value", cfg.Telemetry.Headers["authorization"])
 	require.Equal(t, 3*time.Second, cfg.Telemetry.Timeout)
+}
+
+func TestLoadConfigOpencodeProviderConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := []byte(`
+llm:
+  provider:
+    opencode:
+      base_url: http://opencode:4096
+      agent: general
+      directory: /workspace
+      username: opencode
+      password_file: /run/secrets/opencode
+  model: opencode/deepseek-v4-flash-free
+search:
+  targets:
+    yahoo:
+      enable: true
+      source_abbr: yahoo
+      url: https://tw.news.yahoo.com
+      site: tw.news.yahoo.com
+`)
+	require.NoError(t, os.WriteFile(path, body, 0600))
+
+	cfg, err := LoadConfig([]string{"--config", path})
+	require.NoError(t, err)
+
+	providerName, err := cfg.LLM.ProviderName()
+	require.NoError(t, err)
+	require.Equal(t, "opencode", providerName)
+	require.Equal(t, "opencode/deepseek-v4-flash-free", cfg.LLM.Model)
+	providerCfg, err := cfg.LLM.ProviderConfig()
+	require.NoError(t, err)
+	require.Equal(t, "http://opencode:4096", providerCfg["base_url"])
+	require.Equal(t, "general", providerCfg["agent"])
+	require.Equal(t, "/workspace", providerCfg["directory"])
+	require.Equal(t, "opencode", providerCfg["username"])
+	require.Equal(t, "/run/secrets/opencode", providerCfg["password_file"])
 }
 
 func TestLoadConfigSearchTargetsFromJSON(t *testing.T) {

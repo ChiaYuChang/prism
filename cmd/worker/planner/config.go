@@ -34,6 +34,7 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetEnvPrefix("PRISM_PLANNER_WORKER")
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	v.AutomaticEnv()
+	v.SetDefault("llm.provider", map[string]any{"gemini": map[string]any{}})
 
 	fs := pflag.NewFlagSet("worker-planner", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
@@ -59,7 +60,6 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int64("channel-buffer", 100, "GoChannel output buffer size")
 	fs.Bool("persistent", true, "Whether GoChannel should persist messages in memory")
 
-	fs.String("llm-provider", "gemini", "LLM provider (gemini, openai, ollama)")
 	fs.String("llm-key", "", "LLM API key")
 	fs.String("llm-model", "", "LLM model name (e.g. gemini-2.0-flash)")
 	fs.Duration("llm-timeout", 30*time.Second, "LLM request timeout")
@@ -115,6 +115,9 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	config.Telemetry = telemetryCfg
+	if len(config.LLM.Provider) == 0 {
+		config.LLM.Provider = map[string]any{"gemini": map[string]any{}}
+	}
 
 	switch config.MessengerType {
 	case "nats":

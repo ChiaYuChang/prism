@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +20,7 @@ import (
 func TestLLMConfig_NoSecretLeak(t *testing.T) {
 	const apiKey = "sk-abcdef-0123456789"
 	cfg := LLMConfig{
-		Provider: "openai",
+		Provider: map[string]any{"openai": map[string]any{}},
 		Key:      apiKey,
 		Model:    "gpt-4o-mini",
 	}
@@ -55,4 +57,44 @@ func TestLLMConfig_ResolveSecrets_MissingFile_Errors(t *testing.T) {
 	cfg := LLMConfig{KeyFile: filepath.Join(t.TempDir(), "missing")}
 	err := cfg.ResolveSecrets()
 	require.Error(t, err)
+}
+
+func TestLLMConfig_BindFlags_HyphenatedKeys(t *testing.T) {
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	fs.String("llm-key-file", "", "")
+	require.NoError(t, fs.Parse([]string{
+		"--llm-key-file=/run/secrets/llm-key",
+	}))
+
+	v := viper.New()
+	require.NoError(t, LLMConfig{}.BindFlags(v, fs))
+
+	var cfg struct {
+		LLM LLMConfig `mapstructure:"llm"`
+	}
+	require.NoError(t, v.Unmarshal(&cfg))
+	assert.Equal(t, "/run/secrets/llm-key", cfg.LLM.KeyFile)
+}
+
+func TestLLMConfig_ProviderName(t *testing.T) {
+	cfg := LLMConfig{Provider: map[string]any{"opencode": map[string]any{"base_url": "http://opencode:4096"}}}
+
+	name, err := cfg.ProviderName()
+	require.NoError(t, err)
+	assert.Equal(t, "opencode", name)
+
+	providerCfg, err := cfg.ProviderConfig()
+	require.NoError(t, err)
+	assert.Equal(t, "http://opencode:4096", providerCfg["base_url"])
+}
+
+func TestLLMConfig_ProviderNameErrors(t *testing.T) {
+	_, err := (LLMConfig{}).ProviderName()
+	require.ErrorIs(t, err, ErrLLMProviderMissing)
+
+	_, err = (LLMConfig{Provider: map[string]any{"gemini": map[string]any{}, "openai": map[string]any{}}}).ProviderName()
+	require.ErrorIs(t, err, ErrLLMProviderAmbiguous)
+
+	_, err = (LLMConfig{Provider: map[string]any{"not-real": map[string]any{}}}).ProviderName()
+	require.ErrorIs(t, err, ErrLLMProviderUnsupported)
 }
