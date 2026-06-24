@@ -17,7 +17,7 @@ func TestConfig_RoundTrip_Stream(t *testing.T) {
 			Sources: map[string]config.SourceConfig{
 				"abc": {
 					Format:  "html",
-					BaseURL:  "https://example.com",
+					BaseURL: "https://example.com",
 					Pager: config.PagerConfig{
 						Type:        "index",
 						URLTemplate: "{{.BaseURL}}/{{.Value}}",
@@ -64,7 +64,7 @@ func TestConfig_RoundTrip_File(t *testing.T) {
 			Sources: map[string]config.SourceConfig{
 				"test-source": {
 					Format:  "rss",
-					BaseURL:  "https://test.com",
+					BaseURL: "https://test.com",
 					Pager: config.PagerConfig{
 						Type:        "index",
 						URLTemplate: "{{.BaseURL}}/{{.Value}}",

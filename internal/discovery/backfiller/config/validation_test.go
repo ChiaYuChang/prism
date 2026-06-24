@@ -20,8 +20,8 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							Format:   "html",
-							BaseURL:  "https://example.com",
+							Format:  "html",
+							BaseURL: "https://example.com",
 							Pager: config.PagerConfig{
 								Type:        "index",
 								URLTemplate: "{{.BaseURL}}/{{.Value}}",
@@ -41,8 +41,8 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							Format:   "html",
-							BaseURL:  "https://example.com",
+							Format:  "html",
+							BaseURL: "https://example.com",
 							Pager: config.PagerConfig{
 								Type:        "index",
 								URLTemplate: "{{.BaseURL}}",
@@ -62,8 +62,8 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							Format:   "html",
-							BaseURL:  "https://example.com",
+							Format:  "html",
+							BaseURL: "https://example.com",
 							Pager: config.PagerConfig{
 								Type: "index",
 								Step: 1,
@@ -82,8 +82,8 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							Format:   "pdf",
-							BaseURL:  "https://example.com",
+							Format:  "pdf",
+							BaseURL: "https://example.com",
 							Pager: config.PagerConfig{
 								Type:        "index",
 								URLTemplate: "{{.BaseURL}}",
@@ -103,8 +103,8 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							Format:   "html",
-							BaseURL:  "https://example.com",
+							Format:  "html",
+							BaseURL: "https://example.com",
 							Pager: config.PagerConfig{
 								Type:        "index",
 								URLTemplate: "{{.BaseURL}}/{{.Value}", // Missing closing brace
@@ -124,7 +124,7 @@ func TestConfig_Validation(t *testing.T) {
 				Backfiller: config.BackfillSection{
 					Sources: map[string]config.SourceConfig{
 						"dpp": {
-							Format:   "html",
+							Format: "html",
 							Pager: config.PagerConfig{
 								Type:        "index",
 								URLTemplate: "{{.BaseURL}}/{{.Value}}",

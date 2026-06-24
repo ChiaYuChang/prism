@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/ChiaYuChang/prism/internal/collector"
+	"github.com/ChiaYuChang/prism/internal/collector/mocks"
 	"github.com/ChiaYuChang/prism/internal/collector/parser"
 	"github.com/ChiaYuChang/prism/pkg/testutils"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/ChiaYuChang/prism/internal/collector/mocks"
 )
 
 func TestCompositeParser_Parse(t *testing.T) {
