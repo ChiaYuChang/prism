@@ -128,7 +128,7 @@ services:
     ports:
       - "127.0.0.1:${VMAGENT_PORT:-8429}:8429"
     volumes:
-      - ./vmagent/test/prometheus.yaml:/etc/vmagent/prometheus.yaml:ro
+      - ../build/infra/vmagent/test/prometheus.yaml:/etc/vmagent/prometheus.yaml:ro
       - vmagent-data:/vmagentdata
     healthcheck:
       test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:8429/health" ]
@@ -183,7 +183,7 @@ services:
     ports:
       - "127.0.0.1:${OTEL_COLLECTOR_HEALTH_PORT:-13133}:13133"
     volumes:
-      - ./otel-collector/test/otel.yaml:/etc/otelcol-contrib/otel.yaml:ro
+      - ../build/infra/otel-collector/test/otel.yaml:/etc/otelcol-contrib/otel.yaml:ro
       - ../runtime/logs:/logs:ro
       - otel_storage:/var/lib/otelcol
       - otel_backup:/var/log/app
@@ -198,6 +198,7 @@ services:
   grafana:
     profiles: [ obs ]
     image: grafana/grafana:12.3
+    command: [ "--config=/etc/grafana/custom.ini" ]
     depends_on:
       victoria-metrics:
         condition: service_healthy
@@ -209,7 +210,10 @@ services:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../build/infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../build/infra/grafana/custom.ini:/etc/grafana/custom.ini:ro
+    secrets:
+      - grafana
     environment:
       - GF_PLUGINS_PREINSTALL=victoriametrics-logs-datasource
     healthcheck:
