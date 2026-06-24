@@ -43,7 +43,7 @@ scout:
             title_selector: div.list_name
             date_selector: div.list_date
             date_layout: "2006年01月02日"
-            description_selector: span.inner_tags
+            description_selector: div.list_description
   rss:
     defaults:
       enabled: true

@@ -62,6 +62,7 @@ INSERT INTO candidates (
 )
 ON CONFLICT (fingerprint) DO UPDATE
 SET discovered_at = NOW(),
+    description = COALESCE(candidates.description, EXCLUDED.description),
     trace_id = EXCLUDED.trace_id
 RETURNING *;
 
