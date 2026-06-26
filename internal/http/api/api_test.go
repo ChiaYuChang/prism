@@ -110,6 +110,118 @@ func TestListCandidates_InvalidSince(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestGetAuthTask_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	taskID := uuid.Must(uuid.NewV7())
+	batchID := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC()
+	m.tasks.EXPECT().GetTaskByID(mock.Anything, taskID).Return(repo.Task{
+		ID:         taskID,
+		BatchID:    batchID,
+		TraceID:    "trace-task",
+		Kind:       repo.TaskKindPageFetch,
+		SourceType: repo.SourceTypeMedia,
+		SourceAbbr: "yahoo",
+		URL:        "https://news.example/a",
+		Payload:    []byte(`{"candidate_id":"abc"}`),
+		Meta:       []byte(`{"source":"test"}`),
+		NextRunAt:  now,
+		Status:     repo.TaskStatusPending,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/tasks/"+taskID.String(), nil)
+	req.SetPathValue("id", taskID.String())
+	rec := httptest.NewRecorder()
+	srv.GetAuthTask(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AuthTask
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, taskID, body.ID)
+	require.Equal(t, batchID, body.BatchID)
+	require.Equal(t, repo.TaskStatusPending, body.Status)
+	require.JSONEq(t, `{"candidate_id":"abc"}`, string(body.Payload))
+}
+
+func TestListAuthTasks_ByBatchID(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	batchID := uuid.Must(uuid.NewV7())
+	taskID := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC()
+	m.tasks.EXPECT().ListTasksByBatchID(mock.Anything, batchID).Return([]repo.Task{{
+		ID:        taskID,
+		BatchID:   batchID,
+		TraceID:   "trace-task",
+		Kind:      repo.TaskKindDirectoryFetch,
+		NextRunAt: now,
+		Status:    repo.TaskStatusCompleted,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/tasks?batch_id="+batchID.String(), nil)
+	rec := httptest.NewRecorder()
+	srv.ListAuthTasks(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AuthListTasksResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, batchID, body.BatchID)
+	require.Equal(t, 1, body.Count)
+	require.Equal(t, taskID, body.Items[0].ID)
+}
+
+func TestGetAuthCandidate_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	candidateID := uuid.Must(uuid.NewV7())
+	batchID := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC()
+	m.scout.EXPECT().GetCandidateByID(mock.Anything, candidateID).Return(repo.Candidate{
+		ID:              candidateID,
+		BatchID:         batchID,
+		Fingerprint:     "fingerprint",
+		SourceAbbr:      "tpp",
+		Title:           "Title",
+		URL:             "https://example.com/candidate",
+		DiscoveredAt:    now,
+		TraceID:         "trace-candidate",
+		IngestionMethod: repo.IngestionMethodDirectory,
+		Metadata:        []byte(`{"k":"v"}`),
+		CreatedAt:       now,
+	}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/candidates/"+candidateID.String(), nil)
+	req.SetPathValue("id", candidateID.String())
+	rec := httptest.NewRecorder()
+	srv.GetAuthCandidate(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AuthCandidate
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, candidateID, body.ID)
+	require.Equal(t, "fingerprint", body.Fingerprint)
+	require.JSONEq(t, `{"k":"v"}`, string(body.Metadata))
+}
+
+func TestGetAuthCandidate_NotFound(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	candidateID := uuid.Must(uuid.NewV7())
+	m.scout.EXPECT().GetCandidateByID(mock.Anything, candidateID).Return(repo.Candidate{}, pgx.ErrNoRows).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/candidates/"+candidateID.String(), nil)
+	req.SetPathValue("id", candidateID.String())
+	rec := httptest.NewRecorder()
+	srv.GetAuthCandidate(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
 // expectCreateFetch stubs UserFetches.Create with a fresh fetch_id.
 func expectCreateFetch(t *testing.T, m *testServerMocks) uuid.UUID {
 	t.Helper()
@@ -433,10 +545,10 @@ func TestGetFetch_RateLimit_Returns429(t *testing.T) {
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()
-	srv.RegisterPublic(mux)
+	srv.RegisterV1(mux)
 
 	fetchID := uuid.Must(uuid.NewV7())
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/fetches/"+fetchID.String(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/fetches/"+fetchID.String(), nil)
 	req.RemoteAddr = "10.0.0.1:1234"
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -603,9 +715,9 @@ func TestGetStatus_PushMode(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	publicMux := http.NewServeMux()
-	srv.RegisterPublic(publicMux)
+	srv.RegisterV1(publicMux)
 
-	reqGet := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	reqGet := httptest.NewRequest(http.MethodGet, "/status", nil)
 	recGet := httptest.NewRecorder()
 	publicMux.ServeHTTP(recGet, reqGet)
 

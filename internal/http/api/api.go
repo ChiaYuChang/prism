@@ -205,19 +205,30 @@ func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline
 	return s, nil
 }
 
-// RegisterPublic wires public v1 routes onto the supplied mux under the /api/v1 prefix.
+// RouteRegistrar is the minimal router surface used by API route registration.
+type RouteRegistrar interface {
+	Handle(pattern string, handler http.Handler)
+}
+
+// RegisterV1 wires public v1 routes onto the supplied router.
 //
 // The /fetches/{id} route is wrapped in a per-IP rate-limit middleware. When
 // no limiter is configured, the wrapping uses NoOpIPLimiter and is effectively
 // a passthrough.
-func (s *Server) RegisterPublic(mux *http.ServeMux, mws ...middleware.Middleware) {
-	wrap := middleware.Chain(mws...)
-	mux.Handle("GET /api/v1/candidates", wrap(http.HandlerFunc(s.ListCandidates)))
-	mux.Handle("POST /api/v1/page_fetch", wrap(http.HandlerFunc(s.PageFetch)))
-	mux.Handle("GET /api/v1/contents/{candidate_id}", wrap(http.HandlerFunc(s.GetContent)))
-	mux.Handle("GET /api/v1/fetches/{id}",
-		wrap(middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch))))
-	mux.Handle("GET /api/v1/status", wrap(http.HandlerFunc(s.GetStatus)))
+func (s *Server) RegisterV1(r RouteRegistrar) {
+	r.Handle("GET /candidates", http.HandlerFunc(s.ListCandidates))
+	r.Handle("POST /page_fetch", http.HandlerFunc(s.PageFetch))
+	r.Handle("GET /contents/{candidate_id}", http.HandlerFunc(s.GetContent))
+	r.Handle("GET /fetches/{id}", middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch)))
+	r.Handle("GET /status", http.HandlerFunc(s.GetStatus))
+}
+
+// RegisterV1Auth wires authenticated v1 operator routes onto the supplied router.
+func (s *Server) RegisterV1Auth(r RouteRegistrar) {
+	r.Handle("GET /candidates", http.HandlerFunc(s.ListCandidates))
+	r.Handle("GET /candidates/{id}", http.HandlerFunc(s.GetAuthCandidate))
+	r.Handle("GET /tasks", http.HandlerFunc(s.ListAuthTasks))
+	r.Handle("GET /tasks/{id}", http.HandlerFunc(s.GetAuthTask))
 }
 
 // RegisterInternal wires private routes for internal administration/push telemetry.

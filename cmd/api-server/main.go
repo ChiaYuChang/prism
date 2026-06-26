@@ -152,9 +152,9 @@ func main() {
 		logger.Error("failed to load auth tokens", "error", err)
 		os.Exit(1)
 	}
-	var apiMiddleware []middleware.Middleware
+	var authMiddleware []middleware.Middleware
 	if len(authTokens) > 0 {
-		apiMiddleware = append(apiMiddleware, middleware.TokenListAuth(authTokens))
+		authMiddleware = append(authMiddleware, middleware.TokenListAuth(authTokens))
 		logger.Info("api token auth enabled", "tokens", len(authTokens))
 	}
 
@@ -181,13 +181,7 @@ func main() {
 		apiServer.StartMonitor(ctx, config.Monitoring.Interval, targets)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", livenessHandler(monitor))
-	mux.HandleFunc("GET /readyz", readinessHandler(monitor))
-	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
-	apiServer.RegisterPublic(mux, apiMiddleware...)
-
-	chain := middleware.Chain(
+	rootRouter := NewRouter(
 		middleware.RequestID(),
 		middleware.HTTPTracing(),
 		middleware.HTTPMetrics(httpMetrics),
@@ -200,10 +194,19 @@ func main() {
 			MaxAgeSecs:   600,
 		}),
 	)
+	rootRouter.HandleFunc("GET /healthz", livenessHandler(monitor))
+	rootRouter.HandleFunc("GET /readyz", readinessHandler(monitor))
+	rootRouter.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
+	rootRouter.Route("/api/v1", func(apiV1Router *Router) {
+		apiServer.RegisterV1(apiV1Router)
+		apiV1Router.Route("/auth", func(authRouter *Router) {
+			apiServer.RegisterV1Auth(authRouter)
+		}, authMiddleware...)
+	})
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", config.Port),
-		Handler:      chain(mux),
+		Handler:      rootRouter.Handler(),
 		ReadTimeout:  config.ReadTimeout,
 		WriteTimeout: config.WriteTimeout,
 	}
@@ -219,7 +222,7 @@ func main() {
 
 	internalMux := http.NewServeMux()
 	if config.Monitoring.Mode == "push" {
-		apiServer.RegisterInternal(internalMux, apiMiddleware...)
+		apiServer.RegisterInternal(internalMux, authMiddleware...)
 	}
 
 	// Register pprof handlers internally on the internal port for secure monitoring
@@ -231,8 +234,14 @@ func main() {
 	internalMux.Handle("/metrics", promhttp.Handler())
 
 	internalServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", config.Monitoring.InternalPort),
-		Handler:      chain(internalMux),
+		Addr: fmt.Sprintf(":%d", config.Monitoring.InternalPort),
+		Handler: middleware.Chain(
+			middleware.RequestID(),
+			middleware.HTTPTracing(),
+			middleware.HTTPMetrics(httpMetrics),
+			middleware.Logger(logger),
+			middleware.Recoverer(logger),
+		)(internalMux),
 		ReadTimeout:  config.ReadTimeout,
 		WriteTimeout: config.WriteTimeout,
 	}
