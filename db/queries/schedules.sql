@@ -98,4 +98,5 @@ WHERE id = sqlc.arg(id);
 SELECT *
 FROM schedules
 ORDER BY source_type ASC, source_abbr ASC, name ASC
-LIMIT sqlc.arg(lim);
+LIMIT sqlc.arg(lim)
+OFFSET sqlc.arg(off);

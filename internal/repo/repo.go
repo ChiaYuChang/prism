@@ -16,6 +16,7 @@ type Repository interface {
 	BatchTrigger() BatchTrigger
 	UserFetches() UserFetches
 	Schedules() Schedules
+	Operator() Operator
 }
 
 // TaskReporter is the push side of the task lifecycle: workers use it to
@@ -65,6 +66,16 @@ type Schedules interface {
 	UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) (Schedule, error)
 	ListSchedules(ctx context.Context, limit int32) ([]Schedule, error)
 	MaterializeDueSchedules(ctx context.Context, arg MaterializeDueSchedulesParams) ([]ScheduleMaterialization, error)
+}
+
+type Operator interface {
+	ListModels(ctx context.Context, params ListOperatorParams) ([]Model, error)
+	ListSources(ctx context.Context, params ListOperatorParams) ([]Source, error)
+	ListBatches(ctx context.Context, params ListOperatorParams) ([]Batch, error)
+	ListEntities(ctx context.Context, params ListOperatorParams) ([]Entity, error)
+	ListSchedules(ctx context.Context, params ListOperatorParams) ([]Schedule, error)
+	ListCandidateEmbeddingsGemma2025(ctx context.Context, params ListOperatorParams) ([]EmbeddingRecord, error)
+	ListContentEmbeddingsGemma2025(ctx context.Context, params ListOperatorParams) ([]EmbeddingRecord, error)
 }
 
 type Pipeline interface {

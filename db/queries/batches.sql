@@ -6,6 +6,13 @@ WHERE completed_at IS NULL
 ORDER BY created_at ASC
 LIMIT $2;
 
+-- name: ListBatches :many
+SELECT *
+FROM batches
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(lim)
+OFFSET sqlc.arg(off);
+
 -- name: FindNewlyCompletedBatches :many
 -- Finds batches where all tasks are completed and all candidates are promoted to contents.
 SELECT id, source_type, trace_id

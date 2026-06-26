@@ -174,6 +174,52 @@ func (_c *MockRepository_Embedding_Call) RunAndReturn(run func() repo.Embeddings
 	return _c
 }
 
+// Operator provides a mock function for the type MockRepository
+func (_mock *MockRepository) Operator() repo.Operator {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Operator")
+	}
+
+	var r0 repo.Operator
+	if returnFunc, ok := ret.Get(0).(func() repo.Operator); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Operator)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Operator_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Operator'
+type MockRepository_Operator_Call struct {
+	*mock.Call
+}
+
+// Operator is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Operator() *MockRepository_Operator_Call {
+	return &MockRepository_Operator_Call{Call: _e.mock.On("Operator")}
+}
+
+func (_c *MockRepository_Operator_Call) Run(run func()) *MockRepository_Operator_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Operator_Call) Return(operator repo.Operator) *MockRepository_Operator_Call {
+	_c.Call.Return(operator)
+	return _c
+}
+
+func (_c *MockRepository_Operator_Call) RunAndReturn(run func() repo.Operator) *MockRepository_Operator_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Pipeline provides a mock function for the type MockRepository
 func (_mock *MockRepository) Pipeline() repo.Pipeline {
 	ret := _mock.Called()

@@ -6,6 +6,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/pkg/pgconv"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func dbCreateTaskRowToRepoTask(row CreateTaskRow) repo.Task {
@@ -159,7 +160,7 @@ func dbModelToRepoModel(m Model) repo.Model {
 		Name:        m.Name,
 		Provider:    m.Provider,
 		Type:        string(m.Type),
-		PublishDate: nil,
+		PublishDate: pgDateToTimePtr(m.PublishDate),
 		URL:         pgconv.PgTextToStringPtr(m.Url),
 		Tag:         pgconv.PgTextToStringPtr(m.Tag),
 		CreatedAt:   *pgconv.PgTimestamptzToTimePtr(m.CreatedAt),
@@ -221,4 +222,34 @@ func dbContentEmbeddingToRepoContentEmbedding(e ContentEmbeddingsGemma2025) repo
 		TraceID:   e.TraceID,
 		CreatedAt: *pgconv.PgTimestamptzToTimePtr(e.CreatedAt),
 	}
+}
+
+func dbCandidateEmbeddingRowToRepoEmbeddingRecord(e ListCandidateEmbeddingsGemma2025Row) repo.EmbeddingRecord {
+	return repo.EmbeddingRecord{
+		ID:        e.ID,
+		TargetID:  e.CandidateID,
+		ModelID:   e.ModelID,
+		Category:  string(e.Category),
+		TraceID:   e.TraceID,
+		CreatedAt: *pgconv.PgTimestamptzToTimePtr(e.CreatedAt),
+	}
+}
+
+func dbContentEmbeddingRowToRepoEmbeddingRecord(e ListContentEmbeddingsGemma2025Row) repo.EmbeddingRecord {
+	return repo.EmbeddingRecord{
+		ID:        e.ID,
+		TargetID:  e.ContentID,
+		ModelID:   e.ModelID,
+		Category:  string(e.Category),
+		TraceID:   e.TraceID,
+		CreatedAt: *pgconv.PgTimestamptzToTimePtr(e.CreatedAt),
+	}
+}
+
+func pgDateToTimePtr(d pgtype.Date) *time.Time {
+	if !d.Valid {
+		return nil
+	}
+	t := d.Time
+	return &t
 }

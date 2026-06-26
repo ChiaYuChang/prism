@@ -57,6 +57,51 @@ func (q *Queries) FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCo
 	return items, nil
 }
 
+const listBatches = `-- name: ListBatches :many
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+FROM batches
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+OFFSET $1
+`
+
+type ListBatchesParams struct {
+	Off int32 `db:"off" json:"off"`
+	Lim int32 `db:"lim" json:"lim"`
+}
+
+func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Batch, error) {
+	rows, err := q.db.Query(ctx, listBatches, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Batch
+	for rows.Next() {
+		var i Batch
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceType,
+			&i.TraceID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+			&i.PublishedAt,
+			&i.LastPublishAttemptAt,
+			&i.PublishRetryCount,
+			&i.PublishError,
+			&i.StalledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingCompletionBatches = `-- name: ListPendingCompletionBatches :many
 SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
 FROM batches

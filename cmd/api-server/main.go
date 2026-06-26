@@ -119,6 +119,7 @@ func main() {
 	}
 
 	serverOpts := []api.ServerOption{
+		api.WithOperator(repository.Operator()),
 		api.WithStatusMonitor(statusMonitor),
 	}
 

@@ -63,6 +63,10 @@ type PGSchedules struct {
 	q  *Queries
 }
 
+type PGOperator struct {
+	q *Queries
+}
+
 type pgBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
@@ -77,6 +81,7 @@ var _ repo.Analysis = (*PGAnalysis)(nil)
 var _ repo.BatchTrigger = (*PGBatchTrigger)(nil)
 var _ repo.UserFetches = (*PGUserFetches)(nil)
 var _ repo.Schedules = (*PGSchedules)(nil)
+var _ repo.Operator = (*PGOperator)(nil)
 
 // Repository root getters.
 func (r *PGRepository) Scheduler() repo.Scheduler {
@@ -113,6 +118,10 @@ func (r *PGRepository) UserFetches() repo.UserFetches {
 
 func (r *PGRepository) Schedules() repo.Schedules {
 	return &PGSchedules{db: r.db, q: r.q}
+}
+
+func (r *PGRepository) Operator() repo.Operator {
+	return &PGOperator{q: r.q}
 }
 
 // Scheduler repository.
@@ -365,7 +374,7 @@ func (r *PGSchedules) UpsertSchedule(ctx context.Context, arg repo.UpsertSchedul
 }
 
 func (r *PGSchedules) ListSchedules(ctx context.Context, limit int32) ([]repo.Schedule, error) {
-	rows, err := r.q.ListSchedules(ctx, limit)
+	rows, err := r.q.ListSchedules(ctx, ListSchedulesParams{Lim: limit})
 	if err != nil {
 		return nil, err
 	}
@@ -450,6 +459,110 @@ func (r *PGSchedules) MaterializeDueSchedules(ctx context.Context, arg repo.Mate
 		return nil, err
 	}
 	return out, nil
+}
+
+// Operator repository.
+func (r *PGOperator) ListModels(ctx context.Context, params repo.ListOperatorParams) ([]repo.Model, error) {
+	rows, err := r.q.ListModels(ctx, ListModelsParams{Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Model, len(rows))
+	for i, row := range rows {
+		out[i] = dbModelToRepoModel(row)
+	}
+	return out, nil
+}
+
+func (r *PGOperator) ListSources(ctx context.Context, params repo.ListOperatorParams) ([]repo.Source, error) {
+	rows, err := r.q.ListSources(ctx, ListSourcesParams{Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Source, len(rows))
+	for i, row := range rows {
+		out[i] = dbSourceToRepoSource(row)
+	}
+	return out, nil
+}
+
+func (r *PGOperator) ListBatches(ctx context.Context, params repo.ListOperatorParams) ([]repo.Batch, error) {
+	rows, err := r.q.ListBatches(ctx, ListBatchesParams{Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Batch, len(rows))
+	for i, row := range rows {
+		out[i] = dbBatchToRepoBatch(
+			row.ID,
+			string(row.SourceType),
+			pgconv.PgTextToStringPtr(row.TraceID),
+			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+			*pgconv.PgTimestamptzToTimePtr(row.UpdatedAt),
+			pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
+			pgconv.PgTimestamptzToTimePtr(row.PublishedAt),
+			pgconv.PgTimestamptzToTimePtr(row.LastPublishAttemptAt),
+			row.PublishRetryCount,
+			pgconv.PgTextToStringPtr(row.PublishError),
+			pgconv.PgTimestamptzToTimePtr(row.StalledAt),
+		)
+	}
+	return out, nil
+}
+
+func (r *PGOperator) ListEntities(ctx context.Context, params repo.ListOperatorParams) ([]repo.Entity, error) {
+	rows, err := r.q.ListEntities(ctx, ListEntitiesParams{Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Entity, len(rows))
+	for i, row := range rows {
+		out[i] = dbEntityToRepoEntity(row)
+	}
+	return out, nil
+}
+
+func (r *PGOperator) ListSchedules(ctx context.Context, params repo.ListOperatorParams) ([]repo.Schedule, error) {
+	rows, err := r.q.ListSchedules(ctx, ListSchedulesParams{Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Schedule, len(rows))
+	for i, row := range rows {
+		out[i] = dbScheduleToRepoSchedule(row)
+	}
+	return out, nil
+}
+
+func (r *PGOperator) ListCandidateEmbeddingsGemma2025(ctx context.Context, params repo.ListOperatorParams) ([]repo.EmbeddingRecord, error) {
+	rows, err := r.q.ListCandidateEmbeddingsGemma2025(ctx, ListCandidateEmbeddingsGemma2025Params{Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.EmbeddingRecord, len(rows))
+	for i, row := range rows {
+		out[i] = dbCandidateEmbeddingRowToRepoEmbeddingRecord(row)
+	}
+	return out, nil
+}
+
+func (r *PGOperator) ListContentEmbeddingsGemma2025(ctx context.Context, params repo.ListOperatorParams) ([]repo.EmbeddingRecord, error) {
+	rows, err := r.q.ListContentEmbeddingsGemma2025(ctx, ListContentEmbeddingsGemma2025Params{Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.EmbeddingRecord, len(rows))
+	for i, row := range rows {
+		out[i] = dbContentEmbeddingRowToRepoEmbeddingRecord(row)
+	}
+	return out, nil
+}
+
+func operatorOffset(params repo.ListOperatorParams) int32 {
+	if params.Next <= 1 {
+		return 0
+	}
+	return params.Next - 1
 }
 
 func schedulePayloadHash(id uuid.UUID, configHash string) string {

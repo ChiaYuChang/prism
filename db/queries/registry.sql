@@ -11,11 +11,25 @@ WHERE type = $1
   AND deleted_at IS NULL
 ORDER BY abbr ASC;
 
+-- name: ListSources :many
+SELECT *
+FROM sources
+ORDER BY type ASC, abbr ASC
+LIMIT sqlc.arg(lim)
+OFFSET sqlc.arg(off);
+
 -- name: GetModelByID :one
 SELECT *
 FROM models
 WHERE id = $1
 LIMIT 1;
+
+-- name: ListModels :many
+SELECT *
+FROM models
+ORDER BY type ASC, provider ASC, name ASC, id ASC
+LIMIT sqlc.arg(lim)
+OFFSET sqlc.arg(off);
 
 -- name: GetModelByNameAndType :one
 SELECT *

@@ -21,8 +21,10 @@ packages:
     config:
       all: true
   github.com/ChiaYuChang/prism/internal/llm:
-    config:
-      all: true
+    interfaces:
+      Generator:
+      Embedder:
+      Provider:
   github.com/ChiaYuChang/prism/internal/repo:
     config:
       all: true

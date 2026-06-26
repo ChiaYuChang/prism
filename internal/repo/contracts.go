@@ -121,6 +121,15 @@ type ContentEmbedding struct {
 	CreatedAt time.Time
 }
 
+type EmbeddingRecord struct {
+	ID        int64
+	TargetID  uuid.UUID
+	ModelID   int16
+	Category  string
+	TraceID   string
+	CreatedAt time.Time
+}
+
 type ContentExtraction struct {
 	ID            uuid.UUID
 	ContentID     uuid.UUID

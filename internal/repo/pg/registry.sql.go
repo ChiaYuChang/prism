@@ -125,6 +125,89 @@ func (q *Queries) GetSourceByAbbr(ctx context.Context, abbr string) (Source, err
 	return i, err
 }
 
+const listModels = `-- name: ListModels :many
+SELECT id, name, provider, type, publish_date, url, tag, created_at, deleted_at
+FROM models
+ORDER BY type ASC, provider ASC, name ASC, id ASC
+LIMIT $2
+OFFSET $1
+`
+
+type ListModelsParams struct {
+	Off int32 `db:"off" json:"off"`
+	Lim int32 `db:"lim" json:"lim"`
+}
+
+func (q *Queries) ListModels(ctx context.Context, arg ListModelsParams) ([]Model, error) {
+	rows, err := q.db.Query(ctx, listModels, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Model
+	for rows.Next() {
+		var i Model
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Provider,
+			&i.Type,
+			&i.PublishDate,
+			&i.Url,
+			&i.Tag,
+			&i.CreatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSources = `-- name: ListSources :many
+SELECT abbr, name, type, base_url, created_at, deleted_at
+FROM sources
+ORDER BY type ASC, abbr ASC
+LIMIT $2
+OFFSET $1
+`
+
+type ListSourcesParams struct {
+	Off int32 `db:"off" json:"off"`
+	Lim int32 `db:"lim" json:"lim"`
+}
+
+func (q *Queries) ListSources(ctx context.Context, arg ListSourcesParams) ([]Source, error) {
+	rows, err := q.db.Query(ctx, listSources, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Source
+	for rows.Next() {
+		var i Source
+		if err := rows.Scan(
+			&i.Abbr,
+			&i.Name,
+			&i.Type,
+			&i.BaseUrl,
+			&i.CreatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSourcesByType = `-- name: ListSourcesByType :many
 SELECT abbr, name, type, base_url, created_at, deleted_at
 FROM sources

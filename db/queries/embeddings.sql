@@ -36,11 +36,25 @@ FROM candidate_embeddings_gemma_2025
 WHERE candidate_id = $1
 ORDER BY created_at DESC, id DESC;
 
+-- name: ListCandidateEmbeddingsGemma2025 :many
+SELECT id, candidate_id, model_id, category, trace_id, created_at
+FROM candidate_embeddings_gemma_2025
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(lim)
+OFFSET sqlc.arg(off);
+
 -- name: ListContentEmbeddingsByContentID :many
 SELECT *
 FROM content_embeddings_gemma_2025
 WHERE content_id = $1
 ORDER BY created_at DESC, id DESC;
+
+-- name: ListContentEmbeddingsGemma2025 :many
+SELECT id, content_id, model_id, category, trace_id, created_at
+FROM content_embeddings_gemma_2025
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(lim)
+OFFSET sqlc.arg(off);
 
 -- name: SearchCandidatesByVector :many
 SELECT

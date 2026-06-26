@@ -30,6 +30,11 @@ type ListCandidatesParams struct {
 	Offset     int32      `validate:"min=0"`
 }
 
+type ListOperatorParams struct {
+	Limit int32 `validate:"min=1,max=500"`
+	Next  int32 `validate:"min=1"`
+}
+
 type CreateTaskParams struct {
 	BatchID     uuid.UUID      `validate:"required"`
 	Kind        string         `validate:"required"`

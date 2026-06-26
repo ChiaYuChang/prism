@@ -201,6 +201,44 @@ func (q *Queries) GetEntityByCanonicalAndType(ctx context.Context, arg GetEntity
 	return i, err
 }
 
+const listEntities = `-- name: ListEntities :many
+SELECT id, canonical, type, created_at
+FROM entities
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+OFFSET $1
+`
+
+type ListEntitiesParams struct {
+	Off int32 `db:"off" json:"off"`
+	Lim int32 `db:"lim" json:"lim"`
+}
+
+func (q *Queries) ListEntities(ctx context.Context, arg ListEntitiesParams) ([]Entity, error) {
+	rows, err := q.db.Query(ctx, listEntities, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Entity
+	for rows.Next() {
+		var i Entity
+		if err := rows.Scan(
+			&i.ID,
+			&i.Canonical,
+			&i.Type,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const replaceContentExtractionPhrases = `-- name: ReplaceContentExtractionPhrases :exec
 WITH deleted AS (
     DELETE FROM content_extraction_phrases

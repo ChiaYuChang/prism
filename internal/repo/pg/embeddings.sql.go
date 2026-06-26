@@ -140,6 +140,55 @@ func (q *Queries) ListCandidateEmbeddingsByCandidateID(ctx context.Context, cand
 	return items, nil
 }
 
+const listCandidateEmbeddingsGemma2025 = `-- name: ListCandidateEmbeddingsGemma2025 :many
+SELECT id, candidate_id, model_id, category, trace_id, created_at
+FROM candidate_embeddings_gemma_2025
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+OFFSET $1
+`
+
+type ListCandidateEmbeddingsGemma2025Params struct {
+	Off int32 `db:"off" json:"off"`
+	Lim int32 `db:"lim" json:"lim"`
+}
+
+type ListCandidateEmbeddingsGemma2025Row struct {
+	ID          int64              `db:"id" json:"id"`
+	CandidateID uuid.UUID          `db:"candidate_id" json:"candidate_id"`
+	ModelID     int16              `db:"model_id" json:"model_id"`
+	Category    EmbeddingCategory  `db:"category" json:"category"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListCandidateEmbeddingsGemma2025(ctx context.Context, arg ListCandidateEmbeddingsGemma2025Params) ([]ListCandidateEmbeddingsGemma2025Row, error) {
+	rows, err := q.db.Query(ctx, listCandidateEmbeddingsGemma2025, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCandidateEmbeddingsGemma2025Row
+	for rows.Next() {
+		var i ListCandidateEmbeddingsGemma2025Row
+		if err := rows.Scan(
+			&i.ID,
+			&i.CandidateID,
+			&i.ModelID,
+			&i.Category,
+			&i.TraceID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listContentEmbeddingsByContentID = `-- name: ListContentEmbeddingsByContentID :many
 SELECT id, content_id, model_id, category, vector, trace_id, created_at
 FROM content_embeddings_gemma_2025
@@ -162,6 +211,55 @@ func (q *Queries) ListContentEmbeddingsByContentID(ctx context.Context, contentI
 			&i.ModelID,
 			&i.Category,
 			&i.Vector,
+			&i.TraceID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listContentEmbeddingsGemma2025 = `-- name: ListContentEmbeddingsGemma2025 :many
+SELECT id, content_id, model_id, category, trace_id, created_at
+FROM content_embeddings_gemma_2025
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+OFFSET $1
+`
+
+type ListContentEmbeddingsGemma2025Params struct {
+	Off int32 `db:"off" json:"off"`
+	Lim int32 `db:"lim" json:"lim"`
+}
+
+type ListContentEmbeddingsGemma2025Row struct {
+	ID        int64              `db:"id" json:"id"`
+	ContentID uuid.UUID          `db:"content_id" json:"content_id"`
+	ModelID   int16              `db:"model_id" json:"model_id"`
+	Category  EmbeddingCategory  `db:"category" json:"category"`
+	TraceID   string             `db:"trace_id" json:"trace_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListContentEmbeddingsGemma2025(ctx context.Context, arg ListContentEmbeddingsGemma2025Params) ([]ListContentEmbeddingsGemma2025Row, error) {
+	rows, err := q.db.Query(ctx, listContentEmbeddingsGemma2025, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListContentEmbeddingsGemma2025Row
+	for rows.Next() {
+		var i ListContentEmbeddingsGemma2025Row
+		if err := rows.Scan(
+			&i.ID,
+			&i.ContentID,
+			&i.ModelID,
+			&i.Category,
 			&i.TraceID,
 			&i.CreatedAt,
 		); err != nil {

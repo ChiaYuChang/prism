@@ -44,6 +44,13 @@ WHERE canonical = $1
   AND type = $2
 LIMIT 1;
 
+-- name: ListEntities :many
+SELECT *
+FROM entities
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(lim)
+OFFSET sqlc.arg(off);
+
 -- name: UpsertEntity :one
 INSERT INTO entities (
     canonical,

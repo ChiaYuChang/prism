@@ -68,11 +68,17 @@ const listSchedules = `-- name: ListSchedules :many
 SELECT id, name, enabled, config_present, config_hash, kind, source_type, source_abbr, url, payload, meta, frequency, run_on_insert, next_fire_at, last_fire_at, last_materialized_at, last_materialized_task_id, last_error, created_at, updated_at
 FROM schedules
 ORDER BY source_type ASC, source_abbr ASC, name ASC
-LIMIT $1
+LIMIT $2
+OFFSET $1
 `
 
-func (q *Queries) ListSchedules(ctx context.Context, lim int32) ([]Schedule, error) {
-	rows, err := q.db.Query(ctx, listSchedules, lim)
+type ListSchedulesParams struct {
+	Off int32 `db:"off" json:"off"`
+	Lim int32 `db:"lim" json:"lim"`
+}
+
+func (q *Queries) ListSchedules(ctx context.Context, arg ListSchedulesParams) ([]Schedule, error) {
+	rows, err := q.db.Query(ctx, listSchedules, arg.Off, arg.Lim)
 	if err != nil {
 		return nil, err
 	}

@@ -51,6 +51,7 @@ type testServerMocks struct {
 	tasks       *mocks.MockTasks
 	pipeline    *mocks.MockPipeline
 	userFetches *mocks.MockUserFetches
+	operator    *mocks.MockOperator
 }
 
 func newTestServer(t *testing.T) (*api.Server, *testServerMocks) {
@@ -60,9 +61,10 @@ func newTestServer(t *testing.T) (*api.Server, *testServerMocks) {
 		tasks:       mocks.NewMockTasks(t),
 		pipeline:    mocks.NewMockPipeline(t),
 		userFetches: mocks.NewMockUserFetches(t),
+		operator:    mocks.NewMockOperator(t),
 	}
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches)
+	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches, api.WithOperator(m.operator))
 	require.NoError(t, err)
 	return srv, m
 }
@@ -220,6 +222,85 @@ func TestGetAuthCandidate_NotFound(t *testing.T) {
 	srv.GetAuthCandidate(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestListAuthModels_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	now := time.Now().UTC()
+	m.operator.EXPECT().ListModels(mock.Anything, repo.ListOperatorParams{Limit: 25, Next: 11}).Return([]repo.Model{{
+		ID:        1,
+		Name:      "gemma-2025",
+		Provider:  "gemini",
+		Type:      "EMBEDDER",
+		CreatedAt: now,
+	}}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/models?limit=25&next=11", nil)
+	rec := httptest.NewRecorder()
+	srv.ListAuthModels(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Items []api.AuthModel `json:"items"`
+		Limit int32           `json:"limit"`
+		Next  int32           `json:"next"`
+		Count int             `json:"count"`
+	}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.EqualValues(t, 25, body.Limit)
+	require.EqualValues(t, 11, body.Next)
+	require.Equal(t, 1, body.Count)
+	require.Equal(t, "gemma-2025", body.Items[0].Name)
+}
+
+func TestListAuthEmbeddings_Gemma2025(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	now := time.Now().UTC()
+	candidateID := uuid.Must(uuid.NewV7())
+	contentID := uuid.Must(uuid.NewV7())
+	params := repo.ListOperatorParams{Limit: 5, Next: 1}
+	m.operator.EXPECT().ListCandidateEmbeddingsGemma2025(mock.Anything, params).Return([]repo.EmbeddingRecord{{
+		ID:        10,
+		TargetID:  candidateID,
+		ModelID:   1,
+		Category:  "BRIEF",
+		TraceID:   "trace-candidate",
+		CreatedAt: now,
+	}}, nil).Once()
+	m.operator.EXPECT().ListContentEmbeddingsGemma2025(mock.Anything, params).Return([]repo.EmbeddingRecord{{
+		ID:        20,
+		TargetID:  contentID,
+		ModelID:   1,
+		Category:  "CONTENT",
+		TraceID:   "trace-content",
+		CreatedAt: now,
+	}}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/embedding/embeddings_gemma_2025?limit=5", nil)
+	req.SetPathValue("model_name", "embeddings_gemma_2025")
+	rec := httptest.NewRecorder()
+	srv.ListAuthEmbeddings(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AuthEmbeddingListResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, "embeddings_gemma_2025", body.ModelName)
+	require.Equal(t, 2, body.Count)
+	require.Equal(t, candidateID, body.CandidateEmbeddings[0].TargetID)
+	require.Equal(t, contentID, body.ContentEmbeddings[0].TargetID)
+}
+
+func TestListAuthEmbeddings_UnsupportedModel(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/embedding/unknown", nil)
+	req.SetPathValue("model_name", "unknown")
+	rec := httptest.NewRecorder()
+	srv.ListAuthEmbeddings(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 // expectCreateFetch stubs UserFetches.Create with a fresh fetch_id.

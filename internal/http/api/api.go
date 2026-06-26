@@ -160,6 +160,14 @@ func WithStatusMonitor(m StatusMonitor) ServerOption {
 	}
 }
 
+// WithOperator attaches the operator read repository used by authenticated
+// inspection endpoints.
+func WithOperator(operator repo.Operator) ServerOption {
+	return func(s *Server) {
+		s.Operator = operator
+	}
+}
+
 // Server groups dependencies shared by all API handlers.
 type Server struct {
 	Logger          *slog.Logger
@@ -167,6 +175,7 @@ type Server struct {
 	Tasks           repo.Tasks
 	Pipeline        repo.Pipeline
 	UserFetches     repo.UserFetches
+	Operator        repo.Operator
 	Cache           ProgressCache
 	GetFetchLimiter middleware.IPLimiter
 	Monitor         StatusMonitor
@@ -227,6 +236,12 @@ func (s *Server) RegisterV1(r RouteRegistrar) {
 func (s *Server) RegisterV1Auth(r RouteRegistrar) {
 	r.Handle("GET /candidates", http.HandlerFunc(s.ListCandidates))
 	r.Handle("GET /candidates/{id}", http.HandlerFunc(s.GetAuthCandidate))
+	r.Handle("GET /models", http.HandlerFunc(s.ListAuthModels))
+	r.Handle("GET /sources", http.HandlerFunc(s.ListAuthSources))
+	r.Handle("GET /batches", http.HandlerFunc(s.ListAuthBatches))
+	r.Handle("GET /entities", http.HandlerFunc(s.ListAuthEntities))
+	r.Handle("GET /schedules", http.HandlerFunc(s.ListAuthSchedules))
+	r.Handle("GET /embedding/{model_name}", http.HandlerFunc(s.ListAuthEmbeddings))
 	r.Handle("GET /tasks", http.HandlerFunc(s.ListAuthTasks))
 	r.Handle("GET /tasks/{id}", http.HandlerFunc(s.GetAuthTask))
 }
