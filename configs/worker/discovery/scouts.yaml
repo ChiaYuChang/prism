@@ -44,6 +44,18 @@ scout:
             date_selector: div.list_date
             date_layout: "2006年01月02日"
             description_selector: div.list_description
+      - name: npp
+        hosts:
+          - newpowerparty.tw
+        span_name: discovery.scout.html.npp.discover
+        rules:
+          - item_selector: div.elementor-hidden-mobile div.tpg-post-holder
+            link_selector: h3.entry-title a
+            link_attr: href
+            title_selector: h3.entry-title a
+            date_selector: span.date a
+            date_layout: "2006-01-02"
+            description_selector: div.tpg-excerpt-inner
   rss:
     defaults:
       enabled: true

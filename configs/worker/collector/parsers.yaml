@@ -60,6 +60,19 @@ parsers:
       content:
         - "#div1 div.post-body p"
 
+  newpowerparty.tw:
+    enabled: false,
+    jsonld: false,
+    date_layouts:
+      - "2006-01-02"
+    html:
+      title:
+        - ".hfe-page-title h2"
+      date:
+        - ".hfe-post-info span.hfe-post-info__item--type-date"
+      content:
+        - "article.category-press-release.ast-article-single p"
+
   tw.news.yahoo.com:
     enabled: true
     jsonld: true # Yahoo has excellent JSON-LD
