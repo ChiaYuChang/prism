@@ -4,8 +4,16 @@ tasks:
   all:
     desc: build all microservice binaries
     deps:
-      - for: [scheduler, discovery, collector, planner, schedule-trigger, batch-detector, batch-publisher]
+      - for: [api-server, backfiller, scheduler, discovery, collector, planner, schedule-trigger, batch-detector, batch-publisher, dev-downloader, dev-fixture-server, dev-mock-server, dev-parse-probe, recover, rss]
         task: '{{.ITEM}}'
+
+  api-server:
+    desc: build API server binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/api-server ./{{.CMD_DIR}}/api-server" ]
+
+  backfiller:
+    desc: build backfiller binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/backfiller ./{{.CMD_DIR}}/backfiller" ]
 
   scheduler:
     desc: build scheduler binary
@@ -43,3 +51,35 @@ tasks:
     cmds:
       - go build -o {{.BUILD_DIR}}/batch/publisher
         ./{{.CMD_DIR}}/batch/publisher/*.go
+
+  dev-downloader:
+    desc: build dev downloader binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}/dev
+      - go build -o {{.BUILD_DIR}}/dev/downloader ./{{.CMD_DIR}}/dev/downloader
+
+  dev-fixture-server:
+    desc: build dev fixture server binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}/dev
+      - go build -o {{.BUILD_DIR}}/dev/fixture-server ./{{.CMD_DIR}}/dev/fixture-server
+
+  dev-mock-server:
+    desc: build dev mock server binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}/dev
+      - go build -o {{.BUILD_DIR}}/dev/mock-server ./{{.CMD_DIR}}/dev/mock-server
+
+  dev-parse-probe:
+    desc: build dev parse probe binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}/dev
+      - go build -o {{.BUILD_DIR}}/dev/parse-probe ./{{.CMD_DIR}}/dev/parse-probe
+
+  recover:
+    desc: build recovery binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/recover ./{{.CMD_DIR}}/recover" ]
+
+  rss:
+    desc: build RSS probe binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/rss ./{{.CMD_DIR}}/rss" ]

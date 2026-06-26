@@ -28,10 +28,10 @@ type AuthTask struct {
 	SourceType  string          `json:"source_type"`
 	SourceAbbr  string          `json:"source_abbr"`
 	URL         string          `json:"url"`
-	Payload     json.RawMessage `json:"payload,omitempty"`
+	Payload     json.RawMessage `json:"payload,omitempty"       swaggertype:"object"`
 	PayloadHash *string         `json:"payload_hash,omitempty"`
-	Meta        json.RawMessage `json:"meta,omitempty"`
-	Frequency   *time.Duration  `json:"frequency,omitempty"`
+	Meta        json.RawMessage `json:"meta,omitempty"          swaggertype:"object"`
+	Frequency   *time.Duration  `json:"frequency,omitempty"     swaggertype:"integer"`
 	NextRunAt   time.Time       `json:"next_run_at"`
 	ExpiresAt   *time.Time      `json:"expires_at,omitempty"`
 	Status      repo.TaskStatus `json:"status"`
@@ -99,8 +99,8 @@ type AuthSchedule struct {
 	SourceType             string          `json:"source_type"`
 	SourceAbbr             string          `json:"source_abbr"`
 	URL                    string          `json:"url"`
-	Payload                json.RawMessage `json:"payload,omitempty"`
-	Meta                   json.RawMessage `json:"meta,omitempty"`
+	Payload                json.RawMessage `json:"payload,omitempty"   swaggertype:"object"`
+	Meta                   json.RawMessage `json:"meta,omitempty"      swaggertype:"object"`
 	RunOnInsert            bool            `json:"run_on_insert"`
 	NextFireAt             time.Time       `json:"next_fire_at"`
 	LastFireAt             *time.Time      `json:"last_fire_at,omitempty"`
@@ -127,6 +127,46 @@ type authListResponse[T any] struct {
 	Count int   `json:"count"`
 }
 
+// AuthListModelsResponse is the documented response shape for ListAuthModels.
+type AuthListModelsResponse struct {
+	Items []AuthModel `json:"items"`
+	Limit int32       `json:"limit"`
+	Next  int32       `json:"next"`
+	Count int         `json:"count"`
+}
+
+// AuthListSourcesResponse is the documented response shape for ListAuthSources.
+type AuthListSourcesResponse struct {
+	Items []AuthSource `json:"items"`
+	Limit int32        `json:"limit"`
+	Next  int32        `json:"next"`
+	Count int          `json:"count"`
+}
+
+// AuthListBatchesResponse is the documented response shape for ListAuthBatches.
+type AuthListBatchesResponse struct {
+	Items []AuthBatch `json:"items"`
+	Limit int32       `json:"limit"`
+	Next  int32       `json:"next"`
+	Count int         `json:"count"`
+}
+
+// AuthListEntitiesResponse is the documented response shape for ListAuthEntities.
+type AuthListEntitiesResponse struct {
+	Items []AuthEntity `json:"items"`
+	Limit int32        `json:"limit"`
+	Next  int32        `json:"next"`
+	Count int          `json:"count"`
+}
+
+// AuthListSchedulesResponse is the documented response shape for ListAuthSchedules.
+type AuthListSchedulesResponse struct {
+	Items []AuthSchedule `json:"items"`
+	Limit int32          `json:"limit"`
+	Next  int32          `json:"next"`
+	Count int            `json:"count"`
+}
+
 type AuthEmbeddingListResponse struct {
 	ModelName           string                `json:"model_name"`
 	CandidateEmbeddings []AuthEmbeddingRecord `json:"candidate_embeddings"`
@@ -149,11 +189,21 @@ type AuthCandidate struct {
 	DiscoveredAt    time.Time       `json:"discovered_at"`
 	TraceID         string          `json:"trace_id"`
 	IngestionMethod string          `json:"ingestion_method"`
-	Metadata        json.RawMessage `json:"metadata,omitempty"`
+	Metadata        json.RawMessage `json:"metadata,omitempty" swaggertype:"object"`
 	CreatedAt       time.Time       `json:"created_at"`
 }
 
 // ListAuthModels handles GET /api/v1/auth/models.
+//
+// @Summary   List operator models
+// @Tags      auth
+// @Produce   json
+// @Param     limit query int false "Page size (default 50, max 500)"
+// @Param     next  query int false "Cursor for next page (default 1)"
+// @Success   200 {object} AuthListModelsResponse
+// @Failure   400 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /auth/models [get]
 func (s *Server) ListAuthModels(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
@@ -177,6 +227,16 @@ func (s *Server) ListAuthModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListAuthSources handles GET /api/v1/auth/sources.
+//
+// @Summary   List operator sources
+// @Tags      auth
+// @Produce   json
+// @Param     limit query int false "Page size (default 50, max 500)"
+// @Param     next  query int false "Cursor for next page (default 1)"
+// @Success   200 {object} AuthListSourcesResponse
+// @Failure   400 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /auth/sources [get]
 func (s *Server) ListAuthSources(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
@@ -200,6 +260,16 @@ func (s *Server) ListAuthSources(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListAuthBatches handles GET /api/v1/auth/batches.
+//
+// @Summary   List operator batches
+// @Tags      auth
+// @Produce   json
+// @Param     limit query int false "Page size (default 50, max 500)"
+// @Param     next  query int false "Cursor for next page (default 1)"
+// @Success   200 {object} AuthListBatchesResponse
+// @Failure   400 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /auth/batches [get]
 func (s *Server) ListAuthBatches(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
@@ -223,6 +293,16 @@ func (s *Server) ListAuthBatches(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListAuthEntities handles GET /api/v1/auth/entities.
+//
+// @Summary   List operator entities
+// @Tags      auth
+// @Produce   json
+// @Param     limit query int false "Page size (default 50, max 500)"
+// @Param     next  query int false "Cursor for next page (default 1)"
+// @Success   200 {object} AuthListEntitiesResponse
+// @Failure   400 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /auth/entities [get]
 func (s *Server) ListAuthEntities(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
@@ -246,6 +326,16 @@ func (s *Server) ListAuthEntities(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListAuthSchedules handles GET /api/v1/auth/schedules.
+//
+// @Summary   List operator schedules
+// @Tags      auth
+// @Produce   json
+// @Param     limit query int false "Page size (default 50, max 500)"
+// @Param     next  query int false "Cursor for next page (default 1)"
+// @Success   200 {object} AuthListSchedulesResponse
+// @Failure   400 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /auth/schedules [get]
 func (s *Server) ListAuthSchedules(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
@@ -269,6 +359,17 @@ func (s *Server) ListAuthSchedules(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListAuthEmbeddings handles GET /api/v1/auth/embedding/{model_name}.
+//
+// @Summary   List operator embeddings by model
+// @Tags      auth
+// @Produce   json
+// @Param     model_name path  string true  "Embedding model name"
+// @Param     limit      query int    false "Page size (default 50, max 500)"
+// @Param     next       query int    false "Cursor for next page (default 1)"
+// @Success   200 {object} AuthEmbeddingListResponse
+// @Failure   400 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /auth/embedding/{model_name} [get]
 func (s *Server) ListAuthEmbeddings(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
@@ -314,6 +415,16 @@ func (s *Server) ListAuthEmbeddings(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetAuthTask handles GET /api/v1/auth/tasks/{id}.
+//
+// @Summary   Get operator task
+// @Tags      auth
+// @Produce   json
+// @Param     id path string true "Task UUID"
+// @Success   200 {object} AuthTask
+// @Failure   400 {object} ErrorResponse
+// @Failure   404 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /auth/tasks/{id} [get]
 func (s *Server) GetAuthTask(w http.ResponseWriter, r *http.Request) {
 	taskID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
@@ -335,6 +446,15 @@ func (s *Server) GetAuthTask(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListAuthTasks handles GET /api/v1/auth/tasks?batch_id=...
+//
+// @Summary   List operator tasks by batch
+// @Tags      auth
+// @Produce   json
+// @Param     batch_id query string true "Batch UUID"
+// @Success   200 {object} AuthListTasksResponse
+// @Failure   400 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /auth/tasks [get]
 func (s *Server) ListAuthTasks(w http.ResponseWriter, r *http.Request) {
 	batchID, err := uuid.Parse(r.URL.Query().Get("batch_id"))
 	if err != nil {
@@ -356,6 +476,16 @@ func (s *Server) ListAuthTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetAuthCandidate handles GET /api/v1/auth/candidates/{id}.
+//
+// @Summary   Get operator candidate
+// @Tags      auth
+// @Produce   json
+// @Param     id path string true "Candidate UUID"
+// @Success   200 {object} AuthCandidate
+// @Failure   400 {object} ErrorResponse
+// @Failure   404 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /auth/candidates/{id} [get]
 func (s *Server) GetAuthCandidate(w http.ResponseWriter, r *http.Request) {
 	candidateID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

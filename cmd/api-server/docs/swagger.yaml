@@ -1,5 +1,296 @@
 basePath: /api/v1
 definitions:
+  api.AuthBatch:
+    properties:
+      completed_at:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      last_publish_attempt_at:
+        type: string
+      publish_error:
+        type: string
+      publish_retry_count:
+        type: integer
+      published_at:
+        type: string
+      source_type:
+        type: string
+      stalled_at:
+        type: string
+      trace_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  api.AuthCandidate:
+    properties:
+      batch_id:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      discovered_at:
+        type: string
+      fingerprint:
+        type: string
+      id:
+        type: string
+      ingestion_method:
+        type: string
+      metadata:
+        type: object
+      published_at:
+        type: string
+      source_abbr:
+        type: string
+      title:
+        type: string
+      trace_id:
+        type: string
+      url:
+        type: string
+    type: object
+  api.AuthEmbeddingListResponse:
+    properties:
+      candidate_embeddings:
+        items:
+          $ref: '#/definitions/api.AuthEmbeddingRecord'
+        type: array
+      content_embeddings:
+        items:
+          $ref: '#/definitions/api.AuthEmbeddingRecord'
+        type: array
+      count:
+        type: integer
+      limit:
+        type: integer
+      model_name:
+        type: string
+      next:
+        type: integer
+    type: object
+  api.AuthEmbeddingRecord:
+    properties:
+      category:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      model_id:
+        type: integer
+      target_id:
+        type: string
+      trace_id:
+        type: string
+    type: object
+  api.AuthEntity:
+    properties:
+      canonical:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      type:
+        type: string
+    type: object
+  api.AuthListBatchesResponse:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/api.AuthBatch'
+        type: array
+      limit:
+        type: integer
+      next:
+        type: integer
+    type: object
+  api.AuthListEntitiesResponse:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/api.AuthEntity'
+        type: array
+      limit:
+        type: integer
+      next:
+        type: integer
+    type: object
+  api.AuthListModelsResponse:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/api.AuthModel'
+        type: array
+      limit:
+        type: integer
+      next:
+        type: integer
+    type: object
+  api.AuthListSchedulesResponse:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/api.AuthSchedule'
+        type: array
+      limit:
+        type: integer
+      next:
+        type: integer
+    type: object
+  api.AuthListSourcesResponse:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/api.AuthSource'
+        type: array
+      limit:
+        type: integer
+      next:
+        type: integer
+    type: object
+  api.AuthListTasksResponse:
+    properties:
+      batch_id:
+        type: string
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/api.AuthTask'
+        type: array
+    type: object
+  api.AuthModel:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      provider:
+        type: string
+      publish_date:
+        type: string
+      tag:
+        type: string
+      type:
+        type: string
+      url:
+        type: string
+    type: object
+  api.AuthSchedule:
+    properties:
+      config_hash:
+        type: string
+      config_present:
+        type: boolean
+      created_at:
+        type: string
+      enabled:
+        type: boolean
+      id:
+        type: string
+      kind:
+        type: string
+      last_error:
+        type: string
+      last_fire_at:
+        type: string
+      last_materialized_at:
+        type: string
+      last_materialized_task_id:
+        type: string
+      meta:
+        type: object
+      name:
+        type: string
+      next_fire_at:
+        type: string
+      payload:
+        type: object
+      run_on_insert:
+        type: boolean
+      source_abbr:
+        type: string
+      source_type:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+    type: object
+  api.AuthSource:
+    properties:
+      abbr:
+        type: string
+      base_url:
+        type: string
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      name:
+        type: string
+      type:
+        type: string
+    type: object
+  api.AuthTask:
+    properties:
+      batch_id:
+        type: string
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      frequency:
+        type: integer
+      id:
+        type: string
+      kind:
+        type: string
+      last_run_at:
+        type: string
+      meta:
+        type: object
+      next_run_at:
+        type: string
+      payload:
+        type: object
+      payload_hash:
+        type: string
+      retry_count:
+        type: integer
+      source_abbr:
+        type: string
+      source_type:
+        type: string
+      status:
+        $ref: '#/definitions/repo.TaskStatus'
+      trace_id:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+    type: object
   api.Candidate:
     properties:
       batch_id:
@@ -119,6 +410,24 @@ definitions:
           $ref: '#/definitions/api.PageFetchItem'
         type: array
     type: object
+  api.PostStatusPayload:
+    properties:
+      level:
+        $ref: '#/definitions/obs.HealthLevel'
+      message:
+        type: string
+      service:
+        type: string
+      timestamp:
+        type: string
+      uptime:
+        type: string
+    type: object
+  api.StatusRecordResponse:
+    properties:
+      status:
+        type: string
+    type: object
   obs.HealthLevel:
     enum:
     - STARTING
@@ -142,12 +451,334 @@ definitions:
       uptime:
         type: string
     type: object
+  repo.TaskStatus:
+    enum:
+    - PENDING
+    - RUNNING
+    - FAILED
+    - COMPLETED
+    type: string
+    x-enum-varnames:
+    - TaskStatusPending
+    - TaskStatusRunning
+    - TaskStatusFailed
+    - TaskStatusCompleted
 info:
   contact: {}
   description: User-facing read API for Prism candidate/content data.
   title: Prism API
   version: "0.1"
 paths:
+  /auth/batches:
+    get:
+      parameters:
+      - description: Page size (default 50, max 500)
+        in: query
+        name: limit
+        type: integer
+      - description: Cursor for next page (default 1)
+        in: query
+        name: next
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthListBatchesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List operator batches
+      tags:
+      - auth
+  /auth/candidates:
+    get:
+      parameters:
+      - description: Keyword matched against title/description (ILIKE)
+        in: query
+        name: q
+        type: string
+      - description: Filter by source abbreviation (e.g. dpp, tpp, yahoo)
+        in: query
+        name: source_abbr
+        type: string
+      - description: Lower bound on published_at/discovered_at (RFC3339)
+        in: query
+        name: since
+        type: string
+      - description: Upper bound on published_at/discovered_at (RFC3339)
+        in: query
+        name: until
+        type: string
+      - description: Page size (default 50, max 200)
+        in: query
+        name: limit
+        type: integer
+      - description: Pagination offset (default 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ListCandidatesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List candidate article briefs
+      tags:
+      - candidates
+  /auth/candidates/{id}:
+    get:
+      parameters:
+      - description: Candidate UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthCandidate'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get operator candidate
+      tags:
+      - auth
+  /auth/embedding/{model_name}:
+    get:
+      parameters:
+      - description: Embedding model name
+        in: path
+        name: model_name
+        required: true
+        type: string
+      - description: Page size (default 50, max 500)
+        in: query
+        name: limit
+        type: integer
+      - description: Cursor for next page (default 1)
+        in: query
+        name: next
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthEmbeddingListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List operator embeddings by model
+      tags:
+      - auth
+  /auth/entities:
+    get:
+      parameters:
+      - description: Page size (default 50, max 500)
+        in: query
+        name: limit
+        type: integer
+      - description: Cursor for next page (default 1)
+        in: query
+        name: next
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthListEntitiesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List operator entities
+      tags:
+      - auth
+  /auth/models:
+    get:
+      parameters:
+      - description: Page size (default 50, max 500)
+        in: query
+        name: limit
+        type: integer
+      - description: Cursor for next page (default 1)
+        in: query
+        name: next
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthListModelsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List operator models
+      tags:
+      - auth
+  /auth/schedules:
+    get:
+      parameters:
+      - description: Page size (default 50, max 500)
+        in: query
+        name: limit
+        type: integer
+      - description: Cursor for next page (default 1)
+        in: query
+        name: next
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthListSchedulesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List operator schedules
+      tags:
+      - auth
+  /auth/sources:
+    get:
+      parameters:
+      - description: Page size (default 50, max 500)
+        in: query
+        name: limit
+        type: integer
+      - description: Cursor for next page (default 1)
+        in: query
+        name: next
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthListSourcesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List operator sources
+      tags:
+      - auth
+  /auth/tasks:
+    get:
+      parameters:
+      - description: Batch UUID
+        in: query
+        name: batch_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthListTasksResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List operator tasks by batch
+      tags:
+      - auth
+  /auth/tasks/{id}:
+    get:
+      parameters:
+      - description: Task UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AuthTask'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get operator task
+      tags:
+      - auth
   /candidates:
     get:
       parameters:
@@ -310,4 +941,50 @@ paths:
       summary: Readiness probe
       tags:
       - health
+  /status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/obs.HealthStatus'
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List monitored service statuses
+      tags:
+      - status
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Service status payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.PostStatusPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StatusRecordResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Record monitored service status
+      tags:
+      - status
 swagger: "2.0"

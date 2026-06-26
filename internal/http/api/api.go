@@ -266,6 +266,11 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// StatusRecordResponse is returned after a push-mode status update is stored.
+type StatusRecordResponse struct {
+	Status string `json:"status"`
+}
+
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -362,6 +367,13 @@ func (s *Server) pingTarget(ctx context.Context, client *http.Client, url string
 }
 
 // GetStatus returns the cached health status of monitored services.
+//
+// @Summary   List monitored service statuses
+// @Tags      status
+// @Produce   json
+// @Success   200 {object} map[string]obs.HealthStatus
+// @Failure   500 {object} ErrorResponse
+// @Router    /status [get]
 func (s *Server) GetStatus(w http.ResponseWriter, r *http.Request) {
 	statuses, err := s.Monitor.Statuses(r.Context())
 	if err != nil {
@@ -381,6 +393,16 @@ type PostStatusPayload struct {
 }
 
 // PostStatus accepts incoming health status reports (used in push mode).
+//
+// @Summary   Record monitored service status
+// @Tags      status
+// @Accept    json
+// @Produce   json
+// @Param     body body PostStatusPayload true "Service status payload"
+// @Success   200 {object} StatusRecordResponse
+// @Failure   400 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /status [post]
 func (s *Server) PostStatus(w http.ResponseWriter, r *http.Request) {
 	var payload PostStatusPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
