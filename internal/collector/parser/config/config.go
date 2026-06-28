@@ -7,6 +7,7 @@ import (
 
 	"github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/collector/parser/html"
+	"github.com/ChiaYuChang/prism/internal/prompt"
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
 )
@@ -34,7 +35,8 @@ type FallbackConfig struct {
 	// baked into worker images at /app/assets/prompts/collector/...). Kept
 	// out of the binary so operators can iterate on extraction quality
 	// without rebuilding. Required when Enable=true.
-	PromptFile string `yaml:"prompt_file" json:"prompt_file,omitempty"`
+	PromptFile string     `yaml:"prompt_file" json:"prompt_file,omitempty"`
+	Prompt     prompt.Ref `yaml:"prompt"      json:"prompt,omitempty"`
 }
 
 type ParserConfig struct {
@@ -60,8 +62,8 @@ func LoadConfig(path string) (cfg Config, err error) {
 	}
 
 	if cfg.Fallback.Enable {
-		if cfg.Fallback.PromptFile == "" {
-			return Config{}, fmt.Errorf("fallback.prompt_file is required when fallback.enable=true")
+		if cfg.Fallback.PromptFile == "" && !cfg.Fallback.Prompt.Enabled() {
+			return Config{}, fmt.Errorf("fallback.prompt or fallback.prompt_file is required when fallback.enable=true")
 		}
 		if rerr := cfg.Fallback.LLM.ResolveSecrets(); rerr != nil {
 			return Config{}, fmt.Errorf("resolve fallback llm secrets: %w", rerr)

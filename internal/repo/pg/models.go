@@ -686,6 +686,22 @@ type Prompt struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type PromptKey struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	Key       string             `db:"key" json:"key"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type PromptVersion struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	KeyID     uuid.UUID          `db:"key_id" json:"key_id"`
+	Version   int32              `db:"version" json:"version"`
+	Hash      string             `db:"hash" json:"hash"`
+	Path      string             `db:"path" json:"path"`
+	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 // Recurring schedule intent that materializes concrete task rows.
 type Schedule struct {
 	// Stable operator-provided UUIDv7 identity. Names and source_abbr are not durable identity.

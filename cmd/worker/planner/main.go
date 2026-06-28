@@ -14,6 +14,8 @@ import (
 	llmfactory "github.com/ChiaYuChang/prism/internal/llm/factory"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
+	"github.com/ChiaYuChang/prism/internal/prompt"
+	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 )
 
@@ -94,14 +96,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	prompt, err := os.ReadFile(config.PromptPath)
+	promptBody, promptLogAttrs, err := loadPlannerPrompt(ctx, dbRepo.Prompts(), *config)
 	if err != nil {
-		logger.Error("failed to read prompt file", "path", config.PromptPath, "error", err)
-		monitor.SetStatus(obs.LevelError, "Failed to read prompt file")
+		logger.Error("failed to load prompt", "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to load prompt")
 		os.Exit(1)
 	}
 
-	ext, err := extractor.NewExtractor(generator, logger, tracer, config.LLM.Model, string(prompt))
+	ext, err := extractor.NewExtractor(generator, logger, tracer, config.LLM.Model, string(promptBody))
 	if err != nil {
 		logger.Error("failed to initialize extractor", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize extractor")
@@ -135,8 +137,8 @@ func main() {
 		"messenger", config.MessengerType,
 		"llm_provider", providerName,
 		"llm_model", config.LLM.Model,
-		"prompt_path", config.PromptPath,
 	)
+	logger.Info("planner prompt loaded", promptLogAttrs...)
 	monitor.OK()
 
 	for {
@@ -162,4 +164,25 @@ func main() {
 			msg.Nack()
 		}
 	}
+}
+
+func loadPlannerPrompt(ctx context.Context, prompts repo.Prompts, config Config) ([]byte, []any, error) {
+	if config.Prompt.Enabled() {
+		body, version, err := prompt.Resolve(ctx, prompts, config.Prompt)
+		if err != nil {
+			return nil, nil, err
+		}
+		return body, []any{
+			"prompt_id", version.ID.String(),
+			"prompt_key", version.Key,
+			"prompt_version", version.Version,
+			"prompt_hash", version.Hash,
+			"prompt_path", version.Path,
+		}, nil
+	}
+	body, err := os.ReadFile(config.PromptPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	return body, []any{"prompt_path", config.PromptPath}, nil
 }

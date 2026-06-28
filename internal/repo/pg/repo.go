@@ -67,6 +67,10 @@ type PGOperator struct {
 	q *Queries
 }
 
+type PGPrompts struct {
+	q *Queries
+}
+
 type pgBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
@@ -82,6 +86,7 @@ var _ repo.BatchTrigger = (*PGBatchTrigger)(nil)
 var _ repo.UserFetches = (*PGUserFetches)(nil)
 var _ repo.Schedules = (*PGSchedules)(nil)
 var _ repo.Operator = (*PGOperator)(nil)
+var _ repo.Prompts = (*PGPrompts)(nil)
 
 // Repository root getters.
 func (r *PGRepository) Scheduler() repo.Scheduler {
@@ -122,6 +127,10 @@ func (r *PGRepository) Schedules() repo.Schedules {
 
 func (r *PGRepository) Operator() repo.Operator {
 	return &PGOperator{q: r.q}
+}
+
+func (r *PGRepository) Prompts() repo.Prompts {
+	return &PGPrompts{q: r.q}
 }
 
 // Scheduler repository.
@@ -554,6 +563,52 @@ func (r *PGOperator) ListContentEmbeddingsGemma2025(ctx context.Context, params 
 	out := make([]repo.EmbeddingRecord, len(rows))
 	for i, row := range rows {
 		out[i] = dbContentEmbeddingRowToRepoEmbeddingRecord(row)
+	}
+	return out, nil
+}
+
+// Prompts repository.
+func (r *PGPrompts) CreatePromptVersion(ctx context.Context, arg repo.CreatePromptVersionParams) (repo.PromptVersion, error) {
+	row, err := r.q.UpsertPromptVersion(ctx, UpsertPromptVersionParams{
+		Key:       arg.Key,
+		Hash:      arg.Hash,
+		Path:      arg.Path,
+		SizeBytes: arg.SizeBytes,
+	})
+	if err != nil {
+		return repo.PromptVersion{}, err
+	}
+	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.KeyID, row.Key, row.Version, row.Hash, row.Path, row.SizeBytes, row.CreatedAt), nil
+}
+
+func (r *PGPrompts) GetPromptVersionByID(ctx context.Context, id uuid.UUID) (repo.PromptVersion, error) {
+	row, err := r.q.GetPromptVersionByID(ctx, id)
+	if err != nil {
+		return repo.PromptVersion{}, err
+	}
+	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.KeyID, row.Key, row.Version, row.Hash, row.Path, row.SizeBytes, row.CreatedAt), nil
+}
+
+func (r *PGPrompts) ListPromptVersions(ctx context.Context, params repo.ListOperatorParams) ([]repo.PromptVersion, error) {
+	rows, err := r.q.ListPromptVersions(ctx, ListPromptVersionsParams{Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.PromptVersion, len(rows))
+	for i, row := range rows {
+		out[i] = dbPromptVersionRowToRepoPromptVersion(row.ID, row.KeyID, row.Key, row.Version, row.Hash, row.Path, row.SizeBytes, row.CreatedAt)
+	}
+	return out, nil
+}
+
+func (r *PGPrompts) ListPromptVersionsByKey(ctx context.Context, key string, params repo.ListOperatorParams) ([]repo.PromptVersion, error) {
+	rows, err := r.q.ListPromptVersionsByKey(ctx, ListPromptVersionsByKeyParams{Key: key, Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.PromptVersion, len(rows))
+	for i, row := range rows {
+		out[i] = dbPromptVersionRowToRepoPromptVersion(row.ID, row.KeyID, row.Key, row.Version, row.Hash, row.Path, row.SizeBytes, row.CreatedAt)
 	}
 	return out, nil
 }

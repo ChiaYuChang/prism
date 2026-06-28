@@ -17,6 +17,7 @@ type Repository interface {
 	UserFetches() UserFetches
 	Schedules() Schedules
 	Operator() Operator
+	Prompts() Prompts
 }
 
 // TaskReporter is the push side of the task lifecycle: workers use it to
@@ -76,6 +77,13 @@ type Operator interface {
 	ListSchedules(ctx context.Context, params ListOperatorParams) ([]Schedule, error)
 	ListCandidateEmbeddingsGemma2025(ctx context.Context, params ListOperatorParams) ([]EmbeddingRecord, error)
 	ListContentEmbeddingsGemma2025(ctx context.Context, params ListOperatorParams) ([]EmbeddingRecord, error)
+}
+
+type Prompts interface {
+	CreatePromptVersion(ctx context.Context, arg CreatePromptVersionParams) (PromptVersion, error)
+	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (PromptVersion, error)
+	ListPromptVersions(ctx context.Context, params ListOperatorParams) ([]PromptVersion, error)
+	ListPromptVersionsByKey(ctx context.Context, key string, params ListOperatorParams) ([]PromptVersion, error)
 }
 
 type Pipeline interface {

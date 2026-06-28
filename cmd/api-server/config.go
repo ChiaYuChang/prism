@@ -36,6 +36,10 @@ type AuthConfig struct {
 	Token TokenAuthConfig `mapstructure:"token"`
 }
 
+type PromptConfig struct {
+	Root string `mapstructure:"root" validate:"required"`
+}
+
 // TokenAuthConfig configures X-PRISM-TOKEN allow-list authentication.
 type TokenAuthConfig struct {
 	Tokens []string `mapstructure:"tokens"`
@@ -100,6 +104,7 @@ type Config struct {
 	Cache           CacheConfig         `mapstructure:"cache"`
 	RateLimit       RateLimitConfig     `mapstructure:"rate-limit"`
 	Auth            AuthConfig          `mapstructure:"auth"`
+	Prompts         PromptConfig        `mapstructure:"prompts"`
 	Monitoring      MonitoringConfig    `mapstructure:"monitoring"`
 }
 
@@ -147,6 +152,7 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetDefault("monitoring.timeout", 2*time.Second)
 	v.SetDefault("monitoring.status-key", "api:status")
 	v.SetDefault("monitoring.internal-port", 8089)
+	v.SetDefault("prompts.root", "runtime/prompts")
 
 	fs := pflag.NewFlagSet("api-server", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
@@ -186,6 +192,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs.StringSlice("auth-token", []string{}, "Allowed X-PRISM-TOKEN values (comma-separated or repeated)")
 	fs.String("auth-token-file", "", "Path to allowed X-PRISM-TOKEN file (one token per line)")
+	fs.String("prompts-root", "runtime/prompts", "Root directory for uploaded prompt objects")
 
 	fs.String("monitoring-mode", "pull", "Monitoring mode: pull or push")
 	fs.String("monitoring-backend", "memory", "Monitoring status backend: memory or valkey")
@@ -226,6 +233,9 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	if err := bindAuthFlags(v, fs); err != nil {
+		return nil, err
+	}
+	if err := bindPromptFlags(v, fs); err != nil {
 		return nil, err
 	}
 	if err := bindMonitoringFlags(v, fs); err != nil {
@@ -323,6 +333,13 @@ func bindAuthFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
 			return fmt.Errorf("bind %s: %w", key, err)
 		}
+	}
+	return nil
+}
+
+func bindPromptFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	if err := v.BindPFlag("prompts.root", fs.Lookup("prompts-root")); err != nil {
+		return fmt.Errorf("bind prompts.root: %w", err)
 	}
 	return nil
 }

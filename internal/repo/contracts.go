@@ -69,6 +69,17 @@ type Prompt struct {
 	CreatedAt time.Time
 }
 
+type PromptVersion struct {
+	ID        uuid.UUID
+	KeyID     uuid.UUID
+	Key       string
+	Version   int32
+	Hash      string
+	Path      string
+	SizeBytes int64
+	CreatedAt time.Time
+}
+
 type Candidate struct {
 	ID              uuid.UUID
 	BatchID         uuid.UUID

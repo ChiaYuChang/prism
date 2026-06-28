@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +23,8 @@ import (
 	llmfactory "github.com/ChiaYuChang/prism/internal/llm/factory"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
+	"github.com/ChiaYuChang/prism/internal/prompt"
+	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 )
 
@@ -159,7 +162,7 @@ func main() {
 		if config.Prompt != "" {
 			pCfg.Fallback.PromptFile = config.Prompt
 		}
-		prompt, perr := parserconfig.LoadFallbackPrompt(pCfg.Fallback)
+		promptText, promptAttrs, perr := loadCollectorFallbackPrompt(ctx, dbRepo.Prompts(), pCfg.Fallback)
 		if perr != nil {
 			logger.Error(
 				"failed to load fallback prompt",
@@ -187,8 +190,9 @@ func main() {
 		}
 		model := pCfg.Fallback.LLM.Model
 		llmFactory = func() (collector.Parser, error) {
-			return parserllm.NewParser(gen, logger, model, prompt)
+			return parserllm.NewParser(gen, logger, model, promptText)
 		}
+		logger.Info("collector fallback prompt loaded", promptAttrs...)
 		logger.Info("parser fallback enabled",
 			"provider", providerName, "model", model,
 			"prompt_file", pCfg.Fallback.PromptFile)
@@ -287,4 +291,25 @@ func main() {
 			msg.Nack()
 		}
 	}
+}
+
+func loadCollectorFallbackPrompt(ctx context.Context, prompts repo.Prompts, cfg parserconfig.FallbackConfig) (string, []any, error) {
+	if cfg.Prompt.Enabled() {
+		body, version, err := prompt.Resolve(ctx, prompts, cfg.Prompt)
+		if err != nil {
+			return "", nil, err
+		}
+		return strings.TrimRight(string(body), " \t\n\r"), []any{
+			"prompt_id", version.ID.String(),
+			"prompt_key", version.Key,
+			"prompt_version", version.Version,
+			"prompt_hash", version.Hash,
+			"prompt_path", version.Path,
+		}, nil
+	}
+	body, err := parserconfig.LoadFallbackPrompt(cfg)
+	if err != nil {
+		return "", nil, err
+	}
+	return body, []any{"prompt_file", cfg.PromptFile}, nil
 }

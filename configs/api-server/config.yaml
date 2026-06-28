@@ -31,6 +31,8 @@ auth:
   token:
     tokens: []
     file: ""
+prompts:
+  root: '{{ env "PRISM_PROMPTS_ROOT" "/app/runtime/prompts" }}'
 telemetry:
   enabled: true
   service-name: prism.api

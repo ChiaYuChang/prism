@@ -577,6 +577,37 @@ COMMENT ON TABLE public.prompts IS 'Prompt asset registry. hash = SHA-256(body),
 
 
 --
+-- Name: prompt_keys; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.prompt_keys (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    key text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.prompt_keys OWNER TO postgres;
+
+--
+-- Name: prompt_versions; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.prompt_versions (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    key_id uuid NOT NULL,
+    version integer NOT NULL,
+    hash character varying(71) NOT NULL,
+    path text NOT NULL,
+    size_bytes bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.prompt_versions OWNER TO postgres;
+
+
+--
 -- Name: schedules; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -907,6 +938,46 @@ ALTER TABLE ONLY public.prompts
 
 
 --
+-- Name: prompt_keys prompt_keys_key_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.prompt_keys
+    ADD CONSTRAINT prompt_keys_key_key UNIQUE (key);
+
+
+--
+-- Name: prompt_keys prompt_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.prompt_keys
+    ADD CONSTRAINT prompt_keys_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: prompt_versions prompt_versions_key_id_hash_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.prompt_versions
+    ADD CONSTRAINT prompt_versions_key_id_hash_key UNIQUE (key_id, hash);
+
+
+--
+-- Name: prompt_versions prompt_versions_key_id_version_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.prompt_versions
+    ADD CONSTRAINT prompt_versions_key_id_version_key UNIQUE (key_id, version);
+
+
+--
+-- Name: prompt_versions prompt_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.prompt_versions
+    ADD CONSTRAINT prompt_versions_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: schedules schedules_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1226,6 +1297,13 @@ CREATE INDEX idx_prompts_path ON public.prompts USING btree (path);
 
 
 --
+-- Name: idx_prompt_versions_key_created_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_prompt_versions_key_created_at ON public.prompt_versions USING btree (key_id, created_at DESC);
+
+
+--
 -- Name: idx_sources_base_url; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1438,6 +1516,14 @@ ALTER TABLE ONLY public.content_extractions
 
 ALTER TABLE ONLY public.content_extractions
     ADD CONSTRAINT content_extractions_prompt_id_fkey FOREIGN KEY (prompt_id) REFERENCES public.prompts(id);
+
+
+--
+-- Name: prompt_versions prompt_versions_key_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.prompt_versions
+    ADD CONSTRAINT prompt_versions_key_id_fkey FOREIGN KEY (key_id) REFERENCES public.prompt_keys(id) ON DELETE RESTRICT;
 
 
 --
@@ -1689,5 +1775,3 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES 
 --
 -- PostgreSQL database dump complete
 --
-
-

@@ -1,5 +1,12 @@
 health-port: 8094
 prompt-path: /app/assets/worker/planner/prompts/analysis/extractor.md
+# Optional DB-registered prompt pin. When id is set, worker loads prompt by id,
+# verifies key/version/hash, then reads the API-managed file from shared volume.
+# prompt:
+#   id: 00000000-0000-0000-0000-000000000000
+#   key: worker/planner/analysis/extractor
+#   version: 1
+#   hash: sha256:...
 messenger-type: nats
 nats-host: nats
 nats-port: 4222

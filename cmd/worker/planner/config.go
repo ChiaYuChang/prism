@@ -8,6 +8,7 @@ import (
 	app "github.com/ChiaYuChang/prism/internal/appconfig"
 	searchconfig "github.com/ChiaYuChang/prism/internal/discovery/search/config"
 	"github.com/ChiaYuChang/prism/internal/obs"
+	"github.com/ChiaYuChang/prism/internal/prompt"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -25,6 +26,7 @@ type Config struct {
 	MessengerType string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
 	Messenger     app.MessengerConfig `mapstructure:"-"`
 	LLM           app.LLMConfig       `mapstructure:"llm"`
+	Prompt        prompt.Ref          `mapstructure:"prompt"`
 	PromptPath    string              `mapstructure:"prompt-path"    validate:"required"`
 	Search        searchconfig.Config `mapstructure:"search"`
 }

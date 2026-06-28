@@ -104,6 +104,13 @@ type UpsertPromptParams struct {
 	Path string `validate:"required"`
 }
 
+type CreatePromptVersionParams struct {
+	Key       string `validate:"required"`
+	Hash      string `validate:"required"`
+	Path      string `validate:"required"`
+	SizeBytes int64  `validate:"required,min=0"`
+}
+
 type CreateCandidateEmbeddingParams struct {
 	CandidateID uuid.UUID `validate:"required"`
 	ModelID     int16     `validate:"required"`

@@ -266,6 +266,52 @@ func (_c *MockRepository_Pipeline_Call) RunAndReturn(run func() repo.Pipeline) *
 	return _c
 }
 
+// Prompts provides a mock function for the type MockRepository
+func (_mock *MockRepository) Prompts() repo.Prompts {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Prompts")
+	}
+
+	var r0 repo.Prompts
+	if returnFunc, ok := ret.Get(0).(func() repo.Prompts); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Prompts)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Prompts_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Prompts'
+type MockRepository_Prompts_Call struct {
+	*mock.Call
+}
+
+// Prompts is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Prompts() *MockRepository_Prompts_Call {
+	return &MockRepository_Prompts_Call{Call: _e.mock.On("Prompts")}
+}
+
+func (_c *MockRepository_Prompts_Call) Run(run func()) *MockRepository_Prompts_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Prompts_Call) Return(prompts repo.Prompts) *MockRepository_Prompts_Call {
+	_c.Call.Return(prompts)
+	return _c
+}
+
+func (_c *MockRepository_Prompts_Call) RunAndReturn(run func() repo.Prompts) *MockRepository_Prompts_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Scheduler provides a mock function for the type MockRepository
 func (_mock *MockRepository) Scheduler() repo.Scheduler {
 	ret := _mock.Called()

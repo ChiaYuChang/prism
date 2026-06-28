@@ -177,6 +177,28 @@ func dbPromptToRepoPrompt(p Prompt) repo.Prompt {
 	}
 }
 
+func dbPromptVersionRowToRepoPromptVersion(
+	id uuid.UUID,
+	keyID uuid.UUID,
+	key string,
+	version int32,
+	hash string,
+	path string,
+	sizeBytes int64,
+	createdAt pgtype.Timestamptz,
+) repo.PromptVersion {
+	return repo.PromptVersion{
+		ID:        id,
+		KeyID:     keyID,
+		Key:       key,
+		Version:   version,
+		Hash:      hash,
+		Path:      path,
+		SizeBytes: sizeBytes,
+		CreatedAt: *pgconv.PgTimestamptzToTimePtr(createdAt),
+	}
+}
+
 func dbContentExtractionToRepoContentExtraction(c ContentExtraction) repo.ContentExtraction {
 	return repo.ContentExtraction{
 		ID:            c.ID,

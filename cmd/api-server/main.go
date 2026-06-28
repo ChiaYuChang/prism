@@ -158,6 +158,7 @@ func main() {
 		authMiddleware = append(authMiddleware, middleware.TokenListAuth(authTokens))
 		logger.Info("api token auth enabled", "tokens", len(authTokens))
 	}
+	serverOpts = append(serverOpts, api.WithPrompts(repository.Prompts(), config.Prompts.Root))
 
 	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches(), serverOpts...)
 	if err != nil {

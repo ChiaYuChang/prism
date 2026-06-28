@@ -52,6 +52,7 @@ type Querier interface {
 	GetModelByNameAndType(ctx context.Context, arg GetModelByNameAndTypeParams) (Model, error)
 	GetPromptByHash(ctx context.Context, hash string) (Prompt, error)
 	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
+	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPromptVersionByIDRow, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
 	GetUserFetch(ctx context.Context, id uuid.UUID) (Fetch, error)
@@ -70,6 +71,8 @@ type Querier interface {
 	ListEntities(ctx context.Context, arg ListEntitiesParams) ([]Entity, error)
 	ListModels(ctx context.Context, arg ListModelsParams) ([]Model, error)
 	ListPendingCompletionBatches(ctx context.Context, arg ListPendingCompletionBatchesParams) ([]Batch, error)
+	ListPromptVersions(ctx context.Context, arg ListPromptVersionsParams) ([]ListPromptVersionsRow, error)
+	ListPromptVersionsByKey(ctx context.Context, arg ListPromptVersionsByKeyParams) ([]ListPromptVersionsByKeyRow, error)
 	ListReadyToPublishBatches(ctx context.Context, arg ListReadyToPublishBatchesParams) ([]Batch, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
@@ -104,6 +107,7 @@ type Querier interface {
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 	UpsertEntity(ctx context.Context, arg UpsertEntityParams) (Entity, error)
 	UpsertPrompt(ctx context.Context, arg UpsertPromptParams) (Prompt, error)
+	UpsertPromptVersion(ctx context.Context, arg UpsertPromptVersionParams) (UpsertPromptVersionRow, error)
 	UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) (Schedule, error)
 }
 

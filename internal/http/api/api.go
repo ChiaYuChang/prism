@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -168,6 +169,19 @@ func WithOperator(operator repo.Operator) ServerOption {
 	}
 }
 
+// WithPrompts attaches the prompt version repository and storage root used by
+// authenticated prompt management endpoints.
+func WithPrompts(prompts repo.Prompts, root string) ServerOption {
+	return func(s *Server) {
+		if prompts != nil {
+			s.Prompts = prompts
+		}
+		if strings.TrimSpace(root) != "" {
+			s.PromptRoot = filepath.Clean(root)
+		}
+	}
+}
+
 // Server groups dependencies shared by all API handlers.
 type Server struct {
 	Logger          *slog.Logger
@@ -176,9 +190,11 @@ type Server struct {
 	Pipeline        repo.Pipeline
 	UserFetches     repo.UserFetches
 	Operator        repo.Operator
+	Prompts         repo.Prompts
 	Cache           ProgressCache
 	GetFetchLimiter middleware.IPLimiter
 	Monitor         StatusMonitor
+	PromptRoot      string
 }
 
 // NewServer validates dependencies and returns a ready-to-register Server.
@@ -207,6 +223,7 @@ func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline
 		Cache:           NoOpProgressCache{},
 		GetFetchLimiter: middleware.NoOpIPLimiter{},
 		Monitor:         NewInMemoryMonitor(""),
+		PromptRoot:      "runtime/prompts",
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -244,6 +261,9 @@ func (s *Server) RegisterV1Auth(r RouteRegistrar) {
 	r.Handle("GET /embedding/{model_name}", http.HandlerFunc(s.ListAuthEmbeddings))
 	r.Handle("GET /tasks", http.HandlerFunc(s.ListAuthTasks))
 	r.Handle("GET /tasks/{id}", http.HandlerFunc(s.GetAuthTask))
+	r.Handle("POST /prompts", http.HandlerFunc(s.CreatePromptVersion))
+	r.Handle("GET /prompts", http.HandlerFunc(s.ListPromptVersions))
+	r.Handle("GET /prompts/{id}", http.HandlerFunc(s.GetPromptVersion))
 }
 
 // RegisterInternal wires private routes for internal administration/push telemetry.
