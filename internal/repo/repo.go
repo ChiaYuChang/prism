@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -18,6 +19,7 @@ type Repository interface {
 	Schedules() Schedules
 	Operator() Operator
 	Prompts() Prompts
+	Tokens() Tokens
 }
 
 // TaskReporter is the push side of the task lifecycle: workers use it to
@@ -84,6 +86,18 @@ type Prompts interface {
 	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (PromptVersion, error)
 	ListPromptVersions(ctx context.Context, params ListOperatorParams) ([]PromptVersion, error)
 	ListPromptVersionsByKey(ctx context.Context, key string, params ListOperatorParams) ([]PromptVersion, error)
+}
+
+type Tokens interface {
+	CreateToken(ctx context.Context, arg CreateTokenParams) (Token, error)
+	GetRootToken(ctx context.Context) (Token, error)
+	GetTokenByID(ctx context.Context, id uuid.UUID) (Token, error)
+	ListTokens(ctx context.Context, params ListOperatorParams) ([]Token, error)
+	RenewToken(ctx context.Context, id uuid.UUID, expiresAt time.Time) (Token, error)
+	RotateToken(ctx context.Context, arg RotateTokenParams) (Token, error)
+	RevokeToken(ctx context.Context, id uuid.UUID) (Token, error)
+	RevokeAllTokens(ctx context.Context) (int64, error)
+	CountActiveAdminTokensExcluding(ctx context.Context, id uuid.UUID) (int64, error)
 }
 
 type Pipeline interface {

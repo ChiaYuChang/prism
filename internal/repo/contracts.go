@@ -80,6 +80,20 @@ type PromptVersion struct {
 	CreatedAt time.Time
 }
 
+type Token struct {
+	ID            uuid.UUID
+	Type          string
+	Name          string
+	HashAlgorithm string
+	TokenHash     string
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+	LastUsedAt    *time.Time
+	RenewedAt     *time.Time
+	RotatedAt     *time.Time
+	RevokedAt     *time.Time
+}
+
 type Candidate struct {
 	ID              uuid.UUID
 	BatchID         uuid.UUID

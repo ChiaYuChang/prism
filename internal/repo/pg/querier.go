@@ -15,6 +15,7 @@ type Querier interface {
 	ClaimDueSchedules(ctx context.Context, lim int32) ([]Schedule, error)
 	ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task, error)
 	CompleteTask(ctx context.Context, id uuid.UUID) error
+	CountActiveAdminTokensExcluding(ctx context.Context, id uuid.UUID) (int64, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) (int64, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
 	CreateCandidateEmbeddingGemma2025(ctx context.Context, arg CreateCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
@@ -29,6 +30,7 @@ type Querier interface {
 	// recovered task fields, so callers that need the existing task_id (e.g.
 	// the user-fetch handler) avoid a second SELECT.
 	CreateTask(ctx context.Context, arg CreateTaskParams) (CreateTaskRow, error)
+	CreateToken(ctx context.Context, arg CreateTokenParams) (Token, error)
 	CreateUserFetch(ctx context.Context, userID pgtype.UUID) (Fetch, error)
 	CreateUserFetchItem(ctx context.Context, arg CreateUserFetchItemParams) (FetchItem, error)
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
@@ -53,8 +55,10 @@ type Querier interface {
 	GetPromptByHash(ctx context.Context, hash string) (Prompt, error)
 	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
 	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPromptVersionByIDRow, error)
+	GetRootToken(ctx context.Context) (Token, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
+	GetTokenByID(ctx context.Context, id uuid.UUID) (Token, error)
 	GetUserFetch(ctx context.Context, id uuid.UUID) (Fetch, error)
 	// Aggregates item status using COALESCE(snapshot_status, tasks.status).
 	// Returns candidate IDs grouped by status plus a derived `terminal` flag (all
@@ -80,6 +84,7 @@ type Querier interface {
 	ListSources(ctx context.Context, arg ListSourcesParams) ([]Source, error)
 	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	ListTokens(ctx context.Context, arg ListTokensParams) ([]Token, error)
 	ListUserFetchItems(ctx context.Context, fetchID uuid.UUID) ([]ListUserFetchItemsRow, error)
 	// Optimistic-concurrency claim: returns rows-affected so the caller can
 	// distinguish the winner (1) from a loser racing against another instance
@@ -98,8 +103,12 @@ type Querier interface {
 	// retry_count increment. Used when dispatch is skipped (e.g. rate-limited)
 	// so tasks are retried on the next scheduler tick without consuming retry slots.
 	ReleaseTasks(ctx context.Context, ids []uuid.UUID) error
+	RenewToken(ctx context.Context, arg RenewTokenParams) (Token, error)
 	ReplaceContentExtractionPhrases(ctx context.Context, arg ReplaceContentExtractionPhrasesParams) error
 	ReplaceContentExtractionTopics(ctx context.Context, arg ReplaceContentExtractionTopicsParams) error
+	RevokeAllTokens(ctx context.Context) (int64, error)
+	RevokeToken(ctx context.Context, id uuid.UUID) (Token, error)
+	RotateToken(ctx context.Context, arg RotateTokenParams) (Token, error)
 	SearchCandidatesByText(ctx context.Context, arg SearchCandidatesByTextParams) ([]Candidate, error)
 	SearchCandidatesByVector(ctx context.Context, arg SearchCandidatesByVectorParams) ([]SearchCandidatesByVectorRow, error)
 	SearchContentsByVector(ctx context.Context, arg SearchContentsByVectorParams) ([]SearchContentsByVectorRow, error)

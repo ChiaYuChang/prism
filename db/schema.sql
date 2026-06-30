@@ -730,6 +730,28 @@ WITH (fillfactor='80');
 ALTER TABLE public.tasks OWNER TO postgres;
 
 --
+-- Name: tokens; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.tokens (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    type text NOT NULL,
+    name text NOT NULL,
+    hash_algorithm text NOT NULL,
+    token_hash text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    last_used_at timestamp with time zone,
+    renewed_at timestamp with time zone,
+    rotated_at timestamp with time zone,
+    revoked_at timestamp with time zone,
+    CONSTRAINT tokens_type_check CHECK ((type = ANY (ARRAY['root'::text, 'admin'::text, 'user'::text, 'worker'::text])))
+);
+
+
+ALTER TABLE public.tokens OWNER TO postgres;
+
+--
 -- Name: TABLE tasks; Type: COMMENT; Schema: public; Owner: postgres
 --
 
@@ -1007,6 +1029,22 @@ ALTER TABLE ONLY public.sources
 
 ALTER TABLE ONLY public.tasks
     ADD CONSTRAINT tasks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tokens tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tokens
+    ADD CONSTRAINT tokens_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tokens tokens_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tokens
+    ADD CONSTRAINT tokens_token_hash_key UNIQUE (token_hash);
 
 
 --
@@ -1371,6 +1409,20 @@ CREATE INDEX idx_tasks_trace_id ON public.tasks USING btree (trace_id);
 --
 
 CREATE INDEX idx_tasks_url ON public.tasks USING btree (url);
+
+
+--
+-- Name: idx_tokens_active_type_expires_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_tokens_active_type_expires_at ON public.tokens USING btree (type, expires_at) WHERE (revoked_at IS NULL);
+
+
+--
+-- Name: idx_tokens_one_root; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX idx_tokens_one_root ON public.tokens USING btree (type) WHERE (type = 'root'::text);
 
 
 --

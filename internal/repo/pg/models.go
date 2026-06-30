@@ -767,3 +767,17 @@ type Task struct {
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
+
+type Token struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	Type          string             `db:"type" json:"type"`
+	Name          string             `db:"name" json:"name"`
+	HashAlgorithm string             `db:"hash_algorithm" json:"hash_algorithm"`
+	TokenHash     string             `db:"token_hash" json:"token_hash"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ExpiresAt     pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	LastUsedAt    pgtype.Timestamptz `db:"last_used_at" json:"last_used_at"`
+	RenewedAt     pgtype.Timestamptz `db:"renewed_at" json:"renewed_at"`
+	RotatedAt     pgtype.Timestamptz `db:"rotated_at" json:"rotated_at"`
+	RevokedAt     pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+}

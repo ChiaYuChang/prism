@@ -199,6 +199,22 @@ func dbPromptVersionRowToRepoPromptVersion(
 	}
 }
 
+func dbTokenToRepoToken(t Token) repo.Token {
+	return repo.Token{
+		ID:            t.ID,
+		Type:          t.Type,
+		Name:          t.Name,
+		HashAlgorithm: t.HashAlgorithm,
+		TokenHash:     t.TokenHash,
+		CreatedAt:     *pgconv.PgTimestamptzToTimePtr(t.CreatedAt),
+		ExpiresAt:     *pgconv.PgTimestamptzToTimePtr(t.ExpiresAt),
+		LastUsedAt:    pgconv.PgTimestamptzToTimePtr(t.LastUsedAt),
+		RenewedAt:     pgconv.PgTimestamptzToTimePtr(t.RenewedAt),
+		RotatedAt:     pgconv.PgTimestamptzToTimePtr(t.RotatedAt),
+		RevokedAt:     pgconv.PgTimestamptzToTimePtr(t.RevokedAt),
+	}
+}
+
 func dbContentExtractionToRepoContentExtraction(c ContentExtraction) repo.ContentExtraction {
 	return repo.ContentExtraction{
 		ID:            c.ID,

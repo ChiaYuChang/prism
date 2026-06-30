@@ -496,6 +496,52 @@ func (_c *MockRepository_Tasks_Call) RunAndReturn(run func() repo.Tasks) *MockRe
 	return _c
 }
 
+// Tokens provides a mock function for the type MockRepository
+func (_mock *MockRepository) Tokens() repo.Tokens {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Tokens")
+	}
+
+	var r0 repo.Tokens
+	if returnFunc, ok := ret.Get(0).(func() repo.Tokens); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Tokens)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Tokens_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Tokens'
+type MockRepository_Tokens_Call struct {
+	*mock.Call
+}
+
+// Tokens is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Tokens() *MockRepository_Tokens_Call {
+	return &MockRepository_Tokens_Call{Call: _e.mock.On("Tokens")}
+}
+
+func (_c *MockRepository_Tokens_Call) Run(run func()) *MockRepository_Tokens_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Tokens_Call) Return(tokens repo.Tokens) *MockRepository_Tokens_Call {
+	_c.Call.Return(tokens)
+	return _c
+}
+
+func (_c *MockRepository_Tokens_Call) RunAndReturn(run func() repo.Tokens) *MockRepository_Tokens_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UserFetches provides a mock function for the type MockRepository
 func (_mock *MockRepository) UserFetches() repo.UserFetches {
 	ret := _mock.Called()

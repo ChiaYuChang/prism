@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/pkg/pgconv"
@@ -71,6 +72,10 @@ type PGPrompts struct {
 	q *Queries
 }
 
+type PGTokens struct {
+	q *Queries
+}
+
 type pgBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
@@ -87,6 +92,7 @@ var _ repo.UserFetches = (*PGUserFetches)(nil)
 var _ repo.Schedules = (*PGSchedules)(nil)
 var _ repo.Operator = (*PGOperator)(nil)
 var _ repo.Prompts = (*PGPrompts)(nil)
+var _ repo.Tokens = (*PGTokens)(nil)
 
 // Repository root getters.
 func (r *PGRepository) Scheduler() repo.Scheduler {
@@ -131,6 +137,10 @@ func (r *PGRepository) Operator() repo.Operator {
 
 func (r *PGRepository) Prompts() repo.Prompts {
 	return &PGPrompts{q: r.q}
+}
+
+func (r *PGRepository) Tokens() repo.Tokens {
+	return &PGTokens{q: r.q}
 }
 
 // Scheduler repository.
@@ -611,6 +621,86 @@ func (r *PGPrompts) ListPromptVersionsByKey(ctx context.Context, key string, par
 		out[i] = dbPromptVersionRowToRepoPromptVersion(row.ID, row.KeyID, row.Key, row.Version, row.Hash, row.Path, row.SizeBytes, row.CreatedAt)
 	}
 	return out, nil
+}
+
+// Tokens repository.
+func (r *PGTokens) CreateToken(ctx context.Context, arg repo.CreateTokenParams) (repo.Token, error) {
+	row, err := r.q.CreateToken(ctx, CreateTokenParams{
+		Type:          arg.Type,
+		Name:          arg.Name,
+		HashAlgorithm: arg.HashAlgorithm,
+		TokenHash:     arg.TokenHash,
+		ExpiresAt:     pgtype.Timestamptz{Time: arg.ExpiresAt, Valid: true},
+	})
+	if err != nil {
+		return repo.Token{}, err
+	}
+	return dbTokenToRepoToken(row), nil
+}
+
+func (r *PGTokens) GetTokenByID(ctx context.Context, id uuid.UUID) (repo.Token, error) {
+	row, err := r.q.GetTokenByID(ctx, id)
+	if err != nil {
+		return repo.Token{}, err
+	}
+	return dbTokenToRepoToken(row), nil
+}
+
+func (r *PGTokens) GetRootToken(ctx context.Context) (repo.Token, error) {
+	row, err := r.q.GetRootToken(ctx)
+	if err != nil {
+		return repo.Token{}, err
+	}
+	return dbTokenToRepoToken(row), nil
+}
+
+func (r *PGTokens) ListTokens(ctx context.Context, params repo.ListOperatorParams) ([]repo.Token, error) {
+	rows, err := r.q.ListTokens(ctx, ListTokensParams{Lim: params.Limit, Off: operatorOffset(params)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Token, len(rows))
+	for i, row := range rows {
+		out[i] = dbTokenToRepoToken(row)
+	}
+	return out, nil
+}
+
+func (r *PGTokens) RenewToken(ctx context.Context, id uuid.UUID, expiresAt time.Time) (repo.Token, error) {
+	row, err := r.q.RenewToken(ctx, RenewTokenParams{ID: id, ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true}})
+	if err != nil {
+		return repo.Token{}, err
+	}
+	return dbTokenToRepoToken(row), nil
+}
+
+func (r *PGTokens) RotateToken(ctx context.Context, arg repo.RotateTokenParams) (repo.Token, error) {
+	row, err := r.q.RotateToken(ctx, RotateTokenParams{
+		ID:            arg.ID,
+		HashAlgorithm: arg.HashAlgorithm,
+		TokenHash:     arg.TokenHash,
+		ExpiresAt:     pgtype.Timestamptz{Time: arg.ExpiresAt, Valid: true},
+	})
+	if err != nil {
+		return repo.Token{}, err
+	}
+	return dbTokenToRepoToken(row), nil
+}
+
+func (r *PGTokens) RevokeToken(ctx context.Context, id uuid.UUID) (repo.Token, error) {
+	row, err := r.q.RevokeToken(ctx, id)
+	if err != nil {
+		return repo.Token{}, err
+	}
+	return dbTokenToRepoToken(row), nil
+}
+
+func (r *PGTokens) RevokeAllTokens(ctx context.Context) (int64, error) {
+	return r.q.RevokeAllTokens(ctx)
+}
+
+func (r *PGTokens) CountActiveAdminTokensExcluding(ctx context.Context, id uuid.UUID) (int64, error) {
+	return r.q.CountActiveAdminTokensExcluding(ctx, id)
 }
 
 func operatorOffset(params repo.ListOperatorParams) int32 {

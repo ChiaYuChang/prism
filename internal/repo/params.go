@@ -111,6 +111,21 @@ type CreatePromptVersionParams struct {
 	SizeBytes int64  `validate:"required,min=0"`
 }
 
+type CreateTokenParams struct {
+	Type          string    `validate:"required"`
+	Name          string    `validate:"required"`
+	HashAlgorithm string    `validate:"required"`
+	TokenHash     string    `validate:"required"`
+	ExpiresAt     time.Time `validate:"required"`
+}
+
+type RotateTokenParams struct {
+	ID            uuid.UUID `validate:"required"`
+	HashAlgorithm string    `validate:"required"`
+	TokenHash     string    `validate:"required"`
+	ExpiresAt     time.Time `validate:"required"`
+}
+
 type CreateCandidateEmbeddingParams struct {
 	CandidateID uuid.UUID `validate:"required"`
 	ModelID     int16     `validate:"required"`
