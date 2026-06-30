@@ -4,12 +4,16 @@ tasks:
   all:
     desc: build all microservice binaries
     deps:
-      - for: [api-server, backfiller, scheduler, discovery, collector, planner, schedule-trigger, batch-detector, batch-publisher, dev-downloader, dev-fixture-server, dev-mock-server, dev-parse-probe, recover, rss]
+      - for: [api-server, prismctl, backfiller, scheduler, discovery, collector, planner, schedule-trigger, batch-detector, batch-publisher, dev-downloader, dev-fixture-server, dev-mock-server, dev-parse-probe, recover, rss]
         task: '{{.ITEM}}'
 
   api-server:
     desc: build API server binary
     cmds: [ "go build -o {{.BUILD_DIR}}/api-server ./{{.CMD_DIR}}/api-server" ]
+
+  prismctl:
+    desc: build Prism operator CLI binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/prismctl ./{{.CMD_DIR}}/prismctl" ]
 
   backfiller:
     desc: build backfiller binary

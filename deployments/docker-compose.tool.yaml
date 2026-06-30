@@ -7,6 +7,36 @@
 # work.
 
 services:
+  prismctl:
+    profiles: [ tool ]
+    image: prism/prismctl:latest
+    user: "0:0"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: prismctl
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_PRISMCTL_POSTGRES_HOST: postgres
+      PRISM_PRISMCTL_POSTGRES_PORT: 5432
+      PRISM_PRISMCTL_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_PRISMCTL_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_PRISMCTL_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_PRISMCTL_POSTGRES_SSLMODE: disable
+    secrets:
+      - prism_root_token
+      - prism_admin_token
+    networks:
+      - prism-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ===========================================================================
   # dev profile — local-only admin UIs (pgAdmin, NATS NUI, RedisInsight)
   # ===========================================================================
@@ -266,3 +296,9 @@ volumes:
   ollama_data:
   otel_storage:
   otel_backup:
+
+secrets:
+  prism_root_token:
+    file: ../${PRISM_ROOT_TOKEN_FILE:-.secrets/prism_root_token}
+  prism_admin_token:
+    file: ../${PRISM_ADMIN_TOKEN_FILE:-.secrets/prism_admin_token}
