@@ -152,8 +152,9 @@ services:
       PRISM_COLLECTOR_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_COLLECTOR_WORKER_FIXTURE_BASE: ${FIXTURE_BASE:-}
       PRISM_COLLECTOR_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_COLLECTOR_WORKER_S3_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY}
+      PRISM_COLLECTOR_WORKER_S3_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY}
     volumes:
-      - worker_archives:/app/archives
       - ../runtime/logs/collector:/logs
     stop_grace_period: 150s
     networks:
@@ -162,6 +163,38 @@ services:
       postgres:
         condition: service_healthy
       nats:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+    restart: unless-stopped
+
+  archive:
+    profiles: [ worker ]
+    image: prism/archive:latest
+    user: "0:0"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: worker/archive
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --config=/app/configs/worker/archive/config.yaml
+    environment:
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_ARCHIVE_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_ARCHIVE_WORKER_S3_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY}
+      PRISM_ARCHIVE_WORKER_S3_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY}
+    networks:
+      - prism-net
+    volumes:
+      - ../runtime/logs/archive:/logs
+    stop_grace_period: 45s
+    depends_on:
+      nats:
+        condition: service_healthy
+      seaweedfs:
         condition: service_healthy
     restart: unless-stopped
 
@@ -184,18 +217,20 @@ services:
       POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
       PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
-      PRISM_PLANNER_LLM_MODEL: ${PRISM_PLANNER_LLM_MODEL:-gemini-2.0-flash}
+      PRISM_PLANNER_LLM_MODEL: ${PRISM_PLANNER_LLM_MODEL:-glm-5.2:cloud}
+      PRISM_PLANNER_OLLAMA_BASE_URL: ${PRISM_PLANNER_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE: ${PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE:-true}
       PRISM_PLANNER_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_PLANNER_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
       PRISM_PLANNER_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
       PRISM_PLANNER_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
-      PRISM_PLANNER_WORKER_LLM_KEY: ${GEMINI_API_KEY:-}
-      PRISM_PLANNER_WORKER_LLM_MODEL: ${PRISM_PLANNER_LLM_MODEL:-gemini-2.0-flash}
+      PRISM_PLANNER_WORKER_LLM_MODEL: ${PRISM_PLANNER_LLM_MODEL:-glm-5.2:cloud}
       PRISM_PLANNER_WORKER_SEARCH_TARGETS_YAHOO_ENABLE: ${PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE:-true}
       PRISM_PLANNER_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../runtime/logs/planner:/logs
     stop_grace_period: 45s
@@ -226,6 +261,3 @@ services:
     networks:
       - prism-net
     restart: unless-stopped
-
-volumes:
-  worker_archives:

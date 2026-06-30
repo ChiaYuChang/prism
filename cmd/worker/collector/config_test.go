@@ -31,7 +31,8 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 
 	assert.Equal(t, 8093, cfg.HealthPort)
 	assert.Equal(t, "/app/configs/worker/collector/parsers.yaml", cfg.ParsersConfigPath)
-	assert.Equal(t, "file:///app/archives", cfg.Archive)
+	assert.Equal(t, "s3://prism-archives/errors", cfg.Archive)
+	assert.Equal(t, "http://seaweedfs:8333", cfg.S3.Endpoint)
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
 	assert.Equal(t, "prism.collector", cfg.Telemetry.ServiceName)
 	assert.Equal(t, "/logs/app.log", cfg.Logger.File.File)

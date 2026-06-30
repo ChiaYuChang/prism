@@ -240,7 +240,7 @@ tasks:
     desc: build and start containerized workers (requires infra stack to be up)
     summary: |
       Bakes the worker profile, builds container images for scheduler,
-      discovery, and collector workers, and starts them alongside an already
+      discovery, collector, and archive workers, and starts them alongside an already
       running infra stack. App/API services are managed separately by
       compose:app.
     deps:
@@ -268,12 +268,14 @@ tasks:
       POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
       POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
       VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
+      SEAWEEDFS_SECRET_KEY:
+        sh: "cat {{.SEAWEEDFS_SECRET_KEY_FILE}}"
       WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} build scheduler-slow discovery
-        collector
+        collector archive
       - docker compose -f {{.COMPOSE_MERGED}} up -d scheduler-slow scheduler-fast
-        discovery collector
+        discovery collector archive
       - "echo {{.WORKER_PROFILES}} > {{.PROFILES_FILE}}"
 
   app:down:
@@ -352,11 +354,11 @@ tasks:
       - "echo {{.FIXTURE_PROFILES}} > {{.PROFILES_FILE}}"
 
   planner:
-    desc: build and start containerized planner worker (requires LLM key)
+    desc: build and start containerized planner worker (requires host Ollama)
     summary: |
       Starts the LLM-backed planner worker. This is kept out of compose:app so
-      real-world PARTY collection can run without an LLM key; enable it when
-      downstream MEDIA planning is needed.
+      real-world PARTY collection can run without an LLM dependency; enable it
+      when downstream MEDIA planning is needed.
     deps:
       - task: bake
         vars:
@@ -372,12 +374,10 @@ tasks:
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
         msg: "infra stack is not up. Run 'task compose:up' first."
-      - sh: "test -f {{.GEMINI_API_KEY_FILE}}"
-        msg: "missing GEMINI_API_KEY_FILE={{.GEMINI_API_KEY_FILE}}"
+      - sh: "curl --fail --silent --show-error --max-time 5 http://127.0.0.1:11434/ > /dev/null"
+        msg: "host Ollama is unavailable at http://127.0.0.1:11434"
     env:
       COMPOSE_PROFILES: "{{.PLANNER_PROFILES}}"
-      GEMINI_API_KEY:
-        sh: "test -f {{.GEMINI_API_KEY_FILE}} && cat {{.GEMINI_API_KEY_FILE}} || true"
       NATS_AUTH_TOKEN:
         sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
       POSTGRES_APP_PASSWORD:
@@ -409,16 +409,16 @@ tasks:
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} stop scheduler-slow scheduler-fast
-        discovery collector
+        discovery collector archive
       - docker compose -f {{.COMPOSE_MERGED}} rm -f scheduler-slow scheduler-fast
-        discovery collector
+        discovery collector archive
       - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"
 
   worker:logs:
     desc: tail logs from containerized workers
     summary: |
       Follows logs for the containerized worker services in the worker profile.
-      This is scoped to scheduler, discovery, and collector containers rather
+      This is scoped to scheduler, discovery, collector, and archive containers rather
       than the full infra stack.
     deps:
       - task: bake
@@ -434,7 +434,7 @@ tasks:
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f scheduler-slow
-        scheduler-fast discovery collector
+        scheduler-fast discovery collector archive
 
   tools:down:
     desc: stop profile-gated tool containers (dev/obs) while leaving core infra running

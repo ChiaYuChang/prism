@@ -58,6 +58,9 @@ type Article struct {
 // Archive is a raw content record destined for object storage (S3/SeaweedFS).
 // It holds the compressed, base64-encoded payload alongside audit metadata.
 type Archive struct {
+	// ID is the collision-safe storage identity. When empty, archivers retain
+	// the legacy trace ID layout for recovery records.
+	ID          string
 	Fingerprint string
 	URL         string
 	Payload     string // Gzip + Base64 encoded canonical string

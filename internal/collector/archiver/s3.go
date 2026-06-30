@@ -19,8 +19,8 @@ import (
 //
 // Object layout mirrors LocalArchiver:
 //
-//	{prefix}/archives/{YYYY}/{MM}/{DD}/{traceID}.data       payload body
-//	{prefix}/archives/{YYYY}/{MM}/{DD}/{traceID}.meta.json  metadata body (JSON)
+//	{prefix}/archives/{YYYY}/{MM}/{DD}/{archiveID}.data       payload body
+//	{prefix}/archives/{YYYY}/{MM}/{DD}/{archiveID}.meta.json  metadata body (JSON)
 //
 // Soft-delete stamps deleted_at in the .meta.json object (same as Local).
 // Hard-delete should use S3 lifecycle policies, not application code.
@@ -54,7 +54,11 @@ func NewS3Archiver(client *s3.Client, bucket, prefix string, logger *slog.Logger
 
 func (a *S3Archiver) Save(ctx context.Context, record collector.Archive) error {
 	dateStr := record.Timestamp.Format("2006/01/02")
-	base := "archives/" + dateStr + "/" + record.TraceID
+	archiveID := record.ID
+	if archiveID == "" {
+		archiveID = record.TraceID
+	}
+	base := "archives/" + dateStr + "/" + archiveID
 	dataKey := a.key(base + ".data")
 	metaKey := a.key(base + ".meta.json")
 

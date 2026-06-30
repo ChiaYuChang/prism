@@ -87,11 +87,9 @@ type ScanOptions struct {
 //   - Do NOT add new fields to Meta (or sidecar meta.json). Push new
 //     archive-related metadata into the PG `contents` / `tasks` tables
 //     instead so it lands in the right place when the cutover happens.
-//   - Path key `archives/YYYY/MM/DD/<traceID>` is also deprecated: it
-//     collides when multiple tasks share a trace_id (observed in Phase 3
-//     fail-minify run, 26 writes collapsed to 3 surviving files) and
-//     concentrates writes on "today" (S3 hot-prefix risk). Future catalog
-//     model uses a UUID v7 archive_id as the only path key.
+//   - The legacy fallback path key `archives/YYYY/MM/DD/<traceID>` collides
+//     when multiple tasks share a trace ID. New writers must supply Archive.ID
+//     with a stable collision-safe identity.
 type Archiver interface {
 	collector.Saver // Save(ctx context.Context, record collector.Archive) error
 

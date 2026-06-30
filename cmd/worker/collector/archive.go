@@ -29,6 +29,9 @@ func openArchiver(ctx context.Context, uri string, s3cfg appconfig.S3Config, log
 		if err != nil {
 			return nil, fmt.Errorf("build s3 client: %w", err)
 		}
+		if err := archiver.EnsureBucket(ctx, client, bucket); err != nil {
+			return nil, err
+		}
 		return archiver.NewS3Archiver(client, bucket, prefix, logger)
 	}
 	return archiver.ParseURI(uri, logger)

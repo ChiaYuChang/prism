@@ -17,8 +17,8 @@ import (
 //
 // Layout:
 //
-//	{baseDir}/archives/{YYYY}/{MM}/{DD}/{traceID}.data       payload
-//	{baseDir}/archives/{YYYY}/{MM}/{DD}/{traceID}.meta.json  metadata
+//	{baseDir}/archives/{YYYY}/{MM}/{DD}/{archiveID}.data       payload
+//	{baseDir}/archives/{YYYY}/{MM}/{DD}/{archiveID}.meta.json  metadata
 //
 // It satisfies both collector.Saver (for use as errorSaver in the collector
 // Handler) and the full Archiver interface (for cmd/recover).
@@ -51,7 +51,11 @@ func (a *LocalArchiver) Save(ctx context.Context, record collector.Archive) erro
 		return err
 	}
 
-	dataPath := filepath.Join(dir, record.TraceID+".data")
+	archiveID := record.ID
+	if archiveID == "" {
+		archiveID = record.TraceID
+	}
+	dataPath := filepath.Join(dir, archiveID+".data")
 	if err := os.WriteFile(dataPath, []byte(record.Payload), 0644); err != nil {
 		return fmt.Errorf("write payload %s: %w", dataPath, err)
 	}
@@ -61,7 +65,7 @@ func (a *LocalArchiver) Save(ctx context.Context, record collector.Archive) erro
 		return fmt.Errorf("marshal metadata for %s: %w", record.TraceID, err)
 	}
 
-	metaPath := filepath.Join(dir, record.TraceID+".meta.json")
+	metaPath := filepath.Join(dir, archiveID+".meta.json")
 	if err := os.WriteFile(metaPath, metaBytes, 0644); err != nil {
 		return fmt.Errorf("write metadata %s: %w", metaPath, err)
 	}
@@ -260,14 +264,8 @@ func (a *LocalArchiver) PurgeAll(ctx context.Context) (int, error) {
 
 // dateDir returns archives/<YYYY>/<MM>/<DD> under baseDir.
 //
-// DEPRECATED PATH LAYOUT — see docs/plan/future.md "archive metadata
-// catalog separation". Two known issues with the YYYY/MM/DD/<traceID>
-// layout: (1) <traceID>.data filename collides when multiple tasks share
-// a trace_id (Phase 3 fail-minify run wrote 26 archives but only 3
-// survived because seed-tasks.sql uses one trace_id per source); (2) date
-// prefix concentrates writes on "today" → S3 hot-prefix throttle risk at
-// scale. Future layout: archives/<archive_id> with archive_id as UUID v7
-// (date is recoverable from the UUID for debugging).
+// The date layout is retained for recovery scans. New callers must provide a
+// collision-safe Archive.ID rather than relying on the legacy trace ID fallback.
 func (a *LocalArchiver) dateDir(t time.Time, create bool) (string, error) {
 	dir := filepath.Join(a.baseDir, "archives", t.Format("2006/01/02"))
 	if create {
