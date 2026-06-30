@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	defaultAuthListLimit = 50
-	maxAuthListLimit     = 500
+	defaultAdminListLimit = 50
+	maxAdminListLimit     = 500
 )
 
-// AuthTask is the operator JSON shape returned by authenticated task endpoints.
-type AuthTask struct {
+// AdminTask is the operator JSON shape returned by admin task endpoints.
+type AdminTask struct {
 	ID          uuid.UUID       `json:"id"`
 	BatchID     uuid.UUID       `json:"batch_id"`
 	TraceID     string          `json:"trace_id"`
@@ -41,13 +41,13 @@ type AuthTask struct {
 	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
-type AuthListTasksResponse struct {
-	Items   []AuthTask `json:"items"`
-	BatchID uuid.UUID  `json:"batch_id"`
-	Count   int        `json:"count"`
+type AdminListTasksResponse struct {
+	Items   []AdminTask `json:"items"`
+	BatchID uuid.UUID   `json:"batch_id"`
+	Count   int         `json:"count"`
 }
 
-type AuthModel struct {
+type AdminModel struct {
 	ID          int16      `json:"id"`
 	Name        string     `json:"name"`
 	Provider    string     `json:"provider"`
@@ -59,7 +59,7 @@ type AuthModel struct {
 	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
 }
 
-type AuthSource struct {
+type AdminSource struct {
 	Abbr      string     `json:"abbr"`
 	Name      string     `json:"name"`
 	Type      string     `json:"type"`
@@ -68,7 +68,7 @@ type AuthSource struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
 
-type AuthBatch struct {
+type AdminBatch struct {
 	ID                   uuid.UUID  `json:"id"`
 	SourceType           string     `json:"source_type"`
 	TraceID              *string    `json:"trace_id,omitempty"`
@@ -82,14 +82,14 @@ type AuthBatch struct {
 	StalledAt            *time.Time `json:"stalled_at,omitempty"`
 }
 
-type AuthEntity struct {
+type AdminEntity struct {
 	ID        int32     `json:"id"`
 	Canonical string    `json:"canonical"`
 	Type      string    `json:"type"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type AuthSchedule struct {
+type AdminSchedule struct {
 	ID                     uuid.UUID       `json:"id"`
 	Name                   string          `json:"name"`
 	Enabled                bool            `json:"enabled"`
@@ -111,7 +111,7 @@ type AuthSchedule struct {
 	UpdatedAt              time.Time       `json:"updated_at"`
 }
 
-type AuthEmbeddingRecord struct {
+type AdminEmbeddingRecord struct {
 	ID        int64     `json:"id"`
 	TargetID  uuid.UUID `json:"target_id"`
 	ModelID   int16     `json:"model_id"`
@@ -120,64 +120,64 @@ type AuthEmbeddingRecord struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type authListResponse[T any] struct {
+type adminListResponse[T any] struct {
 	Items []T   `json:"items"`
 	Limit int32 `json:"limit"`
 	Next  int32 `json:"next"`
 	Count int   `json:"count"`
 }
 
-// AuthListModelsResponse is the documented response shape for ListAuthModels.
-type AuthListModelsResponse struct {
-	Items []AuthModel `json:"items"`
-	Limit int32       `json:"limit"`
-	Next  int32       `json:"next"`
-	Count int         `json:"count"`
-}
-
-// AuthListSourcesResponse is the documented response shape for ListAuthSources.
-type AuthListSourcesResponse struct {
-	Items []AuthSource `json:"items"`
+// AdminListModelsResponse is the documented response shape for ListAdminModels.
+type AdminListModelsResponse struct {
+	Items []AdminModel `json:"items"`
 	Limit int32        `json:"limit"`
 	Next  int32        `json:"next"`
 	Count int          `json:"count"`
 }
 
-// AuthListBatchesResponse is the documented response shape for ListAuthBatches.
-type AuthListBatchesResponse struct {
-	Items []AuthBatch `json:"items"`
-	Limit int32       `json:"limit"`
-	Next  int32       `json:"next"`
-	Count int         `json:"count"`
+// AdminListSourcesResponse is the documented response shape for ListAdminSources.
+type AdminListSourcesResponse struct {
+	Items []AdminSource `json:"items"`
+	Limit int32         `json:"limit"`
+	Next  int32         `json:"next"`
+	Count int           `json:"count"`
 }
 
-// AuthListEntitiesResponse is the documented response shape for ListAuthEntities.
-type AuthListEntitiesResponse struct {
-	Items []AuthEntity `json:"items"`
+// AdminListBatchesResponse is the documented response shape for ListAdminBatches.
+type AdminListBatchesResponse struct {
+	Items []AdminBatch `json:"items"`
 	Limit int32        `json:"limit"`
 	Next  int32        `json:"next"`
 	Count int          `json:"count"`
 }
 
-// AuthListSchedulesResponse is the documented response shape for ListAuthSchedules.
-type AuthListSchedulesResponse struct {
-	Items []AuthSchedule `json:"items"`
-	Limit int32          `json:"limit"`
-	Next  int32          `json:"next"`
-	Count int            `json:"count"`
+// AdminListEntitiesResponse is the documented response shape for ListAdminEntities.
+type AdminListEntitiesResponse struct {
+	Items []AdminEntity `json:"items"`
+	Limit int32         `json:"limit"`
+	Next  int32         `json:"next"`
+	Count int           `json:"count"`
 }
 
-type AuthEmbeddingListResponse struct {
-	ModelName           string                `json:"model_name"`
-	CandidateEmbeddings []AuthEmbeddingRecord `json:"candidate_embeddings"`
-	ContentEmbeddings   []AuthEmbeddingRecord `json:"content_embeddings"`
-	Limit               int32                 `json:"limit"`
-	Next                int32                 `json:"next"`
-	Count               int                   `json:"count"`
+// AdminListSchedulesResponse is the documented response shape for ListAdminSchedules.
+type AdminListSchedulesResponse struct {
+	Items []AdminSchedule `json:"items"`
+	Limit int32           `json:"limit"`
+	Next  int32           `json:"next"`
+	Count int             `json:"count"`
 }
 
-// AuthCandidate is the operator JSON shape returned by authenticated candidate endpoints.
-type AuthCandidate struct {
+type AdminEmbeddingListResponse struct {
+	ModelName           string                 `json:"model_name"`
+	CandidateEmbeddings []AdminEmbeddingRecord `json:"candidate_embeddings"`
+	ContentEmbeddings   []AdminEmbeddingRecord `json:"content_embeddings"`
+	Limit               int32                  `json:"limit"`
+	Next                int32                  `json:"next"`
+	Count               int                    `json:"count"`
+}
+
+// AdminCandidate is the operator JSON shape returned by admin candidate endpoints.
+type AdminCandidate struct {
 	ID              uuid.UUID       `json:"id"`
 	BatchID         uuid.UUID       `json:"batch_id"`
 	Fingerprint     string          `json:"fingerprint"`
@@ -193,184 +193,184 @@ type AuthCandidate struct {
 	CreatedAt       time.Time       `json:"created_at"`
 }
 
-// ListAuthModels handles GET /api/v1/auth/models.
+// ListAdminModels handles GET /api/v1/admin/models.
 //
 // @Summary   List operator models
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     limit query int false "Page size (default 50, max 500)"
 // @Param     next  query int false "Cursor for next page (default 1)"
-// @Success   200 {object} AuthListModelsResponse
+// @Success   200 {object} AdminListModelsResponse
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/models [get]
-func (s *Server) ListAuthModels(w http.ResponseWriter, r *http.Request) {
+// @Router    /admin/models [get]
+func (s *Server) ListAdminModels(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
 		return
 	}
-	params, ok := parseAuthListParams(w, r)
+	params, ok := parseAdminListParams(w, r)
 	if !ok {
 		return
 	}
 	rows, err := operator.ListModels(r.Context(), params)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list auth models failed", slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "list admin models failed", slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to list models")
 		return
 	}
-	items := make([]AuthModel, 0, len(rows))
+	items := make([]AdminModel, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, toAuthModel(row))
+		items = append(items, toAdminModel(row))
 	}
-	writeJSON(w, http.StatusOK, authListResponse[AuthModel]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
+	writeJSON(w, http.StatusOK, adminListResponse[AdminModel]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
 }
 
-// ListAuthSources handles GET /api/v1/auth/sources.
+// ListAdminSources handles GET /api/v1/admin/sources.
 //
 // @Summary   List operator sources
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     limit query int false "Page size (default 50, max 500)"
 // @Param     next  query int false "Cursor for next page (default 1)"
-// @Success   200 {object} AuthListSourcesResponse
+// @Success   200 {object} AdminListSourcesResponse
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/sources [get]
-func (s *Server) ListAuthSources(w http.ResponseWriter, r *http.Request) {
+// @Router    /admin/sources [get]
+func (s *Server) ListAdminSources(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
 		return
 	}
-	params, ok := parseAuthListParams(w, r)
+	params, ok := parseAdminListParams(w, r)
 	if !ok {
 		return
 	}
 	rows, err := operator.ListSources(r.Context(), params)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list auth sources failed", slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "list admin sources failed", slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to list sources")
 		return
 	}
-	items := make([]AuthSource, 0, len(rows))
+	items := make([]AdminSource, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, toAuthSource(row))
+		items = append(items, toAdminSource(row))
 	}
-	writeJSON(w, http.StatusOK, authListResponse[AuthSource]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
+	writeJSON(w, http.StatusOK, adminListResponse[AdminSource]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
 }
 
-// ListAuthBatches handles GET /api/v1/auth/batches.
+// ListAdminBatches handles GET /api/v1/admin/batches.
 //
 // @Summary   List operator batches
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     limit query int false "Page size (default 50, max 500)"
 // @Param     next  query int false "Cursor for next page (default 1)"
-// @Success   200 {object} AuthListBatchesResponse
+// @Success   200 {object} AdminListBatchesResponse
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/batches [get]
-func (s *Server) ListAuthBatches(w http.ResponseWriter, r *http.Request) {
+// @Router    /admin/batches [get]
+func (s *Server) ListAdminBatches(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
 		return
 	}
-	params, ok := parseAuthListParams(w, r)
+	params, ok := parseAdminListParams(w, r)
 	if !ok {
 		return
 	}
 	rows, err := operator.ListBatches(r.Context(), params)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list auth batches failed", slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "list admin batches failed", slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to list batches")
 		return
 	}
-	items := make([]AuthBatch, 0, len(rows))
+	items := make([]AdminBatch, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, toAuthBatch(row))
+		items = append(items, toAdminBatch(row))
 	}
-	writeJSON(w, http.StatusOK, authListResponse[AuthBatch]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
+	writeJSON(w, http.StatusOK, adminListResponse[AdminBatch]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
 }
 
-// ListAuthEntities handles GET /api/v1/auth/entities.
+// ListAdminEntities handles GET /api/v1/admin/entities.
 //
 // @Summary   List operator entities
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     limit query int false "Page size (default 50, max 500)"
 // @Param     next  query int false "Cursor for next page (default 1)"
-// @Success   200 {object} AuthListEntitiesResponse
+// @Success   200 {object} AdminListEntitiesResponse
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/entities [get]
-func (s *Server) ListAuthEntities(w http.ResponseWriter, r *http.Request) {
+// @Router    /admin/entities [get]
+func (s *Server) ListAdminEntities(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
 		return
 	}
-	params, ok := parseAuthListParams(w, r)
+	params, ok := parseAdminListParams(w, r)
 	if !ok {
 		return
 	}
 	rows, err := operator.ListEntities(r.Context(), params)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list auth entities failed", slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "list admin entities failed", slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to list entities")
 		return
 	}
-	items := make([]AuthEntity, 0, len(rows))
+	items := make([]AdminEntity, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, toAuthEntity(row))
+		items = append(items, toAdminEntity(row))
 	}
-	writeJSON(w, http.StatusOK, authListResponse[AuthEntity]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
+	writeJSON(w, http.StatusOK, adminListResponse[AdminEntity]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
 }
 
-// ListAuthSchedules handles GET /api/v1/auth/schedules.
+// ListAdminSchedules handles GET /api/v1/admin/schedules.
 //
 // @Summary   List operator schedules
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     limit query int false "Page size (default 50, max 500)"
 // @Param     next  query int false "Cursor for next page (default 1)"
-// @Success   200 {object} AuthListSchedulesResponse
+// @Success   200 {object} AdminListSchedulesResponse
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/schedules [get]
-func (s *Server) ListAuthSchedules(w http.ResponseWriter, r *http.Request) {
+// @Router    /admin/schedules [get]
+func (s *Server) ListAdminSchedules(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
 		return
 	}
-	params, ok := parseAuthListParams(w, r)
+	params, ok := parseAdminListParams(w, r)
 	if !ok {
 		return
 	}
 	rows, err := operator.ListSchedules(r.Context(), params)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list auth schedules failed", slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "list admin schedules failed", slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to list schedules")
 		return
 	}
-	items := make([]AuthSchedule, 0, len(rows))
+	items := make([]AdminSchedule, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, toAuthSchedule(row))
+		items = append(items, toAdminSchedule(row))
 	}
-	writeJSON(w, http.StatusOK, authListResponse[AuthSchedule]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
+	writeJSON(w, http.StatusOK, adminListResponse[AdminSchedule]{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
 }
 
-// ListAuthEmbeddings handles GET /api/v1/auth/embedding/{model_name}.
+// ListAdminEmbeddings handles GET /api/v1/admin/embedding/{model_name}.
 //
 // @Summary   List operator embeddings by model
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     model_name path  string true  "Embedding model name"
 // @Param     limit      query int    false "Page size (default 50, max 500)"
 // @Param     next       query int    false "Cursor for next page (default 1)"
-// @Success   200 {object} AuthEmbeddingListResponse
+// @Success   200 {object} AdminEmbeddingListResponse
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/embedding/{model_name} [get]
-func (s *Server) ListAuthEmbeddings(w http.ResponseWriter, r *http.Request) {
+// @Router    /admin/embedding/{model_name} [get]
+func (s *Server) ListAdminEmbeddings(w http.ResponseWriter, r *http.Request) {
 	operator := s.operatorOrError(w)
 	if operator == nil {
 		return
@@ -380,31 +380,31 @@ func (s *Server) ListAuthEmbeddings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "unsupported embedding model")
 		return
 	}
-	params, ok := parseAuthListParams(w, r)
+	params, ok := parseAdminListParams(w, r)
 	if !ok {
 		return
 	}
 	candidateRows, err := operator.ListCandidateEmbeddingsGemma2025(r.Context(), params)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list auth candidate embeddings failed", slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "list admin candidate embeddings failed", slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to list candidate embeddings")
 		return
 	}
 	contentRows, err := operator.ListContentEmbeddingsGemma2025(r.Context(), params)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list auth content embeddings failed", slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "list admin content embeddings failed", slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to list content embeddings")
 		return
 	}
-	candidates := make([]AuthEmbeddingRecord, 0, len(candidateRows))
+	candidates := make([]AdminEmbeddingRecord, 0, len(candidateRows))
 	for _, row := range candidateRows {
-		candidates = append(candidates, toAuthEmbeddingRecord(row))
+		candidates = append(candidates, toAdminEmbeddingRecord(row))
 	}
-	contents := make([]AuthEmbeddingRecord, 0, len(contentRows))
+	contents := make([]AdminEmbeddingRecord, 0, len(contentRows))
 	for _, row := range contentRows {
-		contents = append(contents, toAuthEmbeddingRecord(row))
+		contents = append(contents, toAdminEmbeddingRecord(row))
 	}
-	writeJSON(w, http.StatusOK, AuthEmbeddingListResponse{
+	writeJSON(w, http.StatusOK, AdminEmbeddingListResponse{
 		ModelName:           "embeddings_gemma_2025",
 		CandidateEmbeddings: candidates,
 		ContentEmbeddings:   contents,
@@ -414,18 +414,18 @@ func (s *Server) ListAuthEmbeddings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetAuthTask handles GET /api/v1/auth/tasks/{id}.
+// GetAdminTask handles GET /api/v1/admin/tasks/{id}.
 //
 // @Summary   Get operator task
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     id path string true "Task UUID"
-// @Success   200 {object} AuthTask
+// @Success   200 {object} AdminTask
 // @Failure   400 {object} ErrorResponse
 // @Failure   404 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/tasks/{id} [get]
-func (s *Server) GetAuthTask(w http.ResponseWriter, r *http.Request) {
+// @Router    /admin/tasks/{id} [get]
+func (s *Server) GetAdminTask(w http.ResponseWriter, r *http.Request) {
 	taskID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid task id")
@@ -438,24 +438,24 @@ func (s *Server) GetAuthTask(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "task not found")
 			return
 		}
-		s.Logger.ErrorContext(r.Context(), "get auth task failed", slog.String("task_id", taskID.String()), slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "get admin task failed", slog.String("task_id", taskID.String()), slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to load task")
 		return
 	}
-	writeJSON(w, http.StatusOK, toAuthTask(task))
+	writeJSON(w, http.StatusOK, toAdminTask(task))
 }
 
-// ListAuthTasks handles GET /api/v1/auth/tasks?batch_id=...
+// ListAdminTasks handles GET /api/v1/admin/tasks?batch_id=...
 //
 // @Summary   List operator tasks by batch
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     batch_id query string true "Batch UUID"
-// @Success   200 {object} AuthListTasksResponse
+// @Success   200 {object} AdminListTasksResponse
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/tasks [get]
-func (s *Server) ListAuthTasks(w http.ResponseWriter, r *http.Request) {
+// @Router    /admin/tasks [get]
+func (s *Server) ListAdminTasks(w http.ResponseWriter, r *http.Request) {
 	batchID, err := uuid.Parse(r.URL.Query().Get("batch_id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid batch_id")
@@ -464,29 +464,38 @@ func (s *Server) ListAuthTasks(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.Tasks.ListTasksByBatchID(r.Context(), batchID)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list auth tasks failed", slog.String("batch_id", batchID.String()), slog.Any("error", err))
+		s.Logger.ErrorContext(
+			r.Context(),
+			"list admin tasks failed",
+			slog.String("batch_id", batchID.String()),
+			slog.Any("error", err),
+		)
+
 		writeError(w, http.StatusInternalServerError, "failed to list tasks")
 		return
 	}
-	items := make([]AuthTask, 0, len(rows))
+	items := make([]AdminTask, 0, len(rows))
 	for _, task := range rows {
-		items = append(items, toAuthTask(task))
+		items = append(items, toAdminTask(task))
 	}
-	writeJSON(w, http.StatusOK, AuthListTasksResponse{Items: items, BatchID: batchID, Count: len(items)})
+	writeJSON(
+		w, http.StatusOK,
+		AdminListTasksResponse{Items: items, BatchID: batchID, Count: len(items)},
+	)
 }
 
-// GetAuthCandidate handles GET /api/v1/auth/candidates/{id}.
+// GetAdminCandidate handles GET /api/v1/admin/candidates/{id}.
 //
 // @Summary   Get operator candidate
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     id path string true "Candidate UUID"
-// @Success   200 {object} AuthCandidate
+// @Success   200 {object} AdminCandidate
 // @Failure   400 {object} ErrorResponse
 // @Failure   404 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/candidates/{id} [get]
-func (s *Server) GetAuthCandidate(w http.ResponseWriter, r *http.Request) {
+// @Router    /admin/candidates/{id} [get]
+func (s *Server) GetAdminCandidate(w http.ResponseWriter, r *http.Request) {
 	candidateID, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid candidate id")
@@ -499,15 +508,19 @@ func (s *Server) GetAuthCandidate(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "candidate not found")
 			return
 		}
-		s.Logger.ErrorContext(r.Context(), "get auth candidate failed", slog.String("candidate_id", candidateID.String()), slog.Any("error", err))
+		s.Logger.ErrorContext(
+			r.Context(), "get admin candidate failed",
+			slog.String("candidate_id", candidateID.String()),
+			slog.Any("error", err),
+		)
 		writeError(w, http.StatusInternalServerError, "failed to load candidate")
 		return
 	}
-	writeJSON(w, http.StatusOK, toAuthCandidate(candidate))
+	writeJSON(w, http.StatusOK, toAdminCandidate(candidate))
 }
 
-func toAuthTask(task repo.Task) AuthTask {
-	return AuthTask{
+func toAdminTask(task repo.Task) AdminTask {
+	return AdminTask{
 		ID:          task.ID,
 		BatchID:     task.BatchID,
 		TraceID:     task.TraceID,
@@ -529,8 +542,8 @@ func toAuthTask(task repo.Task) AuthTask {
 	}
 }
 
-func toAuthModel(model repo.Model) AuthModel {
-	return AuthModel{
+func toAdminModel(model repo.Model) AdminModel {
+	return AdminModel{
 		ID:          model.ID,
 		Name:        model.Name,
 		Provider:    model.Provider,
@@ -543,8 +556,8 @@ func toAuthModel(model repo.Model) AuthModel {
 	}
 }
 
-func toAuthSource(source repo.Source) AuthSource {
-	return AuthSource{
+func toAdminSource(source repo.Source) AdminSource {
+	return AdminSource{
 		Abbr:      source.Abbr,
 		Name:      source.Name,
 		Type:      source.Type,
@@ -554,8 +567,8 @@ func toAuthSource(source repo.Source) AuthSource {
 	}
 }
 
-func toAuthBatch(batch repo.Batch) AuthBatch {
-	return AuthBatch{
+func toAdminBatch(batch repo.Batch) AdminBatch {
+	return AdminBatch{
 		ID:                   batch.ID,
 		SourceType:           batch.SourceType,
 		TraceID:              batch.TraceID,
@@ -570,8 +583,8 @@ func toAuthBatch(batch repo.Batch) AuthBatch {
 	}
 }
 
-func toAuthEntity(entity repo.Entity) AuthEntity {
-	return AuthEntity{
+func toAdminEntity(entity repo.Entity) AdminEntity {
+	return AdminEntity{
 		ID:        entity.ID,
 		Canonical: entity.Canonical,
 		Type:      entity.Type,
@@ -579,8 +592,8 @@ func toAuthEntity(entity repo.Entity) AuthEntity {
 	}
 }
 
-func toAuthSchedule(schedule repo.Schedule) AuthSchedule {
-	return AuthSchedule{
+func toAdminSchedule(schedule repo.Schedule) AdminSchedule {
+	return AdminSchedule{
 		ID:                     schedule.ID,
 		Name:                   schedule.Name,
 		Enabled:                schedule.Enabled,
@@ -603,8 +616,8 @@ func toAuthSchedule(schedule repo.Schedule) AuthSchedule {
 	}
 }
 
-func toAuthEmbeddingRecord(record repo.EmbeddingRecord) AuthEmbeddingRecord {
-	return AuthEmbeddingRecord{
+func toAdminEmbeddingRecord(record repo.EmbeddingRecord) AdminEmbeddingRecord {
+	return AdminEmbeddingRecord{
 		ID:        record.ID,
 		TargetID:  record.TargetID,
 		ModelID:   record.ModelID,
@@ -614,8 +627,8 @@ func toAuthEmbeddingRecord(record repo.EmbeddingRecord) AuthEmbeddingRecord {
 	}
 }
 
-func toAuthCandidate(candidate repo.Candidate) AuthCandidate {
-	return AuthCandidate{
+func toAdminCandidate(candidate repo.Candidate) AdminCandidate {
+	return AdminCandidate{
 		ID:              candidate.ID,
 		BatchID:         candidate.BatchID,
 		Fingerprint:     candidate.Fingerprint,
@@ -647,17 +660,17 @@ func (s *Server) operatorOrError(w http.ResponseWriter) repo.Operator {
 	return s.Operator
 }
 
-func parseAuthListParams(w http.ResponseWriter, r *http.Request) (repo.ListOperatorParams, bool) {
+func parseAdminListParams(w http.ResponseWriter, r *http.Request) (repo.ListOperatorParams, bool) {
 	q := r.URL.Query()
-	params := repo.ListOperatorParams{Limit: defaultAuthListLimit, Next: 1}
+	params := repo.ListOperatorParams{Limit: defaultAdminListLimit, Next: 1}
 	if raw := strings.TrimSpace(q.Get("limit")); raw != "" {
 		n, err := strconv.ParseInt(raw, 10, 32)
 		if err != nil || n <= 0 {
 			writeError(w, http.StatusBadRequest, "invalid limit")
 			return repo.ListOperatorParams{}, false
 		}
-		if n > maxAuthListLimit {
-			n = maxAuthListLimit
+		if n > maxAdminListLimit {
+			n = maxAdminListLimit
 		}
 		params.Limit = int32(n)
 	}

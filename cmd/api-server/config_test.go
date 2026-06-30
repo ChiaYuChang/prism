@@ -143,10 +143,12 @@ func setShippedConfigEnv(t *testing.T) {
 func TestLoadConfig_FromFlags(t *testing.T) {
 	args := []string{
 		"--port=9000",
+		"--admin-port=9091",
 		"--read-timeout=5s",
 		"--write-timeout=15s",
 		"--shutdown-timeout=20s",
 		"--cors-origins=https://a.example,https://b.example",
+		"--auth-hash-algorithm=sha256",
 		"--pg-host=10.0.0.1",
 		"--pg-username=u",
 		"--pg-password=p",
@@ -157,60 +159,14 @@ func TestLoadConfig_FromFlags(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 9000, cfg.Port)
+	assert.Equal(t, 9091, cfg.Admin.Port)
 	assert.Equal(t, 5*time.Second, cfg.ReadTimeout)
 	assert.Equal(t, 15*time.Second, cfg.WriteTimeout)
 	assert.Equal(t, 20*time.Second, cfg.ShutdownTimeout)
 	assert.Equal(t, []string{"https://a.example", "https://b.example"}, cfg.CORSOrigins)
 	assert.Equal(t, "10.0.0.1", cfg.Postgres.Host)
+	assert.Equal(t, "sha256", cfg.Auth.HashAlgorithm)
 	assert.Equal(t, "debug", cfg.Logger.Level)
-}
-
-func TestLoadConfig_AuthTokenFlagsAndFile(t *testing.T) {
-	tokenFile := writeTempFile(t, "file-token-a\n\n file-token-b \n")
-
-	cfg, err := LoadConfig([]string{
-		"--auth-token=inline-token-a,inline-token-b",
-		"--auth-token-file=" + tokenFile,
-	})
-	require.NoError(t, err)
-
-	tokens, err := cfg.Auth.Token.TokenSet()
-	require.NoError(t, err)
-	assert.Contains(t, tokens, "inline-token-a")
-	assert.Contains(t, tokens, "inline-token-b")
-	assert.Contains(t, tokens, "file-token-a")
-	assert.Contains(t, tokens, "file-token-b")
-	assert.Len(t, tokens, 4)
-}
-
-func TestLoadConfig_AuthTokenConfigFile(t *testing.T) {
-	tokenFile := writeTempFile(t, "file-token\n")
-	configFile := writeTempFile(t, "auth:\n  token:\n    tokens:\n      - config-token\n    file: "+tokenFile+"\n")
-
-	cfg, err := LoadConfig([]string{"--config=" + configFile})
-	require.NoError(t, err)
-
-	tokens, err := cfg.Auth.Token.TokenSet()
-	require.NoError(t, err)
-	assert.Contains(t, tokens, "config-token")
-	assert.Contains(t, tokens, "file-token")
-	assert.Len(t, tokens, 2)
-}
-
-func TestTokenAuthConfig_TokenSetNotConfigured(t *testing.T) {
-	tokens, err := TokenAuthConfig{}.TokenSet()
-	require.NoError(t, err)
-	assert.Nil(t, tokens)
-}
-
-func TestTokenAuthConfig_TokenSetMissingFile(t *testing.T) {
-	_, err := (TokenAuthConfig{File: "missing-token-file"}).TokenSet()
-	require.Error(t, err)
-}
-
-func TestTokenAuthConfig_TokenSetEmptyConfiguredFile(t *testing.T) {
-	_, err := (TokenAuthConfig{File: writeTempFile(t, "\n\t\n")}).TokenSet()
-	require.Error(t, err)
 }
 
 func TestLoadConfig_TelemetryFlags(t *testing.T) {

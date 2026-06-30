@@ -21,6 +21,9 @@ import (
 
 	_ "github.com/ChiaYuChang/prism/cmd/api-server/docs"
 	"github.com/ChiaYuChang/prism/internal/appconfig"
+	prismauth "github.com/ChiaYuChang/prism/internal/auth"
+	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
+	prismhttp "github.com/ChiaYuChang/prism/internal/http"
 	"github.com/ChiaYuChang/prism/internal/http/api"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/infra"
@@ -148,16 +151,25 @@ func main() {
 			"burst", config.RateLimit.Burst,
 			"ip_cache_size", config.RateLimit.IPCacheSize)
 	}
-	authTokens, err := config.Auth.Token.TokenSet()
-	if err != nil {
-		logger.Error("failed to load auth tokens", "error", err)
+	hasher, herr := authtoken.NewHasher(config.Auth.HashAlgorithm)
+	if herr != nil {
+		logger.Error("failed to initialize token hasher", "error", herr)
 		os.Exit(1)
 	}
-	var authMiddleware []middleware.Middleware
-	if len(authTokens) > 0 {
-		authMiddleware = append(authMiddleware, middleware.TokenListAuth(authTokens))
-		logger.Info("api token auth enabled", "tokens", len(authTokens))
+	tokenTypes := make(map[string]api.TokenTypeConfig, len(config.Auth.TokenTypes))
+	for name, cfg := range config.Auth.TokenTypes {
+		tokenTypes[name] = api.TokenTypeConfig{Prefix: cfg.Prefix, DefaultTTL: cfg.DefaultTTL, MaxTTL: cfg.MaxTTL}
 	}
+	authenticator, aerr := prismauth.NewAuthenticator(prismauth.AuthenticatorParams{
+		Store:        repository.Tokens(),
+		AllowedTypes: []authtoken.Type{authtoken.TypeAdmin},
+	})
+	if aerr != nil {
+		logger.Error("failed to initialize token authenticator", "error", aerr)
+		os.Exit(1)
+	}
+	authMiddleware := []middleware.Middleware{middleware.TokenAuthMiddleware(middleware.TokenAuthenticator{Authenticator: authenticator, ErrorDetail: middleware.AuthErrorAdmin})}
+	serverOpts = append(serverOpts, api.WithTokens(repository.Tokens(), hasher, tokenTypes))
 	serverOpts = append(serverOpts, api.WithPrompts(repository.Prompts(), config.Prompts.Root))
 
 	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches(), serverOpts...)
@@ -183,7 +195,7 @@ func main() {
 		apiServer.StartMonitor(ctx, config.Monitoring.Interval, targets)
 	}
 
-	rootRouter := NewRouter(
+	rootRouter := prismhttp.NewRouter(
 		middleware.RequestID(),
 		middleware.HTTPTracing(),
 		middleware.HTTPMetrics(httpMetrics),
@@ -199,11 +211,8 @@ func main() {
 	rootRouter.HandleFunc("GET /healthz", livenessHandler(monitor))
 	rootRouter.HandleFunc("GET /readyz", readinessHandler(monitor))
 	rootRouter.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
-	rootRouter.Route("/api/v1", func(apiV1Router *Router) {
+	rootRouter.Route("/api/v1", func(apiV1Router *prismhttp.Router) {
 		apiServer.RegisterV1(apiV1Router)
-		apiV1Router.Route("/auth", func(authRouter *Router) {
-			apiServer.RegisterV1Auth(authRouter)
-		}, authMiddleware...)
 	})
 
 	server := &http.Server{
@@ -213,7 +222,7 @@ func main() {
 		WriteTimeout: config.WriteTimeout,
 	}
 
-	serverErr := make(chan error, 2)
+	serverErr := make(chan error, 3)
 	go func() {
 		logger.Info("api server listening", "port", config.Port)
 		monitor.OK()
@@ -221,6 +230,41 @@ func main() {
 			serverErr <- fmt.Errorf("public api server failed: %w", err)
 		}
 	}()
+	var adminServer *http.Server
+	if config.Admin.Enabled {
+		adminRouter := prismhttp.NewRouter(
+			middleware.RequestID(),
+			middleware.HTTPTracing(),
+			middleware.HTTPMetrics(httpMetrics),
+			middleware.Logger(logger),
+			middleware.Recoverer(logger),
+			middleware.CORS(middleware.CORSOptions{
+				AllowOrigins: config.CORSOrigins,
+				AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+				AllowHeaders: []string{"Content-Type", "Authorization", middleware.RequestIDHeader, middleware.TokenAuthHeader},
+				MaxAgeSecs:   600,
+			}),
+		)
+		adminRouter.HandleFunc("GET /healthz", livenessHandler(monitor))
+		adminRouter.HandleFunc("GET /readyz", readinessHandler(monitor))
+		adminRouter.Route("/api/v1", func(apiV1Router *prismhttp.Router) {
+			apiV1Router.Route("/admin", func(admin *prismhttp.Router) {
+				apiServer.RegisterV1Admin(admin)
+			}, authMiddleware...)
+		})
+		adminServer = &http.Server{
+			Addr:         fmt.Sprintf(":%d", config.Admin.Port),
+			Handler:      adminRouter.Handler(),
+			ReadTimeout:  config.ReadTimeout,
+			WriteTimeout: config.WriteTimeout,
+		}
+		go func() {
+			logger.Info("admin api server listening", "port", config.Admin.Port)
+			if err := adminServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serverErr <- fmt.Errorf("admin api server failed: %w", err)
+			}
+		}()
+	}
 
 	internalMux := http.NewServeMux()
 	if config.Monitoring.Mode == "push" {
@@ -269,6 +313,11 @@ func main() {
 	var errs []error
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		errs = append(errs, fmt.Errorf("public server shutdown: %w", err))
+	}
+	if adminServer != nil {
+		if err := adminServer.Shutdown(shutdownCtx); err != nil {
+			errs = append(errs, fmt.Errorf("admin server shutdown: %w", err))
+		}
 	}
 	if internalServer != nil {
 		if err := internalServer.Shutdown(shutdownCtx); err != nil {

@@ -22,7 +22,7 @@ const maxPromptUploadBytes = 1 << 20
 
 var promptKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*(/[a-z0-9][a-z0-9_-]*){1,8}$`)
 
-type AuthPromptVersion struct {
+type AdminPromptVersion struct {
 	ID        uuid.UUID `json:"id"`
 	KeyID     uuid.UUID `json:"key_id"`
 	Key       string    `json:"key"`
@@ -33,26 +33,25 @@ type AuthPromptVersion struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type AuthListPromptVersionsResponse struct {
-	Items []AuthPromptVersion `json:"items"`
-	Limit int32               `json:"limit"`
-	Next  int32               `json:"next"`
-	Count int                 `json:"count"`
+type AdminListPromptVersionsResponse struct {
+	Items []AdminPromptVersion `json:"items"`
+	Limit int32                `json:"limit"`
+	Next  int32                `json:"next"`
+	Count int                  `json:"count"`
 }
 
-// CreatePromptVersion handles POST /api/v1/auth/prompts.
+// CreatePromptVersion handles POST /api/v1/admin/prompts.
 //
 // @Summary   Upload operator prompt version
-// @Tags      auth
+// @Tags      admin
 // @Accept    multipart/form-data
 // @Produce   json
 // @Param     key  formData string true  "Prompt key, e.g. worker/planner/analysis/extractor"
 // @Param     hash formData string false "Expected SHA-256 hash, formatted as sha256:<hex>"
 // @Param     file formData file   true  "Prompt markdown file"
-// @Success   200 {object} AuthPromptVersion
+// @Success   200 {object} AdminPromptVersion
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/prompts [post]
 func (s *Server) CreatePromptVersion(w http.ResponseWriter, r *http.Request) {
 	prompts := s.promptsOrError(w)
 	if prompts == nil {
@@ -112,20 +111,20 @@ func (s *Server) CreatePromptVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create prompt version")
 		return
 	}
-	writeJSON(w, http.StatusOK, toAuthPromptVersion(prompt))
+	writeJSON(w, http.StatusOK, toAdminPromptVersion(prompt))
 }
 
-// GetPromptVersion handles GET /api/v1/auth/prompts/{id}.
+// GetPromptVersion handles GET /api/v1/admin/prompts/{id}.
 //
 // @Summary   Get operator prompt version
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     id path string true "Prompt version UUID"
-// @Success   200 {object} AuthPromptVersion
+// @Success   200 {object} AdminPromptVersion
 // @Failure   400 {object} ErrorResponse
 // @Failure   404 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/prompts/{id} [get]
+// @Router    /admin/prompts/{id} [get]
 func (s *Server) GetPromptVersion(w http.ResponseWriter, r *http.Request) {
 	prompts := s.promptsOrError(w)
 	if prompts == nil {
@@ -146,27 +145,27 @@ func (s *Server) GetPromptVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load prompt")
 		return
 	}
-	writeJSON(w, http.StatusOK, toAuthPromptVersion(prompt))
+	writeJSON(w, http.StatusOK, toAdminPromptVersion(prompt))
 }
 
-// ListPromptVersions handles GET /api/v1/auth/prompts.
+// ListPromptVersions handles GET /api/v1/admin/prompts.
 //
 // @Summary   List operator prompt versions
-// @Tags      auth
+// @Tags      admin
 // @Produce   json
 // @Param     key   query string false "Prompt key"
 // @Param     limit query int    false "Page size (default 50, max 500)"
 // @Param     next  query int    false "Cursor for next page (default 1)"
-// @Success   200 {object} AuthListPromptVersionsResponse
+// @Success   200 {object} AdminListPromptVersionsResponse
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
-// @Router    /auth/prompts [get]
+// @Router    /admin/prompts [get]
 func (s *Server) ListPromptVersions(w http.ResponseWriter, r *http.Request) {
 	prompts := s.promptsOrError(w)
 	if prompts == nil {
 		return
 	}
-	params, ok := parseAuthListParams(w, r)
+	params, ok := parseAdminListParams(w, r)
 	if !ok {
 		return
 	}
@@ -189,11 +188,11 @@ func (s *Server) ListPromptVersions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to list prompts")
 		return
 	}
-	items := make([]AuthPromptVersion, 0, len(rows))
+	items := make([]AdminPromptVersion, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, toAuthPromptVersion(row))
+		items = append(items, toAdminPromptVersion(row))
 	}
-	writeJSON(w, http.StatusOK, AuthListPromptVersionsResponse{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
+	writeJSON(w, http.StatusOK, AdminListPromptVersionsResponse{Items: items, Limit: params.Limit, Next: params.Next, Count: len(items)})
 }
 
 func (s *Server) promptsOrError(w http.ResponseWriter) repo.Prompts {
@@ -249,8 +248,8 @@ func promptHash(body []byte) string {
 	return fmt.Sprintf("sha256:%x", sum[:])
 }
 
-func toAuthPromptVersion(prompt repo.PromptVersion) AuthPromptVersion {
-	return AuthPromptVersion{
+func toAdminPromptVersion(prompt repo.PromptVersion) AdminPromptVersion {
+	return AdminPromptVersion{
 		ID:        prompt.ID,
 		KeyID:     prompt.KeyID,
 		Key:       prompt.Key,

@@ -1,4 +1,4 @@
-package main
+package prismhttp
 
 import (
 	"net/http"
@@ -28,8 +28,8 @@ func TestRouter_RouteInheritsParentAndScopesChildMiddleware(t *testing.T) {
 		apiV1Router.HandleFunc("GET /public", func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte("public"))
 		})
-		apiV1Router.Route("/auth", func(authRouter *Router) {
-			authRouter.HandleFunc("GET /private", func(w http.ResponseWriter, _ *http.Request) {
+		apiV1Router.Route("/admin", func(adminRouter *Router) {
+			adminRouter.HandleFunc("GET /private", func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("private"))
 			})
 		}, childMW)
@@ -42,7 +42,7 @@ func TestRouter_RouteInheritsParentAndScopesChildMiddleware(t *testing.T) {
 	require.Empty(t, publicRec.Header().Get("X-Child"))
 
 	privateRec := httptest.NewRecorder()
-	rootRouter.Handler().ServeHTTP(privateRec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/private", nil))
+	rootRouter.Handler().ServeHTTP(privateRec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/private", nil))
 	require.Equal(t, http.StatusOK, privateRec.Code)
 	require.Equal(t, "1", privateRec.Header().Get("X-Parent"))
 	require.Equal(t, "1", privateRec.Header().Get("X-Child"))
@@ -54,8 +54,8 @@ func TestRouter_RouteCanScopeTokenAuth(t *testing.T) {
 		apiV1Router.HandleFunc("GET /public", func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte("public"))
 		})
-		apiV1Router.Route("/auth", func(authRouter *Router) {
-			authRouter.HandleFunc("GET /private", func(w http.ResponseWriter, _ *http.Request) {
+		apiV1Router.Route("/admin", func(adminRouter *Router) {
+			adminRouter.HandleFunc("GET /private", func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("private"))
 			})
 		}, middleware.TokenListAuth(map[string]struct{}{"secret": {}}))
@@ -66,10 +66,10 @@ func TestRouter_RouteCanScopeTokenAuth(t *testing.T) {
 	require.Equal(t, http.StatusOK, publicRec.Code)
 
 	deniedRec := httptest.NewRecorder()
-	rootRouter.Handler().ServeHTTP(deniedRec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/private", nil))
+	rootRouter.Handler().ServeHTTP(deniedRec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/private", nil))
 	require.Equal(t, http.StatusUnauthorized, deniedRec.Code)
 
-	allowedReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/private", nil)
+	allowedReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/private", nil)
 	allowedReq.Header.Set(middleware.TokenAuthHeader, "secret")
 	allowedRec := httptest.NewRecorder()
 	rootRouter.Handler().ServeHTTP(allowedRec, allowedReq)

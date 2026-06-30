@@ -52,7 +52,7 @@ type ListCandidatesResponse struct {
 // @Failure   400 {object} ErrorResponse
 // @Failure   500 {object} ErrorResponse
 // @Router    /candidates [get]
-// @Router    /auth/candidates [get]
+// @Router    /admin/candidates [get]
 func (s *Server) ListCandidates(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 

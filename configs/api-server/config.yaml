@@ -1,4 +1,7 @@
 port: 8090
+admin:
+  enabled: true
+  port: 8091
 read-timeout: 10s
 write-timeout: 30s
 shutdown-timeout: 10s
@@ -28,9 +31,21 @@ rate-limit:
   burst: 200
   ip-cache-size: 4096
 auth:
-  token:
-    tokens: []
-    file: ""
+  enabled: true
+  hash-algorithm: sha256
+  token-types:
+    admin:
+      prefix: padm
+      default-ttl: 720h
+      max-ttl: 2160h
+    user:
+      prefix: pusr
+      default-ttl: 24h
+      max-ttl: 168h
+    worker:
+      prefix: pwrk
+      default-ttl: 720h
+      max-ttl: 2160h
 prompts:
   root: '{{ env "PRISM_PROMPTS_ROOT" "/app/runtime/prompts" }}'
 telemetry:

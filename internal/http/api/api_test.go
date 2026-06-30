@@ -112,7 +112,7 @@ func TestListCandidates_InvalidSince(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestGetAuthTask_HappyPath(t *testing.T) {
+func TestGetAdminTask_HappyPath(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	taskID := uuid.Must(uuid.NewV7())
@@ -137,10 +137,10 @@ func TestGetAuthTask_HappyPath(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/tasks/"+taskID.String(), nil)
 	req.SetPathValue("id", taskID.String())
 	rec := httptest.NewRecorder()
-	srv.GetAuthTask(rec, req)
+	srv.GetAdminTask(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	var body api.AuthTask
+	var body api.AdminTask
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	require.Equal(t, taskID, body.ID)
 	require.Equal(t, batchID, body.BatchID)
@@ -148,7 +148,7 @@ func TestGetAuthTask_HappyPath(t *testing.T) {
 	require.JSONEq(t, `{"candidate_id":"abc"}`, string(body.Payload))
 }
 
-func TestListAuthTasks_ByBatchID(t *testing.T) {
+func TestListAdminTasks_ByBatchID(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	batchID := uuid.Must(uuid.NewV7())
@@ -167,17 +167,17 @@ func TestListAuthTasks_ByBatchID(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/tasks?batch_id="+batchID.String(), nil)
 	rec := httptest.NewRecorder()
-	srv.ListAuthTasks(rec, req)
+	srv.ListAdminTasks(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	var body api.AuthListTasksResponse
+	var body api.AdminListTasksResponse
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	require.Equal(t, batchID, body.BatchID)
 	require.Equal(t, 1, body.Count)
 	require.Equal(t, taskID, body.Items[0].ID)
 }
 
-func TestGetAuthCandidate_HappyPath(t *testing.T) {
+func TestGetAdminCandidate_HappyPath(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	candidateID := uuid.Must(uuid.NewV7())
@@ -200,17 +200,17 @@ func TestGetAuthCandidate_HappyPath(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/candidates/"+candidateID.String(), nil)
 	req.SetPathValue("id", candidateID.String())
 	rec := httptest.NewRecorder()
-	srv.GetAuthCandidate(rec, req)
+	srv.GetAdminCandidate(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	var body api.AuthCandidate
+	var body api.AdminCandidate
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	require.Equal(t, candidateID, body.ID)
 	require.Equal(t, "fingerprint", body.Fingerprint)
 	require.JSONEq(t, `{"k":"v"}`, string(body.Metadata))
 }
 
-func TestGetAuthCandidate_NotFound(t *testing.T) {
+func TestGetAdminCandidate_NotFound(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	candidateID := uuid.Must(uuid.NewV7())
@@ -219,12 +219,12 @@ func TestGetAuthCandidate_NotFound(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/candidates/"+candidateID.String(), nil)
 	req.SetPathValue("id", candidateID.String())
 	rec := httptest.NewRecorder()
-	srv.GetAuthCandidate(rec, req)
+	srv.GetAdminCandidate(rec, req)
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestListAuthModels_HappyPath(t *testing.T) {
+func TestListAdminModels_HappyPath(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	now := time.Now().UTC()
@@ -238,14 +238,14 @@ func TestListAuthModels_HappyPath(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/models?limit=25&next=11", nil)
 	rec := httptest.NewRecorder()
-	srv.ListAuthModels(rec, req)
+	srv.ListAdminModels(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var body struct {
-		Items []api.AuthModel `json:"items"`
-		Limit int32           `json:"limit"`
-		Next  int32           `json:"next"`
-		Count int             `json:"count"`
+		Items []api.AdminModel `json:"items"`
+		Limit int32            `json:"limit"`
+		Next  int32            `json:"next"`
+		Count int              `json:"count"`
 	}
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	require.EqualValues(t, 25, body.Limit)
@@ -254,7 +254,7 @@ func TestListAuthModels_HappyPath(t *testing.T) {
 	require.Equal(t, "gemma-2025", body.Items[0].Name)
 }
 
-func TestListAuthEmbeddings_Gemma2025(t *testing.T) {
+func TestListAdminEmbeddings_Gemma2025(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	now := time.Now().UTC()
@@ -281,10 +281,10 @@ func TestListAuthEmbeddings_Gemma2025(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/embedding/embeddings_gemma_2025?limit=5", nil)
 	req.SetPathValue("model_name", "embeddings_gemma_2025")
 	rec := httptest.NewRecorder()
-	srv.ListAuthEmbeddings(rec, req)
+	srv.ListAdminEmbeddings(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	var body api.AuthEmbeddingListResponse
+	var body api.AdminEmbeddingListResponse
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	require.Equal(t, "embeddings_gemma_2025", body.ModelName)
 	require.Equal(t, 2, body.Count)
@@ -292,13 +292,13 @@ func TestListAuthEmbeddings_Gemma2025(t *testing.T) {
 	require.Equal(t, contentID, body.ContentEmbeddings[0].TargetID)
 }
 
-func TestListAuthEmbeddings_UnsupportedModel(t *testing.T) {
+func TestListAdminEmbeddings_UnsupportedModel(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/embedding/unknown", nil)
 	req.SetPathValue("model_name", "unknown")
 	rec := httptest.NewRecorder()
-	srv.ListAuthEmbeddings(rec, req)
+	srv.ListAdminEmbeddings(rec, req)
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }

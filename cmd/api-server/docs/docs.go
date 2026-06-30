@@ -15,13 +15,13 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/auth/batches": {
+        "/admin/batches": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "List operator batches",
                 "parameters": [
@@ -42,7 +42,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthListBatchesResponse"
+                            "$ref": "#/definitions/api.AdminListBatchesResponse"
                         }
                     },
                     "400": {
@@ -60,7 +60,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/candidates": {
+        "/admin/candidates": {
             "get": {
                 "produces": [
                     "application/json"
@@ -129,13 +129,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/candidates/{id}": {
+        "/admin/candidates/{id}": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "Get operator candidate",
                 "parameters": [
@@ -151,7 +151,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthCandidate"
+                            "$ref": "#/definitions/api.AdminCandidate"
                         }
                     },
                     "400": {
@@ -175,13 +175,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/embedding/{model_name}": {
+        "/admin/embedding/{model_name}": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "List operator embeddings by model",
                 "parameters": [
@@ -209,7 +209,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthEmbeddingListResponse"
+                            "$ref": "#/definitions/api.AdminEmbeddingListResponse"
                         }
                     },
                     "400": {
@@ -227,13 +227,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/entities": {
+        "/admin/entities": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "List operator entities",
                 "parameters": [
@@ -254,7 +254,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthListEntitiesResponse"
+                            "$ref": "#/definitions/api.AdminListEntitiesResponse"
                         }
                     },
                     "400": {
@@ -272,13 +272,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/models": {
+        "/admin/models": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "List operator models",
                 "parameters": [
@@ -299,7 +299,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthListModelsResponse"
+                            "$ref": "#/definitions/api.AdminListModelsResponse"
                         }
                     },
                     "400": {
@@ -317,13 +317,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/prompts": {
+        "/admin/prompts": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "List operator prompt versions",
                 "parameters": [
@@ -350,61 +350,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthListPromptVersionsResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "consumes": [
-                    "multipart/form-data"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Upload operator prompt version",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Prompt key, e.g. worker/planner/analysis/extractor",
-                        "name": "key",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Expected SHA-256 hash, formatted as sha256:\u003chex\u003e",
-                        "name": "hash",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "file",
-                        "description": "Prompt markdown file",
-                        "name": "file",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/api.AuthPromptVersion"
+                            "$ref": "#/definitions/api.AdminListPromptVersionsResponse"
                         }
                     },
                     "400": {
@@ -422,13 +368,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/prompts/{id}": {
+        "/admin/prompts/{id}": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "Get operator prompt version",
                 "parameters": [
@@ -444,7 +390,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthPromptVersion"
+                            "$ref": "#/definitions/api.AdminPromptVersion"
                         }
                     },
                     "400": {
@@ -468,13 +414,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/schedules": {
+        "/admin/schedules": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "List operator schedules",
                 "parameters": [
@@ -495,7 +441,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthListSchedulesResponse"
+                            "$ref": "#/definitions/api.AdminListSchedulesResponse"
                         }
                     },
                     "400": {
@@ -513,13 +459,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/sources": {
+        "/admin/sources": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "List operator sources",
                 "parameters": [
@@ -540,7 +486,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthListSourcesResponse"
+                            "$ref": "#/definitions/api.AdminListSourcesResponse"
                         }
                     },
                     "400": {
@@ -558,13 +504,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/tasks": {
+        "/admin/tasks": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "List operator tasks by batch",
                 "parameters": [
@@ -580,7 +526,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthListTasksResponse"
+                            "$ref": "#/definitions/api.AdminListTasksResponse"
                         }
                     },
                     "400": {
@@ -598,13 +544,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/tasks/{id}": {
+        "/admin/tasks/{id}": {
             "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "auth"
+                    "admin"
                 ],
                 "summary": "Get operator task",
                 "parameters": [
@@ -620,7 +566,98 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.AuthTask"
+                            "$ref": "#/definitions/api.AdminTask"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/tokens": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "List admin tokens",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 50, max 500)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Cursor for next page (default 1)",
+                        "name": "next",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.AdminListTokensResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/tokens/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get admin token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token UUID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.AdminToken"
                         }
                     },
                     "400": {
@@ -967,7 +1004,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "api.AuthBatch": {
+        "api.AdminBatch": {
             "type": "object",
             "properties": {
                 "completed_at": {
@@ -1005,7 +1042,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthCandidate": {
+        "api.AdminCandidate": {
             "type": "object",
             "properties": {
                 "batch_id": {
@@ -1049,19 +1086,19 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthEmbeddingListResponse": {
+        "api.AdminEmbeddingListResponse": {
             "type": "object",
             "properties": {
                 "candidate_embeddings": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.AuthEmbeddingRecord"
+                        "$ref": "#/definitions/api.AdminEmbeddingRecord"
                     }
                 },
                 "content_embeddings": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.AuthEmbeddingRecord"
+                        "$ref": "#/definitions/api.AdminEmbeddingRecord"
                     }
                 },
                 "count": {
@@ -1078,7 +1115,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthEmbeddingRecord": {
+        "api.AdminEmbeddingRecord": {
             "type": "object",
             "properties": {
                 "category": {
@@ -1101,7 +1138,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthEntity": {
+        "api.AdminEntity": {
             "type": "object",
             "properties": {
                 "canonical": {
@@ -1118,7 +1155,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthListBatchesResponse": {
+        "api.AdminListBatchesResponse": {
             "type": "object",
             "properties": {
                 "count": {
@@ -1127,7 +1164,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.AuthBatch"
+                        "$ref": "#/definitions/api.AdminBatch"
                     }
                 },
                 "limit": {
@@ -1138,7 +1175,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthListEntitiesResponse": {
+        "api.AdminListEntitiesResponse": {
             "type": "object",
             "properties": {
                 "count": {
@@ -1147,7 +1184,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.AuthEntity"
+                        "$ref": "#/definitions/api.AdminEntity"
                     }
                 },
                 "limit": {
@@ -1158,7 +1195,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthListModelsResponse": {
+        "api.AdminListModelsResponse": {
             "type": "object",
             "properties": {
                 "count": {
@@ -1167,7 +1204,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.AuthModel"
+                        "$ref": "#/definitions/api.AdminModel"
                     }
                 },
                 "limit": {
@@ -1178,7 +1215,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthListPromptVersionsResponse": {
+        "api.AdminListPromptVersionsResponse": {
             "type": "object",
             "properties": {
                 "count": {
@@ -1187,7 +1224,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.AuthPromptVersion"
+                        "$ref": "#/definitions/api.AdminPromptVersion"
                     }
                 },
                 "limit": {
@@ -1198,7 +1235,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthListSchedulesResponse": {
+        "api.AdminListSchedulesResponse": {
             "type": "object",
             "properties": {
                 "count": {
@@ -1207,7 +1244,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.AuthSchedule"
+                        "$ref": "#/definitions/api.AdminSchedule"
                     }
                 },
                 "limit": {
@@ -1218,7 +1255,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthListSourcesResponse": {
+        "api.AdminListSourcesResponse": {
             "type": "object",
             "properties": {
                 "count": {
@@ -1227,7 +1264,7 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.AuthSource"
+                        "$ref": "#/definitions/api.AdminSource"
                     }
                 },
                 "limit": {
@@ -1238,7 +1275,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthListTasksResponse": {
+        "api.AdminListTasksResponse": {
             "type": "object",
             "properties": {
                 "batch_id": {
@@ -1250,12 +1287,32 @@ const docTemplate = `{
                 "items": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.AuthTask"
+                        "$ref": "#/definitions/api.AdminTask"
                     }
                 }
             }
         },
-        "api.AuthModel": {
+        "api.AdminListTokensResponse": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.AdminToken"
+                    }
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "next": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.AdminModel": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -1287,7 +1344,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthPromptVersion": {
+        "api.AdminPromptVersion": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -1316,7 +1373,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthSchedule": {
+        "api.AdminSchedule": {
             "type": "object",
             "properties": {
                 "config_hash": {
@@ -1378,7 +1435,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthSource": {
+        "api.AdminSource": {
             "type": "object",
             "properties": {
                 "abbr": {
@@ -1401,7 +1458,7 @@ const docTemplate = `{
                 }
             }
         },
-        "api.AuthTask": {
+        "api.AdminTask": {
             "type": "object",
             "properties": {
                 "batch_id": {
@@ -1456,6 +1513,41 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.AdminToken": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "hash_algorithm": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_used_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "renewed_at": {
+                    "type": "string"
+                },
+                "revoked_at": {
+                    "type": "string"
+                },
+                "rotated_at": {
+                    "type": "string"
+                },
+                "type": {
                     "type": "string"
                 }
             }

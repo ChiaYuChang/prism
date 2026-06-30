@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -33,66 +32,24 @@ type RateLimitConfig struct {
 // AuthConfig groups API authentication methods. JWT can be added alongside
 // token auth without changing middleware wiring.
 type AuthConfig struct {
-	Token TokenAuthConfig `mapstructure:"token"`
+	HashAlgorithm string                     `mapstructure:"hash-algorithm" validate:"required"`
+	TokenTypes    map[string]TokenTypeConfig `mapstructure:"token-types"`
+}
+
+type TokenTypeConfig struct {
+	Prefix     string        `mapstructure:"prefix"      validate:"required"`
+	DefaultTTL time.Duration `mapstructure:"default-ttl" validate:"required,min=1s"`
+	MaxTTL     time.Duration `mapstructure:"max-ttl"     validate:"required,min=1s"`
 }
 
 type PromptConfig struct {
 	Root string `mapstructure:"root" validate:"required"`
 }
 
-// TokenAuthConfig configures X-PRISM-TOKEN allow-list authentication.
-type TokenAuthConfig struct {
-	Tokens []string `mapstructure:"tokens"`
-	File   string   `mapstructure:"file"`
-}
-
-func (c TokenAuthConfig) Enabled() bool {
-	if strings.TrimSpace(c.File) != "" {
-		return true
-	}
-	for _, token := range c.Tokens {
-		if strings.TrimSpace(token) != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func (c TokenAuthConfig) TokenSet() (map[string]struct{}, error) {
-	if !c.Enabled() {
-		return nil, nil
-	}
-
-	tokens := make(map[string]struct{})
-	addTokens(tokens, c.Tokens)
-
-	file := strings.TrimSpace(c.File)
-	if file != "" {
-		b, err := os.ReadFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("read auth token file %q: %w", file, err)
-		}
-		addTokens(tokens, strings.Split(string(b), "\n"))
-	}
-	if len(tokens) == 0 {
-		return nil, fmt.Errorf("auth token config has no usable tokens")
-	}
-	return tokens, nil
-}
-
-func addTokens(dst map[string]struct{}, tokens []string) {
-	for _, token := range tokens {
-		token = strings.TrimSpace(token)
-		if token == "" {
-			continue
-		}
-		dst[token] = struct{}{}
-	}
-}
-
 // Config is the runtime configuration for the API server.
 type Config struct {
 	Port            int                 `mapstructure:"port"              validate:"required,min=1024,max=65535"`
+	Admin           AdminConfig         `mapstructure:"admin"`
 	ReadTimeout     time.Duration       `mapstructure:"read-timeout"      validate:"required,min=1s"`
 	WriteTimeout    time.Duration       `mapstructure:"write-timeout"     validate:"required,min=1s"`
 	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout"  validate:"required,min=1s"`
@@ -106,6 +63,11 @@ type Config struct {
 	Auth            AuthConfig          `mapstructure:"auth"`
 	Prompts         PromptConfig        `mapstructure:"prompts"`
 	Monitoring      MonitoringConfig    `mapstructure:"monitoring"`
+}
+
+type AdminConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	Port    int  `mapstructure:"port" validate:"required,min=1024,max=65535"`
 }
 
 type MonitoringTarget struct {
@@ -152,12 +114,26 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetDefault("monitoring.timeout", 2*time.Second)
 	v.SetDefault("monitoring.status-key", "api:status")
 	v.SetDefault("monitoring.internal-port", 8089)
+	v.SetDefault("admin.enabled", true)
+	v.SetDefault("admin.port", 8091)
 	v.SetDefault("prompts.root", "runtime/prompts")
+	v.SetDefault("auth.hash-algorithm", "sha256")
+	v.SetDefault("auth.token-types.admin.prefix", "padm")
+	v.SetDefault("auth.token-types.admin.default-ttl", 720*time.Hour)
+	v.SetDefault("auth.token-types.admin.max-ttl", 2160*time.Hour)
+	v.SetDefault("auth.token-types.user.prefix", "pusr")
+	v.SetDefault("auth.token-types.user.default-ttl", 24*time.Hour)
+	v.SetDefault("auth.token-types.user.max-ttl", 168*time.Hour)
+	v.SetDefault("auth.token-types.worker.prefix", "pwrk")
+	v.SetDefault("auth.token-types.worker.default-ttl", 720*time.Hour)
+	v.SetDefault("auth.token-types.worker.max-ttl", 2160*time.Hour)
 
 	fs := pflag.NewFlagSet("api-server", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 
 	fs.Int("port", 8090, "HTTP listen port")
+	fs.Bool("admin-enabled", true, "Enable admin HTTP listener")
+	fs.Int("admin-port", 8091, "Admin HTTP listen port")
 	fs.Int("monitoring-internal-port", 8089, "HTTP listen port for internal administration and status updates")
 	fs.Duration("read-timeout", 10*time.Second, "HTTP server read timeout")
 	fs.Duration("write-timeout", 30*time.Second, "HTTP server write timeout")
@@ -190,8 +166,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("rate-limit-burst", 10, "Per-IP burst capacity")
 	fs.Int("rate-limit-ip-cache-size", 4096, "Max distinct IPs tracked by the rate limiter (LRU)")
 
-	fs.StringSlice("auth-token", []string{}, "Allowed X-PRISM-TOKEN values (comma-separated or repeated)")
-	fs.String("auth-token-file", "", "Path to allowed X-PRISM-TOKEN file (one token per line)")
+	fs.String("auth-hash-algorithm", "sha256", "Token hash algorithm")
 	fs.String("prompts-root", "runtime/prompts", "Root directory for uploaded prompt objects")
 
 	fs.String("monitoring-mode", "pull", "Monitoring mode: pull or push")
@@ -327,8 +302,9 @@ func bindRateLimitFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 
 func bindAuthFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 	for flag, key := range map[string]string{
-		"auth-token":      "auth.token.tokens",
-		"auth-token-file": "auth.token.file",
+		"auth-hash-algorithm": "auth.hash-algorithm",
+		"admin-enabled":       "admin.enabled",
+		"admin-port":          "admin.port",
 	} {
 		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
 			return fmt.Errorf("bind %s: %w", key, err)

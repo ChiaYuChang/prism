@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/obs"
@@ -182,6 +183,14 @@ func WithPrompts(prompts repo.Prompts, root string) ServerOption {
 	}
 }
 
+func WithTokens(tokens repo.Tokens, hasher authtoken.Hasher, tokenTypes map[string]TokenTypeConfig) ServerOption {
+	return func(s *Server) {
+		s.Tokens = tokens
+		s.TokenHasher = hasher
+		s.TokenTypes = tokenTypes
+	}
+}
+
 // Server groups dependencies shared by all API handlers.
 type Server struct {
 	Logger          *slog.Logger
@@ -191,10 +200,19 @@ type Server struct {
 	UserFetches     repo.UserFetches
 	Operator        repo.Operator
 	Prompts         repo.Prompts
+	Tokens          repo.Tokens
+	TokenHasher     authtoken.Hasher
+	TokenTypes      map[string]TokenTypeConfig
 	Cache           ProgressCache
 	GetFetchLimiter middleware.IPLimiter
 	Monitor         StatusMonitor
 	PromptRoot      string
+}
+
+type TokenTypeConfig struct {
+	Prefix     string
+	DefaultTTL time.Duration
+	MaxTTL     time.Duration
 }
 
 // NewServer validates dependencies and returns a ready-to-register Server.
@@ -249,21 +267,22 @@ func (s *Server) RegisterV1(r RouteRegistrar) {
 	r.Handle("GET /status", http.HandlerFunc(s.GetStatus))
 }
 
-// RegisterV1Auth wires authenticated v1 operator routes onto the supplied router.
-func (s *Server) RegisterV1Auth(r RouteRegistrar) {
-	r.Handle("GET /candidates", http.HandlerFunc(s.ListCandidates))
-	r.Handle("GET /candidates/{id}", http.HandlerFunc(s.GetAuthCandidate))
-	r.Handle("GET /models", http.HandlerFunc(s.ListAuthModels))
-	r.Handle("GET /sources", http.HandlerFunc(s.ListAuthSources))
-	r.Handle("GET /batches", http.HandlerFunc(s.ListAuthBatches))
-	r.Handle("GET /entities", http.HandlerFunc(s.ListAuthEntities))
-	r.Handle("GET /schedules", http.HandlerFunc(s.ListAuthSchedules))
-	r.Handle("GET /embedding/{model_name}", http.HandlerFunc(s.ListAuthEmbeddings))
-	r.Handle("GET /tasks", http.HandlerFunc(s.ListAuthTasks))
-	r.Handle("GET /tasks/{id}", http.HandlerFunc(s.GetAuthTask))
-	r.Handle("POST /prompts", http.HandlerFunc(s.CreatePromptVersion))
-	r.Handle("GET /prompts", http.HandlerFunc(s.ListPromptVersions))
-	r.Handle("GET /prompts/{id}", http.HandlerFunc(s.GetPromptVersion))
+// RegisterV1Admin wires authenticated read-only v1 operator routes onto the supplied router.
+func (s *Server) RegisterV1Admin(r RouteRegistrar) {
+	r.Handle("GET /candidates", s.requireAdmin(http.HandlerFunc(s.ListCandidates)))
+	r.Handle("GET /candidates/{id}", s.requireAdmin(http.HandlerFunc(s.GetAdminCandidate)))
+	r.Handle("GET /models", s.requireAdmin(http.HandlerFunc(s.ListAdminModels)))
+	r.Handle("GET /sources", s.requireAdmin(http.HandlerFunc(s.ListAdminSources)))
+	r.Handle("GET /batches", s.requireAdmin(http.HandlerFunc(s.ListAdminBatches)))
+	r.Handle("GET /entities", s.requireAdmin(http.HandlerFunc(s.ListAdminEntities)))
+	r.Handle("GET /schedules", s.requireAdmin(http.HandlerFunc(s.ListAdminSchedules)))
+	r.Handle("GET /embedding/{model_name}", s.requireAdmin(http.HandlerFunc(s.ListAdminEmbeddings)))
+	r.Handle("GET /tasks", s.requireAdmin(http.HandlerFunc(s.ListAdminTasks)))
+	r.Handle("GET /tasks/{id}", s.requireAdmin(http.HandlerFunc(s.GetAdminTask)))
+	r.Handle("GET /prompts", s.requireAdmin(http.HandlerFunc(s.ListPromptVersions)))
+	r.Handle("GET /prompts/{id}", s.requireAdmin(http.HandlerFunc(s.GetPromptVersion)))
+	r.Handle("GET /tokens", s.requireAdmin(http.HandlerFunc(s.ListTokens)))
+	r.Handle("GET /tokens/{id}", s.requireAdmin(http.HandlerFunc(s.GetToken)))
 }
 
 // RegisterInternal wires private routes for internal administration/push telemetry.
