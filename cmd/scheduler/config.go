@@ -14,16 +14,17 @@ import (
 
 // Config holds the scheduler's runtime configuration.
 type Config struct {
-	Interval      time.Duration       `mapstructure:"interval"       validate:"required,min=1s"`
-	HealthPort    int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	Valkey        app.ValkeyConfig    `mapstructure:"valkey"`
-	Logger        obs.LoggingConfig   `mapstructure:"logger"`
-	Telemetry     obs.TelemetryConfig `mapstructure:"telemetry"`
-	BatchSize     int                 `mapstructure:"batch-size"     validate:"required,min=1,max=200"`
-	Kinds         []string            `mapstructure:"kinds"          validate:"required,min=1,dive,oneof=DIRECTORY_FETCH KEYWORD_SEARCH PAGE_FETCH"`
-	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
-	MessengerType string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
-	Messenger     app.MessengerConfig `mapstructure:"-"`
+	Interval        time.Duration       `mapstructure:"interval"         validate:"required,min=1s"`
+	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
+	HealthPort      int                 `mapstructure:"health-port"      validate:"required,min=1024,max=65535"`
+	Valkey          app.ValkeyConfig    `mapstructure:"valkey"`
+	Logger          obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
+	BatchSize       int                 `mapstructure:"batch-size"       validate:"required,min=1,max=200"`
+	Kinds           []string            `mapstructure:"kinds"            validate:"required,min=1,dive,oneof=DIRECTORY_FETCH KEYWORD_SEARCH PAGE_FETCH"`
+	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
+	MessengerType   string              `mapstructure:"messenger-type"   validate:"oneof=nats gochannel"`
+	Messenger       app.MessengerConfig `mapstructure:"-"`
 
 	// LockKey is the Valkey key used for the distributed scheduler lock.
 	// Different scheduler instances (fast/slow) must use different keys.
@@ -57,6 +58,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 
 	fs.Duration("interval", 10*time.Minute, "The ticker interval for the scheduler (min: 1s, default: 10m)")
+	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
 	fs.Int("health-port", 8090, "The port for the health check server (default: 8090)")
 	fs.String("valkey-host", "localhost", "The host of the Valkey/Redis instance")
 	fs.Int("valkey-port", 6379, "The port of the Valkey/Redis instance")

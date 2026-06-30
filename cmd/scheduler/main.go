@@ -125,7 +125,9 @@ func (m *schedulerMetrics) recordDispatchDuration(ctx context.Context, started t
 	)
 }
 
-func newScheduler(logger *slog.Logger, tracer trace.Tracer, metrics *schedulerMetrics, rl infra.RateLimiter, scheduler repo.Scheduler, publisher TaskPublisher) *Scheduler {
+func newScheduler(logger *slog.Logger, tracer trace.Tracer, metrics *schedulerMetrics,
+	rl infra.RateLimiter, scheduler repo.Scheduler, publisher TaskPublisher,
+) *Scheduler {
 	return &Scheduler{
 		logger:    logger,
 		tracer:    tracer,
@@ -145,7 +147,8 @@ func newScheduler(logger *slog.Logger, tracer trace.Tracer, metrics *schedulerMe
 func (s *Scheduler) RunTick(ctx context.Context, cfg *Config) []repo.Task {
 	started := time.Now()
 	result := "ok"
-	ctx, span := s.tracer.Start(ctx, "scheduler.tick",
+	ctx, span := s.tracer.Start(
+		ctx, "scheduler.tick",
 		trace.WithAttributes(
 			attribute.String("scheduler.lock_key", cfg.LockKey),
 			attribute.StringSlice("scheduler.kinds", cfg.Kinds),
@@ -190,7 +193,8 @@ func (s *Scheduler) runSimpleTick(ctx context.Context, n, buf int, kinds []strin
 		attribute.Int("task.count.dispatching", len(pass)),
 		attribute.Int("task.count.released", len(toRelease)),
 	)
-	s.logger.Info("tick complete",
+	s.logger.Info(
+		"tick complete",
 		slog.Int("claimed", len(claimed)),
 		slog.Int("dispatching", len(pass)),
 		slog.Int("released", len(toRelease)),
@@ -208,7 +212,8 @@ func (s *Scheduler) runPriorityTick(ctx context.Context, n, mdQuota, buf int, ki
 	defer span.End()
 
 	// Step 1: MEDIA PAGE_FETCH — user-triggered, highest priority.
-	mdClaimed, err := s.scheduler.ClaimTasks(ctx, int32(mdQuota+buf),
+	mdClaimed, err := s.scheduler.ClaimTasks(
+		ctx, int32(mdQuota+buf),
 		[]string{repo.TaskKindPageFetch},
 		[]string{repo.SourceTypeMedia},
 	)
@@ -241,7 +246,8 @@ func (s *Scheduler) runPriorityTick(ctx context.Context, n, mdQuota, buf int, ki
 		attribute.Int("task.count.background_dispatching", len(bgPass)),
 		attribute.Int("task.count.dispatching", len(all)),
 	)
-	s.logger.Info("priority tick complete",
+	s.logger.Info(
+		"priority tick complete",
 		slog.Int("media_claimed", len(mdClaimed)),
 		slog.Int("media_pass", len(mdPass)),
 		slog.Int("background_claimed", len(bgClaimed)),
@@ -273,7 +279,8 @@ func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error 
 	}()
 
 	for _, task := range tasks {
-		tLogger := lg.WithHook(s.logger,
+		tLogger := lg.WithHook(
+			s.logger,
 			lg.AttrHook("task_id", task.ID.String()),
 			lg.AttrHook("trace_id", task.TraceID),
 			lg.AttrHook("retry_count", strconv.Itoa(task.RetryCount)),
@@ -414,6 +421,10 @@ func main() {
 	// 3. Health Monitor
 	monitor := obs.NewHealthMonitor()
 	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	go func() {
+		<-ctx.Done()
+		monitor.SetStatus(obs.LevelWarn, "shutting down")
+	}()
 
 	// 4. Rate Limiter
 	var rl infra.RateLimiter
@@ -478,7 +489,8 @@ func main() {
 		}
 	}()
 
-	logger = lg.WithHook(logger,
+	logger = lg.WithHook(
+		logger,
 		lg.SinceHook("uptime", time.Now()),
 		lg.AttrHook("pid", fmt.Sprintf("%d", os.Getpid())),
 		lg.ServiceHook("scheduler"),
@@ -493,7 +505,8 @@ func main() {
 		publisher: msgr,
 	}
 
-	logger.Info("Scheduler starting",
+	logger.Info(
+		"Scheduler starting",
 		"lock_key", config.LockKey,
 		"interval", config.Interval,
 		"kinds", config.Kinds,
@@ -513,6 +526,10 @@ func main() {
 			logger.Info("Shutting down scheduler gracefully")
 			return
 		case t := <-ticker.C:
+			if ctx.Err() != nil {
+				logger.Info("shutdown requested before scheduler tick")
+				return
+			}
 			logger.Info("Tick triggered", "time", t)
 
 			lockCtx, lockSpan := tracer.Start(ctx, "scheduler.lock.acquire", trace.WithAttributes(attribute.String("scheduler.lock_key", config.LockKey)))
@@ -532,19 +549,26 @@ func main() {
 			}
 			logger.Info("Lock acquired", "key", config.LockKey)
 
-			tasks := svc.RunTick(ctx, config)
+			tickCtx, cancelTick := infra.NewDrainContext(config.ShutdownTimeout)
+			tasks := svc.RunTick(tickCtx, config)
 			if len(tasks) > 0 {
-				if err := svc.DispatchTasks(ctx, tasks); err != nil {
+				if err := svc.DispatchTasks(tickCtx, tasks); err != nil {
 					logger.Error("dispatch loop finished with error", "error", err)
 				}
 			} else {
 				logger.Info("No tasks to dispatch this tick")
 			}
 
-			if err := locker.Unlock(ctx, config.LockKey, secret); err != nil {
+			if err := locker.Unlock(tickCtx, config.LockKey, secret); err != nil {
 				logger.Error("failed to release lock", "error", err)
 			} else {
 				logger.Info("Lock released", "key", config.LockKey)
+			}
+			cancelTick()
+
+			if ctx.Err() != nil {
+				logger.Info("scheduler drained active tick after shutdown request")
+				return
 			}
 		}
 	}

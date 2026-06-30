@@ -19,6 +19,7 @@ const (
 
 type Config struct {
 	HealthPort      int                       `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
+	ShutdownTimeout time.Duration             `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
 	Logger          obs.LoggingConfig         `mapstructure:"logger"`
 	Telemetry       obs.TelemetryConfig       `mapstructure:"telemetry"`
 	ScoutConfigPath string                    `mapstructure:"scout-config"   validate:"required"`
@@ -49,6 +50,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs := pflag.NewFlagSet("worker-discovery", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Int("health-port", 8092, "The port for the health check server")
+	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.discovery"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.discovery"))
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")

@@ -82,6 +82,10 @@ func main() {
 
 	monitor := obs.NewHealthMonitor()
 	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	go func() {
+		<-ctx.Done()
+		monitor.SetStatus(obs.LevelWarn, "shutting down")
+	}()
 
 	msgr, err := config.Messenger.NewMessenger(logger)
 	if err != nil {
@@ -202,17 +206,28 @@ func main() {
 				logger.Warn("message channel closed")
 				return
 			}
+			if ctx.Err() != nil {
+				logger.Info("returning unaccepted discovery task during shutdown")
+				msg.Nack()
+				return
+			}
 
-			ack, err := handler.HandleMessage(ctx, msg)
+			msgCtx, cancel := infra.NewDrainContext(config.ShutdownTimeout)
+			ack, err := handler.HandleMessage(msgCtx, msg)
+			cancel()
 			if err != nil {
 				logger.Error("failed to handle discovery task", "error", err)
 			}
 
 			if ack {
 				msg.Ack()
-				continue
+			} else {
+				msg.Nack()
 			}
-			msg.Nack()
+			if ctx.Err() != nil {
+				logger.Info("discovery worker drained accepted task after shutdown request")
+				return
+			}
 		}
 	}
 }

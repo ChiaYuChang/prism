@@ -80,6 +80,10 @@ func main() {
 	monitor := obs.NewHealthMonitor()
 
 	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	go func() {
+		<-ctx.Done()
+		monitor.SetStatus(obs.LevelWarn, "shutting down")
+	}()
 
 	msgr, err := config.Messenger.NewMessenger(logger)
 	if err != nil {
@@ -276,8 +280,13 @@ func main() {
 				logger.Warn("message channel closed")
 				return
 			}
+			if ctx.Err() != nil {
+				logger.Info("returning unaccepted collector task during shutdown")
+				msg.Nack()
+				return
+			}
 
-			msgCtx, cancel := context.WithTimeout(ctx, config.MaxProcessingTime)
+			msgCtx, cancel := infra.NewDrainContext(minDuration(config.MaxProcessingTime, config.ShutdownTimeout))
 			ack, err := handler.HandleMessage(msgCtx, msg)
 			cancel()
 			if err != nil {
@@ -286,11 +295,25 @@ func main() {
 
 			if ack {
 				msg.Ack()
-				continue
+			} else {
+				msg.Nack()
 			}
-			msg.Nack()
+			if ctx.Err() != nil {
+				logger.Info("collector worker drained accepted task after shutdown request")
+				return
+			}
 		}
 	}
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a <= 0 {
+		return b
+	}
+	if b <= 0 || a < b {
+		return a
+	}
+	return b
 }
 
 func loadCollectorFallbackPrompt(ctx context.Context, prompts repo.Prompts, cfg parserconfig.FallbackConfig) (string, []any, error) {

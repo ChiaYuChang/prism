@@ -19,15 +19,16 @@ import (
 )
 
 type Config struct {
-	Interval      time.Duration       `mapstructure:"interval"        validate:"required,min=10s"`
-	Once          bool                `mapstructure:"once"`
-	BatchSize     int32               `mapstructure:"batch-size"      validate:"required,min=1,max=200"`
-	HealthPort    int                 `mapstructure:"health-port"     validate:"required,min=1024,max=65535"`
-	SchedulesFile string              `mapstructure:"schedules-file"  validate:"required"`
-	TraceIDPrefix string              `mapstructure:"trace-id-prefix" validate:"required"`
-	Logger        obs.LoggingConfig   `mapstructure:"logger"`
-	Telemetry     obs.TelemetryConfig `mapstructure:"telemetry"`
-	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
+	Interval        time.Duration       `mapstructure:"interval"         validate:"required,min=10s"`
+	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
+	Once            bool                `mapstructure:"once"`
+	BatchSize       int32               `mapstructure:"batch-size"       validate:"required,min=1,max=200"`
+	HealthPort      int                 `mapstructure:"health-port"      validate:"required,min=1024,max=65535"`
+	SchedulesFile   string              `mapstructure:"schedules-file"   validate:"required"`
+	TraceIDPrefix   string              `mapstructure:"trace-id-prefix"  validate:"required"`
+	Logger          obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
+	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
 }
 
 type scheduleFile struct {
@@ -58,6 +59,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs := pflag.NewFlagSet("schedule-trigger", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Duration("interval", time.Minute, "Polling interval for due schedule checks")
+	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
 	fs.Bool("once", false, "Execute one materialization tick and exit")
 	fs.Int32("batch-size", 20, "Maximum due schedules to materialize per tick")
 	fs.Int("health-port", 8085, "The port for the health check server")

@@ -30,6 +30,7 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/schedule-trigger:/logs
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +65,7 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/batch-detector:/logs
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,6 +101,7 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/batch-publisher:/logs
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy
@@ -147,6 +150,7 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/api-server:/logs
+    stop_grace_period: 15s
     depends_on:
       postgres:
         condition: service_healthy

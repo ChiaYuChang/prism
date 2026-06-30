@@ -304,6 +304,7 @@ func main() {
 		logger.Error("api server failed", "error", err)
 		os.Exit(1)
 	case <-ctx.Done():
+		monitor.SetStatus(obs.LevelWarn, "shutting down")
 		logger.Info("shutting down api server")
 	}
 

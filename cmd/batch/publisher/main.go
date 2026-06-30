@@ -61,6 +61,10 @@ func main() {
 	infra.SetTracer(tracer)
 
 	monitor := obs.NewHealthMonitor()
+	go func() {
+		<-ctx.Done()
+		monitor.SetStatus(obs.LevelWarn, "shutting down")
+	}()
 
 	msgr, err := config.Messenger.NewMessenger(logger)
 	if err != nil {
@@ -109,8 +113,18 @@ func main() {
 			logger.Info("shutting down batch publisher")
 			return
 		case <-ticker.C:
-			if _, err := publisher.Publish(ctx, config.RecentLimit); err != nil {
+			if ctx.Err() != nil {
+				logger.Info("shutdown requested before batch publisher tick")
+				return
+			}
+			tickCtx, cancelTick := infra.NewDrainContext(config.ShutdownTimeout)
+			if _, err := publisher.Publish(tickCtx, config.RecentLimit); err != nil {
 				logger.Error("batch publisher tick failed", "error", err)
+			}
+			cancelTick()
+			if ctx.Err() != nil {
+				logger.Info("batch publisher drained active tick after shutdown request")
+				return
 			}
 		}
 	}

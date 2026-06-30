@@ -1,4 +1,5 @@
 health-port: 8093
+shutdown-timeout: 2m
 http-timeout: 30s
 max-processing-time: 2m
 archive: file:///app/archives

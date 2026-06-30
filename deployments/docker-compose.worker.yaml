@@ -45,6 +45,7 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/scheduler-slow:/logs
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,6 +82,7 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/scheduler-fast:/logs
+    stop_grace_period: 45s
     depends_on:
       scheduler-slow:
         condition: service_started
@@ -116,6 +118,7 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/discovery:/logs
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,6 +155,7 @@ services:
     volumes:
       - worker_archives:/app/archives
       - ../runtime/logs/collector:/logs
+    stop_grace_period: 150s
     networks:
       - prism-net
     depends_on:
@@ -194,6 +198,7 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/planner:/logs
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy

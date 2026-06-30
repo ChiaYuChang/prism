@@ -1,4 +1,5 @@
 health-port: 8092
+shutdown-timeout: 30s
 http-timeout: 30s
 scout-config: /app/configs/worker/discovery/scouts.yaml
 fixture-base: '{{ env "FIXTURE_BASE" "" }}'

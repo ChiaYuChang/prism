@@ -60,6 +60,10 @@ func main() {
 	infra.SetTracer(tracer)
 
 	monitor := obs.NewHealthMonitor()
+	go func() {
+		<-ctx.Done()
+		monitor.SetStatus(obs.LevelWarn, "shutting down")
+	}()
 
 	repository, repositoryCloser, err := pg.NewRepositoryBuilder(config.Postgres).NewRepository(ctx)
 	if err != nil {
@@ -95,8 +99,18 @@ func main() {
 			logger.Info("shutting down batch detector")
 			return
 		case <-ticker.C:
-			if _, err := detector.Detect(ctx, config.RecentLimit); err != nil {
+			if ctx.Err() != nil {
+				logger.Info("shutdown requested before batch detector tick")
+				return
+			}
+			tickCtx, cancelTick := infra.NewDrainContext(config.ShutdownTimeout)
+			if _, err := detector.Detect(tickCtx, config.RecentLimit); err != nil {
 				logger.Error("batch detector tick failed", "error", err)
+			}
+			cancelTick()
+			if ctx.Err() != nil {
+				logger.Info("batch detector drained active tick after shutdown request")
+				return
 			}
 		}
 	}

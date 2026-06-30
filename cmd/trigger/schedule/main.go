@@ -79,7 +79,9 @@ func main() {
 	logger.Info("schedules synced", "count", len(synced), "path", config.SchedulesFile)
 
 	materialize := func(ctx context.Context) {
-		items, err := scheduleRepo.MaterializeDueSchedules(ctx, repoMaterializeParams(config.BatchSize, config.TraceIDPrefix))
+		items, err := scheduleRepo.MaterializeDueSchedules(
+			ctx, repoMaterializeParams(config.BatchSize, config.TraceIDPrefix),
+		)
 		if err != nil {
 			logger.Error("schedule materialization failed", "error", err)
 			return
@@ -96,6 +98,10 @@ func main() {
 
 	monitor := obs.NewHealthMonitor()
 	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	go func() {
+		<-ctx.Done()
+		monitor.SetStatus(obs.LevelWarn, "shutting down")
+	}()
 	monitor.OK()
 	materialize(ctx)
 	ticker := time.NewTicker(config.Interval)
@@ -108,7 +114,17 @@ func main() {
 			logger.Info("shutting down schedule trigger")
 			return
 		case <-ticker.C:
-			materialize(ctx)
+			if ctx.Err() != nil {
+				logger.Info("shutdown requested before schedule trigger tick")
+				return
+			}
+			tickCtx, cancelTick := infra.NewDrainContext(config.ShutdownTimeout)
+			materialize(tickCtx)
+			cancelTick()
+			if ctx.Err() != nil {
+				logger.Info("schedule trigger drained active tick after shutdown request")
+				return
+			}
 		}
 	}
 }
