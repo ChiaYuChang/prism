@@ -298,10 +298,6 @@ func main() {
 			} else {
 				msg.Nack()
 			}
-			if ctx.Err() != nil {
-				logger.Info("collector worker drained accepted task after shutdown request")
-				return
-			}
 		}
 	}
 }

@@ -122,10 +122,6 @@ func main() {
 				logger.Error("batch publisher tick failed", "error", err)
 			}
 			cancelTick()
-			if ctx.Err() != nil {
-				logger.Info("batch publisher drained active tick after shutdown request")
-				return
-			}
 		}
 	}
 }

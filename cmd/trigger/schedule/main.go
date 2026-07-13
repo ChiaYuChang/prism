@@ -121,10 +121,6 @@ func main() {
 			tickCtx, cancelTick := infra.NewDrainContext(config.ShutdownTimeout)
 			materialize(tickCtx)
 			cancelTick()
-			if ctx.Err() != nil {
-				logger.Info("schedule trigger drained active tick after shutdown request")
-				return
-			}
 		}
 	}
 }

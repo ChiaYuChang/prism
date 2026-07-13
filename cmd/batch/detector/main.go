@@ -108,10 +108,6 @@ func main() {
 				logger.Error("batch detector tick failed", "error", err)
 			}
 			cancelTick()
-			if ctx.Err() != nil {
-				logger.Info("batch detector drained active tick after shutdown request")
-				return
-			}
 		}
 	}
 }

@@ -565,11 +565,6 @@ func main() {
 				logger.Info("Lock released", "key", config.LockKey)
 			}
 			cancelTick()
-
-			if ctx.Err() != nil {
-				logger.Info("scheduler drained active tick after shutdown request")
-				return
-			}
 		}
 	}
 }

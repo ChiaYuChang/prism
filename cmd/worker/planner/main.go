@@ -173,10 +173,6 @@ func main() {
 			} else {
 				msg.Nack()
 			}
-			if ctx.Err() != nil {
-				logger.Info("planner worker drained accepted signal after shutdown request")
-				return
-			}
 		}
 	}
 }
