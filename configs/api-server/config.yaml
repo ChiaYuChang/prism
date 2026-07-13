@@ -25,6 +25,8 @@ cache:
   enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   live-ttl: 2s
   terminal-ttl: 60s
+scheduler-control:
+  enabled: true
 rate-limit:
   enabled: true
   rps: 100
@@ -80,43 +82,43 @@ monitoring:
   targets:
     batch-detector:
       enabled: true
-      url: http://batch-detector:8083/health
+      url: http://batch-detector:8083/healthz
       display-name: Batch Detector
       description: Detects completed batches of party press releases
       group: batch
     batch-publisher:
       enabled: true
-      url: http://batch-publisher:8084/health
+      url: http://batch-publisher:8084/healthz
       display-name: Batch Publisher
       description: Publishes batch completed events
       group: batch
     scheduler-slow:
       enabled: true
-      url: http://scheduler-slow:8090/health
+      url: http://scheduler-slow:8090/healthz
       display-name: Scheduler (Slow)
       description: Schedules and dispatches low-priority tasks
       group: scheduler
     scheduler-fast:
       enabled: true
-      url: http://scheduler-fast:8091/health
+      url: http://scheduler-fast:8091/healthz
       display-name: Scheduler (Fast)
       description: Schedules and dispatches high-priority tasks
       group: scheduler
     discovery:
       enabled: true
-      url: http://discovery:8092/health
+      url: http://discovery:8092/healthz
       display-name: Discovery Worker
       description: Crawls and discovers candidate briefs
       group: worker
     collector:
       enabled: true
-      url: http://collector:8093/health
+      url: http://collector:8093/healthz
       display-name: Collector Worker
       description: Fetches and parses full press releases
       group: worker
     planner:
       enabled: true
-      url: http://planner:8094/health
+      url: http://planner:8094/healthz
       display-name: Planner Worker
       description: Plans and schedules media tasks
       group: worker

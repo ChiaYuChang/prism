@@ -86,15 +86,14 @@ func StartHealthServer(ctx context.Context, port int, monitor *HealthMonitor) {
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	mux.Handle("/metrics", promhttp.Handler())
 
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	writeStatus := func(w http.ResponseWriter, ready bool) {
 		level, message := monitor.Status()
 
 		w.Header().Set("Content-Type", "application/json")
-		if level == LevelOK {
-			w.WriteHeader(http.StatusOK)
-		} else {
-			// Return 503 if service is not in OK state
+		if ready && level != LevelOK {
 			w.WriteHeader(http.StatusServiceUnavailable)
+		} else {
+			w.WriteHeader(http.StatusOK)
 		}
 
 		if err := json.NewEncoder(w).Encode(HealthStatus{
@@ -105,6 +104,12 @@ func StartHealthServer(ctx context.Context, port int, monitor *HealthMonitor) {
 		}); err != nil {
 			slog.Error("Failed to write health response", "error", err.Error())
 		}
+	}
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeStatus(w, false)
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		writeStatus(w, true)
 	})
 
 	server := &http.Server{

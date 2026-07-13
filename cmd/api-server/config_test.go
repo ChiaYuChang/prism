@@ -22,6 +22,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	assert.Equal(t, "localhost", cfg.Postgres.Host)
 	assert.Equal(t, 5432, cfg.Postgres.Port)
 	assert.Equal(t, "info", cfg.Logger.Level)
+	assert.False(t, cfg.SchedulerControl.Enabled)
 }
 
 func TestLoadConfig_ShippedConfig(t *testing.T) {
@@ -34,6 +35,7 @@ func TestLoadConfig_ShippedConfig(t *testing.T) {
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
 	assert.Equal(t, "valkey", cfg.Valkey.Host)
 	assert.True(t, cfg.Cache.Enabled)
+	assert.True(t, cfg.SchedulerControl.Enabled)
 	assert.True(t, cfg.RateLimit.Enabled)
 	assert.Equal(t, "prism.api", cfg.Telemetry.ServiceName)
 
@@ -44,7 +46,7 @@ func TestLoadConfig_ShippedConfig(t *testing.T) {
 	target := cfg.Monitoring.Targets["batch-detector"]
 	require.NotNil(t, target.Enabled)
 	assert.True(t, *target.Enabled)
-	assert.Equal(t, "http://batch-detector:8083/health", target.URL)
+	assert.Equal(t, "http://batch-detector:8083/healthz", target.URL)
 	assert.Equal(t, "Batch Detector", target.DisplayName)
 	assert.Equal(t, "batch", target.Group)
 }
