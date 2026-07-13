@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	pkgschema "github.com/ChiaYuChang/prism/pkg/schema"
 	"github.com/go-viper/mapstructure/v2"
@@ -67,6 +68,13 @@ func DecodeJsonSchema(schema pkgschema.JSONSchema, in string, out any) error {
 
 	if in == "" {
 		return ErrEmptyResponsePayload
+	}
+
+	in = strings.TrimSpace(in)
+	if strings.HasPrefix(in, "```") && strings.HasSuffix(in, "```") {
+		if newline := strings.IndexByte(in, '\n'); newline >= 0 {
+			in = strings.TrimSpace(in[newline+1 : len(in)-3])
+		}
 	}
 
 	var raw map[string]any
