@@ -25,7 +25,7 @@ llm:
   provider:
     ollama:
       base_url: '{{ env "PRISM_PLANNER_OLLAMA_BASE_URL" "http://host.docker.internal:11434" }}'
-  model: '{{ env "PRISM_PLANNER_LLM_MODEL" "glm-5.2:cloud" }}'
+  model: '{{ env "PRISM_PLANNER_LLM_MODEL" "gemma4:31b-cloud" }}'
   timeout: 2m
 search:
   targets:
