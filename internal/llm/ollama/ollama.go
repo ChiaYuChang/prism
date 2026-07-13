@@ -24,10 +24,10 @@ const defaultBaseURL = "http://localhost:11434"
 
 // Config holds Ollama-specific configuration (Pure Data).
 type Config struct {
-	BaseURL    string            `json:"base_url"    mod:"trim,default=http://localhost:11434" validate:"omitempty,url"`
-	Timeout    time.Duration     `json:"timeout"     mod:"trim,default=5s"`
-	Project    string            `json:"project"     mod:"trim"`
-	HttpHeader map[string]string `json:"http_header" mod:"trim"`
+	BaseURL    string            `json:"base_url"    mapstructure:"base_url"    mod:"trim,default=http://localhost:11434" validate:"omitempty,url"`
+	Timeout    time.Duration     `json:"timeout"     mapstructure:"timeout"     mod:"trim,default=5s"`
+	Project    string            `json:"project"     mapstructure:"project"     mod:"trim"`
+	HttpHeader map[string]string `json:"http_header" mapstructure:"http_header" mod:"trim"`
 }
 
 // Decoder decodes raw provider config for Ollama.
