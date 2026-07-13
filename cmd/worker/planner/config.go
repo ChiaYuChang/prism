@@ -41,7 +41,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs := pflag.NewFlagSet("worker-planner", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Int("health-port", 8094, "The port for the health check server")
-	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
+	fs.Duration("shutdown-timeout", 3*time.Minute, "Graceful shutdown drain timeout")
 
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.planner"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.planner"))
@@ -59,14 +59,14 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("nats-token", "", "The NATS server auth token")
 	fs.String("queue-group", "planner-worker", "Queue group for worker subscriptions")
 	fs.Int("subscribers-count", 1, "How many subscriber goroutines to run")
-	fs.Duration("ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscriber")
+	fs.Duration("ack-wait-timeout", 3*time.Minute+15*time.Second, "Ack wait timeout for NATS subscriber")
 	fs.Int64("channel-buffer", 100, "GoChannel output buffer size")
 	fs.Bool("persistent", true, "Whether GoChannel should persist messages in memory")
 
 	fs.String("llm-key", "", "LLM API key")
 	fs.String("llm-key-file", "", "Path to a file containing the LLM API key")
 	fs.String("llm-model", "", "LLM model name")
-	fs.Duration("llm-timeout", 30*time.Second, "LLM request timeout")
+	fs.Duration("llm-timeout", 2*time.Minute, "LLM request timeout")
 
 	fs.String("prompt-path", DefaultPromptPath, "Path to the extractor prompt file")
 	fs.Bool("search-target-yahoo-enable", false, "Enable Yahoo News keyword-search target")

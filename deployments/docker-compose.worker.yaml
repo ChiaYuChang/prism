@@ -237,7 +237,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ../runtime/logs/planner:/logs
-    stop_grace_period: 45s
+    stop_grace_period: 210s
     depends_on:
       postgres:
         condition: service_healthy
