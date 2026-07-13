@@ -114,6 +114,9 @@ services:
       PRISM_DISCOVERY_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_DISCOVERY_WORKER_FIXTURE_BASE: ${FIXTURE_BASE:-}
       PRISM_DISCOVERY_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_DISCOVERY_WORKER_SERPAPI_API_KEY_FILE: /run/secrets/serpapi
+    secrets:
+      - serpapi
     networks:
       - prism-net
     volumes:

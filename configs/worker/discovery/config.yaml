@@ -16,6 +16,18 @@ postgres:
   db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
   metrics-enabled: true
+search:
+  provider:
+    serpapi:
+      enable: true
+      api_key_file: '{{ env "PRISM_DISCOVERY_WORKER_SERPAPI_API_KEY_FILE" "" }}'
+      google_news:
+        enable: true
+        params:
+          tw:
+            enable: true
+            geolocation: tw
+            host_language: zh-TW
 telemetry:
   enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   service-name: prism.discovery

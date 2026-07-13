@@ -128,6 +128,8 @@ secrets:
     file: ../${NATS_AUTH_TOKEN_FILE}
   sw_secret_key:
     file: ../${SEAWEEDFS_SECRET_KEY_FILE}
+  serpapi:
+    file: ../${SERPAPI_API_KEY_FILE}
   valkey_acl:
     file: ../build/infra/valkey/valkey_acl
   grafana:

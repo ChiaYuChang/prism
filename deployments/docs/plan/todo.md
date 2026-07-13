@@ -53,6 +53,7 @@ Phase A (`ArticleParser` removal + tests for kept components), the 2026-05 layer
   * [ ] **Dashboards and alerting:** starter Grafana datasource wiring exists, but review-ready dashboards and alerts for scheduler, worker, LLM/search provider, API health, Postgres, and Valkey remain open.
   * [ ] **CI lint job:** add a separate GitHub Actions job for `golangci-lint run ./...` after checking the local lint version and confirming `rtk golangci-lint run ./...` passes. Pin the action/tool version, keep the current short-test job unchanged, commit separately, and do not push without explicit approval. If signed push fails, stop instead of bypassing signing.
 * [ ] 4.2 Admin Operations:
+  * [ ] **Retry failed task:** add `POST /api/v1/admin/tasks/{id}/retry` to reset a failed task to scheduler-owned pending work without direct NATS dispatch.
   * [ ] **Laptop deployment runbook:** document `task deploy:test` plus the underlying secrets bake, runtime-config bake, compose bake/up, migrations, app/worker startup, health checks, and teardown.
   * [ ] **Recover verification:** run `cmd/recover status/list/run --dry-run` against local archives and confirm the operator path still works after the synthetic-fixture split.
   * [ ] **State inspection:** document DB/API queries for runnable/failed tasks, recent candidates, fetch progress, and content ingestion status. Build a CLI/TUI only if manual queries become painful.

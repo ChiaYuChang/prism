@@ -68,3 +68,12 @@ func TestConfigResolveSecretsInlineWarnsMasked(t *testing.T) {
 	require.NotContains(t, log, "abcdefghijklmnopqrstuvwxyz")
 	require.Contains(t, log, strings.Repeat("●", 20))
 }
+
+func TestConfigValidateRejectsGoogleNewsSortOrder(t *testing.T) {
+	cfg := Config{Provider: ProviderConfig{SerpAPI: SerpAPIConfig{
+		Enable:     true,
+		GoogleNews: SerpAPIGoogleNews{Enable: true, Params: map[string]SerpAPIGoogleNewsParams{"tw": {Enable: true, SortOrder: 1}}},
+	}}}
+
+	require.ErrorContains(t, cfg.Validate(), "sort_order cannot be used")
+}

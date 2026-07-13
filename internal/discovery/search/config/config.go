@@ -145,6 +145,19 @@ func (c *Config) ResolveSecrets(logger *slog.Logger) error {
 	return nil
 }
 
+// Validate rejects provider options that conflict with Prism's request shape.
+func (c Config) Validate() error {
+	if !c.Provider.SerpAPI.Enable || !c.Provider.SerpAPI.GoogleNews.Enable {
+		return nil
+	}
+	for name, params := range c.Provider.SerpAPI.GoogleNews.Params {
+		if params.Enable && params.SortOrder != 0 {
+			return fmt.Errorf("serpapi google_news params %q: sort_order cannot be used because Prism always sends q", name)
+		}
+	}
+	return nil
+}
+
 // EnabledTargets returns enabled search targets as PlannerTarget values.
 func (c Config) EnabledTargets() []discovery.PlannerTarget {
 	targets := make([]discovery.PlannerTarget, 0, len(c.Targets))

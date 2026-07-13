@@ -164,6 +164,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := config.Postgres.ResolveSecrets(); err != nil {
 		return nil, fmt.Errorf("postgres secrets: %w", err)
 	}
+	if err := config.Search.Validate(); err != nil {
+		return nil, fmt.Errorf("search config: %w", err)
+	}
 
 	switch config.MessengerType {
 	case "nats":
