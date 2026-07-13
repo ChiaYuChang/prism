@@ -20,8 +20,11 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 	require.Equal(t, "postgres", cfg.Postgres.Host)
 	providerName, err := cfg.LLM.ProviderName()
 	require.NoError(t, err)
-	require.Equal(t, "gemini", providerName)
-	require.Equal(t, "gemini-2.0-flash", cfg.LLM.Model)
+	require.Equal(t, "ollama", providerName)
+	require.Equal(t, "glm-5.2:cloud", cfg.LLM.Model)
+	providerCfg, err := cfg.LLM.ProviderConfig()
+	require.NoError(t, err)
+	require.Equal(t, "http://host.docker.internal:11434", providerCfg["base_url"])
 	require.Equal(t, "prism.planner", cfg.Telemetry.ServiceName)
 }
 
@@ -31,7 +34,7 @@ func setShippedConfigEnv(t *testing.T) {
 	t.Setenv("POSTGRES_PORT", "5432")
 	t.Setenv("POSTGRES_APP_USER", "prism")
 	t.Setenv("POSTGRES_APP_DB", "prism")
-	t.Setenv("PRISM_PLANNER_LLM_MODEL", "gemini-2.0-flash")
+	t.Setenv("PRISM_PLANNER_LLM_MODEL", "glm-5.2:cloud")
 	t.Setenv("PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE", "true")
 	t.Setenv("PRISM_WORKER_OTEL_ENABLED", "true")
 	t.Setenv("OTEL_COLLECTOR_ENDPOINT", "otel-collector:4317")
@@ -41,6 +44,9 @@ func TestLoadConfigSearchTargetsFromYAML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	body := []byte(`
 llm:
+  provider:
+    ollama:
+      base_url: http://ollama:11434
   model: gemini-test
 search:
   targets:
@@ -61,8 +67,17 @@ search:
 }
 
 func TestLoadConfigTelemetryFlags(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+llm:
+  provider:
+    ollama:
+      base_url: http://ollama:11434
+  model: ollama-test
+`), 0o600))
+
 	cfg, err := LoadConfig([]string{
-		"--llm-model=gemini-test",
+		"--config", path,
 		"--otel-enabled",
 		"--otel-service-version=dev",
 		"--otel-environment=test",
@@ -81,6 +96,17 @@ func TestLoadConfigTelemetryFlags(t *testing.T) {
 	require.Equal(t, 0.5, cfg.Telemetry.SampleRatio)
 	require.Equal(t, "masked-value", cfg.Telemetry.Headers["authorization"])
 	require.Equal(t, 3*time.Second, cfg.Telemetry.Timeout)
+}
+
+func TestLoadConfigRequiresLLMProvider(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(`
+llm:
+  model: model-test
+`), 0o600))
+
+	_, err := LoadConfig([]string{"--config", path})
+	require.Error(t, err)
 }
 
 func TestLoadConfigOpencodeProviderConfig(t *testing.T) {
@@ -124,7 +150,7 @@ search:
 func TestLoadConfigSearchTargetsFromJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	body := []byte(`{
-  "llm": {"model": "gemini-test"},
+   "llm": {"provider": {"ollama": {"base_url": "http://ollama:11434"}}, "model": "ollama-test"},
   "search": {
     "targets": {
       "yahoo": {"enable": true, "source_abbr": "yahoo", "url": "https://tw.news.yahoo.com", "site": "tw.news.yahoo.com"}

@@ -23,9 +23,10 @@ postgres:
   metrics-enabled: true
 llm:
   provider:
-    gemini: {}
-  model: '{{ env "PRISM_PLANNER_LLM_MODEL" "gemini-2.0-flash" }}'
-  timeout: 30s
+    ollama:
+      base_url: '{{ env "PRISM_PLANNER_OLLAMA_BASE_URL" "http://host.docker.internal:11434" }}'
+  model: '{{ env "PRISM_PLANNER_LLM_MODEL" "glm-5.2:cloud" }}'
+  timeout: 2m
 search:
   targets:
     yahoo:

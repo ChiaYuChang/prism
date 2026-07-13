@@ -254,24 +254,6 @@ services:
     networks:
       - prism-net
 
-  # ===========================================================================
-  # ai profile — local LLM infrastructure for keyword extraction / fallback parsing
-  # ===========================================================================
-  ollama:
-    profiles: [ ai ]
-    image: ollama/ollama:0.13.5
-    ports:
-      - "127.0.0.1:11435:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - prism-net
-    healthcheck:
-      test: [ "CMD-SHELL", "ollama list > /dev/null || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   opencode:
     profiles: [ ai ]
     image: ghcr.io/anomalyco/opencode
@@ -293,7 +275,6 @@ volumes:
   vl-data:
   vt-data:
   grafana_data:
-  ollama_data:
   otel_storage:
   otel_backup:
 
