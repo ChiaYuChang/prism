@@ -17,11 +17,24 @@ import (
 // All fields are optional: when AccessKey/SecretKey are empty the SDK default
 // credential chain is used (env, shared config, IAM role, etc).
 type S3Config struct {
-	Endpoint     string `mapstructure:"endpoint"`
-	Region       string `mapstructure:"region"`
-	AccessKey    string `mapstructure:"access-key"`
-	SecretKey    string `mapstructure:"secret-key"`
-	UsePathStyle bool   `mapstructure:"use-path-style"`
+	Endpoint      string `mapstructure:"endpoint"`
+	Region        string `mapstructure:"region"`
+	AccessKey     string `mapstructure:"access-key"`
+	SecretKey     string `mapstructure:"secret-key"`
+	SecretKeyFile string `mapstructure:"secret-key-file"`
+	UsePathStyle  bool   `mapstructure:"use-path-style"`
+}
+
+// ResolveSecrets loads SecretKeyFile when configured, overriding SecretKey.
+func (c *S3Config) ResolveSecrets() error {
+	v, err := LoadFromFile(c.SecretKeyFile)
+	if err != nil {
+		return err
+	}
+	if v != "" {
+		c.SecretKey = v
+	}
+	return nil
 }
 
 // String renders a human-readable summary with S3 credentials redacted.

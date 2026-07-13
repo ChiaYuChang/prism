@@ -50,6 +50,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("s3-region", "us-east-1", "S3 region")
 	fs.String("s3-access-key", "", "S3 access key")
 	fs.String("s3-secret-key", "", "S3 secret key")
+	fs.String("s3-secret-key-file", "", "Path to file containing the S3 secret key")
 	fs.Bool("s3-use-path-style", true, "Use path style addressing")
 
 	if err := fs.Parse(args); err != nil {
@@ -86,6 +87,9 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	config.Telemetry = telemetryCfg
+	if err := config.S3.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("s3 secrets: %w", err)
+	}
 
 	switch config.MessengerType {
 	case "nats":

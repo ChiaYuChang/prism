@@ -7,7 +7,7 @@ s3:
   endpoint: http://seaweedfs:8333
   region: '{{ env "SEAWEEDFS_S3_REGION" "us-east-1" }}'
   access-key: '{{ env "PRISM_COLLECTOR_WORKER_S3_ACCESS_KEY" "" }}'
-  secret-key: '{{ env "PRISM_COLLECTOR_WORKER_S3_SECRET_KEY" "" }}'
+  secret-key-file: '{{ env "PRISM_COLLECTOR_WORKER_S3_SECRET_KEY_FILE" "" }}'
   use-path-style: true
 parsers-config: /app/configs/worker/collector/parsers.yaml
 fixture-base: '{{ env "FIXTURE_BASE" "" }}'

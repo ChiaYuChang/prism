@@ -153,7 +153,9 @@ services:
       PRISM_COLLECTOR_WORKER_FIXTURE_BASE: ${FIXTURE_BASE:-}
       PRISM_COLLECTOR_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
       PRISM_COLLECTOR_WORKER_S3_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY}
-      PRISM_COLLECTOR_WORKER_S3_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY}
+      PRISM_COLLECTOR_WORKER_S3_SECRET_KEY_FILE: /run/secrets/sw_secret_key
+    secrets:
+      - sw_secret_key
     volumes:
       - ../runtime/logs/collector:/logs
     stop_grace_period: 150s
@@ -185,7 +187,9 @@ services:
       PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
       PRISM_ARCHIVE_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_ARCHIVE_WORKER_S3_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY}
-      PRISM_ARCHIVE_WORKER_S3_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY}
+      PRISM_ARCHIVE_WORKER_S3_SECRET_KEY_FILE: /run/secrets/sw_secret_key
+    secrets:
+      - sw_secret_key
     networks:
       - prism-net
     volumes:
