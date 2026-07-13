@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/discovery/extractor"
@@ -92,6 +95,7 @@ func main() {
 		monitor.SetStatus(obs.LevelError, "Failed to resolve LLM provider")
 		os.Exit(1)
 	}
+	warnIfOllamaUnavailable(ctx, config.LLM, providerName, logger)
 
 	generator, err := llmfactory.NewGenerator(ctx, config.LLM, logger)
 	if err != nil {
@@ -174,6 +178,38 @@ func main() {
 				msg.Nack()
 			}
 		}
+	}
+}
+
+func warnIfOllamaUnavailable(ctx context.Context, config appconfig.LLMConfig, providerName string, logger *slog.Logger) {
+	if providerName != "ollama" {
+		return
+	}
+	providerConfig, err := config.ProviderConfig()
+	if err != nil {
+		return
+	}
+	baseURL, _ := providerConfig["base_url"].(string)
+	if baseURL == "" {
+		return
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, baseURL, nil)
+	if err != nil {
+		logger.Warn("invalid Ollama base URL", "base_url", baseURL, "error", err)
+		return
+	}
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		logger.Warn("Ollama endpoint unavailable at startup", "base_url", baseURL, "error", err)
+		return
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode >= http.StatusBadRequest {
+		logger.Warn("Ollama endpoint returned an error at startup", "base_url", baseURL, "status", resp.StatusCode)
 	}
 }
 
