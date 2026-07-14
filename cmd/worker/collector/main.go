@@ -238,12 +238,14 @@ func main() {
 		dbRepo.Pipeline(),
 		dbRepo.Scheduler(),
 		metrics,
+		config.RetryMax,
 	)
 	if err != nil {
 		logger.Error("failed to build collector handler", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to build collector handler")
 		os.Exit(1)
 	}
+	handler.taskReader = dbRepo.Tasks()
 
 	messages, err := msgr.Subscribe(ctx, message.TaskTopic)
 	if err != nil {

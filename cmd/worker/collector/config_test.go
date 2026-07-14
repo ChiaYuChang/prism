@@ -17,6 +17,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	assert.Equal(t, 8093, cfg.HealthPort)
 	assert.Equal(t, 30*time.Second, cfg.HTTPTimeout)
 	assert.Equal(t, 2*time.Minute, cfg.MaxProcessingTime)
+	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "localhost", cfg.Postgres.Host)
 	assert.Equal(t, "nats", cfg.MessengerType)
 	assert.Equal(t, "", cfg.Archive)
@@ -31,6 +32,7 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 
 	assert.Equal(t, 8093, cfg.HealthPort)
 	assert.Equal(t, "/app/configs/worker/collector/parsers.yaml", cfg.ParsersConfigPath)
+	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "s3://prism-archives/errors", cfg.Archive)
 	assert.Equal(t, "http://seaweedfs:8333", cfg.S3.Endpoint)
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
@@ -54,6 +56,7 @@ func TestLoadConfigFromFlags(t *testing.T) {
 		"--health-port=9092",
 		"--http-timeout=45s",
 		"--max-processing-time=90s",
+		"--retry-max=2",
 		"--pg-host=127.0.0.1",
 		"--pg-port=5433",
 		"--messenger-type=gochannel",
@@ -64,6 +67,7 @@ func TestLoadConfigFromFlags(t *testing.T) {
 	assert.Equal(t, 9092, cfg.HealthPort)
 	assert.Equal(t, 45*time.Second, cfg.HTTPTimeout)
 	assert.Equal(t, 90*time.Second, cfg.MaxProcessingTime)
+	assert.Equal(t, 2, cfg.RetryMax)
 	assert.Equal(t, "127.0.0.1", cfg.Postgres.Host)
 	assert.Equal(t, 5433, cfg.Postgres.Port)
 	assert.Equal(t, "gochannel", cfg.MessengerType)

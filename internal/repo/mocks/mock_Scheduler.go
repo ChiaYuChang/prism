@@ -177,16 +177,16 @@ func (_c *MockScheduler_CompleteTask_Call) RunAndReturn(run func(ctx context.Con
 }
 
 // FailTask provides a mock function for the type MockScheduler
-func (_mock *MockScheduler) FailTask(ctx context.Context, id uuid.UUID) error {
-	ret := _mock.Called(ctx, id)
+func (_mock *MockScheduler) FailTask(ctx context.Context, id uuid.UUID, retryMax int) error {
+	ret := _mock.Called(ctx, id, retryMax)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FailTask")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
-		r0 = returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, int) error); ok {
+		r0 = returnFunc(ctx, id, retryMax)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -201,11 +201,12 @@ type MockScheduler_FailTask_Call struct {
 // FailTask is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id uuid.UUID
-func (_e *MockScheduler_Expecter) FailTask(ctx interface{}, id interface{}) *MockScheduler_FailTask_Call {
-	return &MockScheduler_FailTask_Call{Call: _e.mock.On("FailTask", ctx, id)}
+//   - retryMax int
+func (_e *MockScheduler_Expecter) FailTask(ctx interface{}, id interface{}, retryMax interface{}) *MockScheduler_FailTask_Call {
+	return &MockScheduler_FailTask_Call{Call: _e.mock.On("FailTask", ctx, id, retryMax)}
 }
 
-func (_c *MockScheduler_FailTask_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockScheduler_FailTask_Call {
+func (_c *MockScheduler_FailTask_Call) Run(run func(ctx context.Context, id uuid.UUID, retryMax int)) *MockScheduler_FailTask_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -215,9 +216,14 @@ func (_c *MockScheduler_FailTask_Call) Run(run func(ctx context.Context, id uuid
 		if args[1] != nil {
 			arg1 = args[1].(uuid.UUID)
 		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -228,7 +234,7 @@ func (_c *MockScheduler_FailTask_Call) Return(err error) *MockScheduler_FailTask
 	return _c
 }
 
-func (_c *MockScheduler_FailTask_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) error) *MockScheduler_FailTask_Call {
+func (_c *MockScheduler_FailTask_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID, retryMax int) error) *MockScheduler_FailTask_Call {
 	_c.Call.Return(run)
 	return _c
 }

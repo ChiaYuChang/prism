@@ -298,14 +298,28 @@ func (q *Queries) ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTa
 
 const failTask = `-- name: FailTask :exec
 UPDATE tasks
-SET status = 'FAILED',
+SET status = CASE
+        WHEN retry_count < $1 THEN 'PENDING'::task_status
+        ELSE 'FAILED'::task_status
+    END,
+    next_run_at = CASE
+        WHEN retry_count < $1 THEN NOW()
+        ELSE next_run_at
+    END,
     updated_at = NOW()
-WHERE id = $1
+WHERE id = $2
   AND status = 'RUNNING'
 `
 
-func (q *Queries) FailTask(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, failTask, id)
+type FailTaskParams struct {
+	RetryMax int32     `db:"retry_max" json:"retry_max"`
+	ID       uuid.UUID `db:"id" json:"id"`
+}
+
+// A claim increments retry_count before execution, so retry_count is the total
+// number of attempts. Failed attempts below retry_max are made runnable again.
+func (q *Queries) FailTask(ctx context.Context, arg FailTaskParams) error {
+	_, err := q.db.Exec(ctx, failTask, arg.RetryMax, arg.ID)
 	return err
 }
 
@@ -382,6 +396,19 @@ func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const isTaskRunning = `-- name: IsTaskRunning :one
+SELECT status = 'RUNNING'::task_status AS is_running
+FROM tasks
+WHERE id = $1
+`
+
+func (q *Queries) IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isTaskRunning, id)
+	var is_running bool
+	err := row.Scan(&is_running)
+	return is_running, err
 }
 
 const listRunnableTasks = `-- name: ListRunnableTasks :many
@@ -501,4 +528,75 @@ WHERE id = ANY($1::uuid[])
 func (q *Queries) ReleaseTasks(ctx context.Context, ids []uuid.UUID) error {
 	_, err := q.db.Exec(ctx, releaseTasks, ids)
 	return err
+}
+
+const retryFailedTask = `-- name: RetryFailedTask :one
+WITH retried AS (
+    UPDATE tasks
+    SET status = 'PENDING',
+        next_run_at = NOW(),
+        updated_at = NOW()
+    WHERE tasks.id = $1
+      AND status = 'FAILED'
+    RETURNING tasks.id, tasks.batch_id, tasks.kind, tasks.source_type, tasks.source_abbr, tasks.url, tasks.payload, tasks.payload_hash, tasks.meta, tasks.trace_id, tasks.frequency, tasks.next_run_at, tasks.expires_at, tasks.status, tasks.retry_count, tasks.last_run_at, tasks.created_at, tasks.updated_at
+)
+SELECT r.id, r.batch_id, r.kind, r.source_type, r.source_abbr, r.url, r.payload, r.payload_hash, r.meta, r.trace_id, r.frequency, r.next_run_at, r.expires_at, r.status, r.retry_count, r.last_run_at, r.created_at, r.updated_at, TRUE AS retried
+FROM retried r
+UNION ALL
+SELECT t.id, t.batch_id, t.kind, t.source_type, t.source_abbr, t.url, t.payload, t.payload_hash, t.meta, t.trace_id, t.frequency, t.next_run_at, t.expires_at, t.status, t.retry_count, t.last_run_at, t.created_at, t.updated_at, FALSE AS retried
+FROM tasks t
+WHERE t.id = $1
+  AND NOT EXISTS (SELECT 1 FROM retried)
+LIMIT 1
+`
+
+type RetryFailedTaskRow struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Kind        TaskKind           `db:"kind" json:"kind"`
+	SourceType  SourceType         `db:"source_type" json:"source_type"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
+	Url         string             `db:"url" json:"url"`
+	Payload     []byte             `db:"payload" json:"payload"`
+	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta        []byte             `db:"meta" json:"meta"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt   pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Status      TaskStatus         `db:"status" json:"status"`
+	RetryCount  int32              `db:"retry_count" json:"retry_count"`
+	LastRunAt   pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	Retried     bool               `db:"retried" json:"retried"`
+}
+
+// Atomically reschedules a failed task while retaining its retry_count and
+// last_run_at history. Non-failed existing tasks are returned with retried=false.
+func (q *Queries) RetryFailedTask(ctx context.Context, id uuid.UUID) (RetryFailedTaskRow, error) {
+	row := q.db.QueryRow(ctx, retryFailedTask, id)
+	var i RetryFailedTaskRow
+	err := row.Scan(
+		&i.ID,
+		&i.BatchID,
+		&i.Kind,
+		&i.SourceType,
+		&i.SourceAbbr,
+		&i.Url,
+		&i.Payload,
+		&i.PayloadHash,
+		&i.Meta,
+		&i.TraceID,
+		&i.Frequency,
+		&i.NextRunAt,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.RetryCount,
+		&i.LastRunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Retried,
+	)
+	return i, err
 }

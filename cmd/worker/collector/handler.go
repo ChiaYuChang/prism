@@ -48,7 +48,13 @@ type Handler struct {
 	archivePublisher ArchivePublisher // optional: nil = skip archive
 	pipeline         repo.Pipeline
 	reporter         repo.TaskReporter
+	taskReader       taskReader
 	metrics          *metrics
+	retryMax         int
+}
+
+type taskReader interface {
+	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 type metrics struct {
@@ -108,6 +114,7 @@ func NewHandler(
 	pipeline repo.Pipeline,
 	reporter repo.TaskReporter,
 	metrics *metrics,
+	retryMax ...int,
 ) (*Handler, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
@@ -124,6 +131,13 @@ func NewHandler(
 	if reporter == nil {
 		return nil, fmt.Errorf("%w: reporter", ErrParamMissing)
 	}
+	maxAttempts := repo.DefaultTaskRetryMax
+	if len(retryMax) > 0 {
+		maxAttempts = retryMax[0]
+	}
+	if maxAttempts < 1 {
+		return nil, fmt.Errorf("%w: retry_max", ErrParamMissing)
+	}
 	return &Handler{
 		logger:           logger,
 		tracer:           tracer,
@@ -133,6 +147,7 @@ func NewHandler(
 		pipeline:         pipeline,
 		reporter:         reporter,
 		metrics:          metrics,
+		retryMax:         maxAttempts,
 	}, nil
 }
 
@@ -168,10 +183,22 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 		slog.String("source_abbr", sig.SourceAbbr),
 		slog.String("url", sig.URL),
 	)
+	if h.taskReader != nil {
+		isRunning, err := h.taskReader.IsTaskRunning(ctx, sig.TaskID)
+		if err != nil {
+			h.metrics.recordTask(ctx, sig, "nacked", started)
+			return false, fmt.Errorf("get task %s before processing: %w", sig.TaskID, err)
+		}
+		if !isRunning {
+			h.metrics.recordTask(ctx, sig, "ignored", started)
+			logger.DebugContext(ctx, "ignoring task signal for non-running task")
+			return true, nil
+		}
+	}
 
 	if err := h.process(ctx, logger, sig); err != nil {
 		logger.ErrorContext(ctx, "collector task failed", "error", err)
-		if failErr := h.reporter.FailTask(ctx, sig.TaskID); failErr != nil {
+		if failErr := h.reporter.FailTask(ctx, sig.TaskID, h.retryMax); failErr != nil {
 			h.metrics.recordTask(ctx, sig, "nacked", started)
 			return false, fmt.Errorf("process task %s: %w; mark failed: %w", sig.TaskID, err, failErr)
 		}

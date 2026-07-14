@@ -53,6 +53,9 @@ type Scheduler struct {
 	rl        infra.RateLimiter
 	scheduler repo.Scheduler
 	publisher TaskPublisher
+	retryMax  int
+	toggles   *infra.SchedulerToggleStore
+	name      string
 }
 
 type schedulerMetrics struct {
@@ -135,6 +138,7 @@ func newScheduler(logger *slog.Logger, tracer trace.Tracer, metrics *schedulerMe
 		rl:        rl,
 		scheduler: scheduler,
 		publisher: publisher,
+		retryMax:  repo.DefaultTaskRetryMax,
 	}
 }
 
@@ -323,7 +327,7 @@ func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error 
 			span.RecordError(err)
 			result = "error"
 			tLogger.Error("failed to publish task signal", "error", err)
-			if failErr := s.scheduler.FailTask(ctx, task.ID); failErr != nil {
+			if failErr := s.scheduler.FailTask(ctx, task.ID, s.retryMax); failErr != nil {
 				span.RecordError(failErr)
 				s.metrics.recordTask(ctx, task, "mark_failed_error")
 				tLogger.Error("failed to mark task as failed", "error", failErr)
@@ -475,6 +479,17 @@ func main() {
 			slog.Error("failed to close messenger", "error", err)
 		}
 	}()
+	toggles, err := infra.NewSchedulerToggleStore(vClient)
+	if err != nil {
+		logger.Error("failed to initialize scheduler toggles", "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to initialize scheduler toggles")
+		os.Exit(1)
+	}
+	if err := toggles.Initialize(ctx, config.SchedulerName, !config.StartPaused); err != nil {
+		logger.Error("failed to initialize scheduler toggle state", "scheduler", config.SchedulerName, "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to initialize scheduler toggle state")
+		os.Exit(1)
+	}
 
 	// 7. Repository
 	dbRepo, dbRepoCloser, err := pg.NewRepositoryBuilder(config.Postgres).NewRepository(ctx)
@@ -503,6 +518,9 @@ func main() {
 		rl:        rl,
 		scheduler: dbRepo.Scheduler(),
 		publisher: msgr,
+		retryMax:  config.RetryMax,
+		toggles:   toggles,
+		name:      config.SchedulerName,
 	}
 
 	logger.Info(
@@ -531,6 +549,15 @@ func main() {
 				return
 			}
 			logger.Info("Tick triggered", "time", t)
+			enabled, err := svc.toggles.Enabled(ctx, svc.name)
+			if err != nil {
+				logger.Error("failed to read scheduler toggle", "scheduler", svc.name, "error", err)
+				continue
+			}
+			if !enabled {
+				logger.Debug("scheduler paused", "scheduler", svc.name)
+				continue
+			}
 
 			lockCtx, lockSpan := tracer.Start(ctx, "scheduler.lock.acquire", trace.WithAttributes(attribute.String("scheduler.lock_key", config.LockKey)))
 			secret, err := locker.TryLock(lockCtx, config.LockKey, LockTTL)
@@ -551,6 +578,22 @@ func main() {
 
 			tickCtx, cancelTick := infra.NewDrainContext(config.ShutdownTimeout)
 			tasks := svc.RunTick(tickCtx, config)
+			enabled, err = svc.toggles.Enabled(tickCtx, svc.name)
+			if err != nil || !enabled {
+				if err != nil {
+					logger.Error("failed to recheck scheduler toggle", "scheduler", svc.name, "error", err)
+				}
+				ids := make([]uuid.UUID, 0, len(tasks))
+				for _, task := range tasks {
+					ids = append(ids, task.ID)
+				}
+				svc.ReleaseAll(tickCtx, ids)
+				if unlockErr := locker.Unlock(tickCtx, config.LockKey, secret); unlockErr != nil {
+					logger.Error("failed to release lock", "error", unlockErr)
+				}
+				cancelTick()
+				continue
+			}
 			if len(tasks) > 0 {
 				if err := svc.DispatchTasks(tickCtx, tasks); err != nil {
 					logger.Error("dispatch loop finished with error", "error", err)

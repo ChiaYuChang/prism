@@ -228,6 +228,72 @@ func (_c *MockTasks_GetTaskByID_Call) RunAndReturn(run func(ctx context.Context,
 	return _c
 }
 
+// IsTaskRunning provides a mock function for the type MockTasks
+func (_mock *MockTasks) IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsTaskRunning")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (bool, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) bool); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTasks_IsTaskRunning_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsTaskRunning'
+type MockTasks_IsTaskRunning_Call struct {
+	*mock.Call
+}
+
+// IsTaskRunning is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id uuid.UUID
+func (_e *MockTasks_Expecter) IsTaskRunning(ctx interface{}, id interface{}) *MockTasks_IsTaskRunning_Call {
+	return &MockTasks_IsTaskRunning_Call{Call: _e.mock.On("IsTaskRunning", ctx, id)}
+}
+
+func (_c *MockTasks_IsTaskRunning_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockTasks_IsTaskRunning_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTasks_IsTaskRunning_Call) Return(b bool, err error) *MockTasks_IsTaskRunning_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *MockTasks_IsTaskRunning_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) (bool, error)) *MockTasks_IsTaskRunning_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListTasksByBatchID provides a mock function for the type MockTasks
 func (_mock *MockTasks) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]repo.Task, error) {
 	ret := _mock.Called(ctx, batchID)
@@ -292,6 +358,72 @@ func (_c *MockTasks_ListTasksByBatchID_Call) Return(tasks []repo.Task, err error
 }
 
 func (_c *MockTasks_ListTasksByBatchID_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID) ([]repo.Task, error)) *MockTasks_ListTasksByBatchID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RetryFailedTask provides a mock function for the type MockTasks
+func (_mock *MockTasks) RetryFailedTask(ctx context.Context, id uuid.UUID) (repo.Task, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RetryFailedTask")
+	}
+
+	var r0 repo.Task
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repo.Task, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) repo.Task); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Get(0).(repo.Task)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTasks_RetryFailedTask_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RetryFailedTask'
+type MockTasks_RetryFailedTask_Call struct {
+	*mock.Call
+}
+
+// RetryFailedTask is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id uuid.UUID
+func (_e *MockTasks_Expecter) RetryFailedTask(ctx interface{}, id interface{}) *MockTasks_RetryFailedTask_Call {
+	return &MockTasks_RetryFailedTask_Call{Call: _e.mock.On("RetryFailedTask", ctx, id)}
+}
+
+func (_c *MockTasks_RetryFailedTask_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockTasks_RetryFailedTask_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTasks_RetryFailedTask_Call) Return(task repo.Task, err error) *MockTasks_RetryFailedTask_Call {
+	_c.Call.Return(task, err)
+	return _c
+}
+
+func (_c *MockTasks_RetryFailedTask_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) (repo.Task, error)) *MockTasks_RetryFailedTask_Call {
 	_c.Call.Return(run)
 	return _c
 }

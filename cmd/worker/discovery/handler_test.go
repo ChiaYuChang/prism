@@ -89,6 +89,35 @@ func TestHandlerHandleMessageCompletesTask(t *testing.T) {
 	require.Equal(t, batchID, last.BatchID)
 }
 
+func TestHandlerHandleMessageIgnoresTerminalTask(t *testing.T) {
+	taskID := uuid.Must(uuid.NewV7())
+	scout := discoverymocks.NewMockScout(t)
+	scoutRepo := repomocks.NewMockScout(t)
+	scheduler := repomocks.NewMockScheduler(t)
+	sink := sinkmocks.NewMockCandidateSink(t)
+	tasks := repomocks.NewMockTasks(t)
+
+	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, nil)
+	require.NoError(t, err)
+	h.taskReader = tasks
+	tasks.EXPECT().IsTaskRunning(mock.Anything, taskID).Return(false, nil)
+
+	payload, err := (&message.TaskSignal{
+		TaskID:     taskID,
+		BatchID:    uuid.Must(uuid.NewV7()),
+		Kind:       repo.TaskKindKeywordSearch,
+		SourceType: repo.SourceTypeMedia,
+		SourceAbbr: "yahoo",
+		URL:        "https://tw.news.yahoo.com",
+		TraceID:    "trace-stale",
+	}).Marshal()
+	require.NoError(t, err)
+
+	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("stale", payload))
+	require.NoError(t, err)
+	require.True(t, ack)
+}
+
 func TestHandlerHandleMessageIgnoresUnsupportedTask(t *testing.T) {
 	taskID := uuid.Must(uuid.NewV7())
 
@@ -286,7 +315,7 @@ func TestHandlerHandleMessageKeywordSearchNoProviders(t *testing.T) {
 	require.NoError(t, err)
 
 	scheduler.EXPECT().
-		FailTask(mock.Anything, taskID).
+		FailTask(mock.Anything, taskID, repo.DefaultTaskRetryMax).
 		Return(nil)
 
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", sigPayload))
@@ -559,7 +588,7 @@ func TestHandlerHandleMessageRecordsMetrics(t *testing.T) {
 	scout.EXPECT().Discover(mock.Anything, "https://www.dpp.org.tw/media/fail").Return(nil, failedErr)
 	sink.EXPECT().Handle(mock.Anything, mock.Anything).Return(nil).Once()
 	scheduler.EXPECT().CompleteTask(mock.Anything, okTaskID).Return(nil)
-	scheduler.EXPECT().FailTask(mock.Anything, failTaskID).Return(nil)
+	scheduler.EXPECT().FailTask(mock.Anything, failTaskID, repo.DefaultTaskRetryMax).Return(nil)
 
 	tcs := []struct {
 		name        string

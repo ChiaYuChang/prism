@@ -38,14 +38,20 @@ var (
 )
 
 type Handler struct {
-	logger    *slog.Logger
-	tracer    trace.Tracer
-	scout     discovery.Scout
-	providers map[string]discovery.SearchClient
-	sink      discoverysink.CandidateSink
-	scoutRepo repo.Scout
-	reporter  repo.TaskReporter
-	metrics   *metrics
+	logger     *slog.Logger
+	tracer     trace.Tracer
+	scout      discovery.Scout
+	providers  map[string]discovery.SearchClient
+	sink       discoverysink.CandidateSink
+	scoutRepo  repo.Scout
+	reporter   repo.TaskReporter
+	taskReader taskReader
+	metrics    *metrics
+	retryMax   int
+}
+
+type taskReader interface {
+	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 type metrics struct {
@@ -184,6 +190,7 @@ func NewHandler(
 	scoutRepo repo.Scout,
 	reporter repo.TaskReporter,
 	metrics *metrics,
+	retryMax ...int,
 ) (*Handler, error) {
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
@@ -206,6 +213,13 @@ func NewHandler(
 	if searchProviders == nil {
 		searchProviders = map[string]discovery.SearchClient{}
 	}
+	maxAttempts := repo.DefaultTaskRetryMax
+	if len(retryMax) > 0 {
+		maxAttempts = retryMax[0]
+	}
+	if maxAttempts < 1 {
+		return nil, fmt.Errorf("%w: retry_max", ErrParamMissing)
+	}
 	return &Handler{
 		logger:    logger,
 		tracer:    tracer,
@@ -215,6 +229,7 @@ func NewHandler(
 		scoutRepo: scoutRepo,
 		reporter:  reporter,
 		metrics:   metrics,
+		retryMax:  maxAttempts,
 	}, nil
 }
 
@@ -255,10 +270,22 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 		slog.String("source_abbr", sig.SourceAbbr),
 		slog.String("url", sig.URL),
 	)
+	if h.taskReader != nil {
+		isRunning, err := h.taskReader.IsTaskRunning(ctx, sig.TaskID)
+		if err != nil {
+			h.metrics.recordTask(ctx, sig, "nacked", started)
+			return false, fmt.Errorf("get task %s before processing: %w", sig.TaskID, err)
+		}
+		if !isRunning {
+			h.metrics.recordTask(ctx, sig, "ignored", started)
+			logger.DebugContext(ctx, "ignoring task signal for non-running task")
+			return true, nil
+		}
+	}
 
 	if err := h.process(ctx, sig); err != nil {
 		logger.ErrorContext(ctx, "discovery task failed", "error", err)
-		if failErr := h.reporter.FailTask(ctx, sig.TaskID); failErr != nil {
+		if failErr := h.reporter.FailTask(ctx, sig.TaskID, h.retryMax); failErr != nil {
 			h.metrics.recordTask(ctx, sig, "nacked", started)
 			return false, fmt.Errorf(
 				"process task %s: %w; mark failed: %w",

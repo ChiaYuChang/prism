@@ -17,6 +17,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	assert.Equal(t, 8092, cfg.HealthPort)
 	assert.Equal(t, DefaultScoutConfigPath, cfg.ScoutConfigPath)
 	assert.Equal(t, 30*time.Second, cfg.HTTPTimeout)
+	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "localhost", cfg.Postgres.Host)
 	assert.Equal(t, "nats", cfg.MessengerType)
 	require.NotNil(t, cfg.Messenger)
@@ -30,6 +31,7 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 
 	assert.Equal(t, 8092, cfg.HealthPort)
 	assert.Equal(t, "/app/configs/worker/discovery/scouts.yaml", cfg.ScoutConfigPath)
+	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
 	assert.Equal(t, "prism.discovery", cfg.Telemetry.ServiceName)
 	assert.Equal(t, "/logs/app.log", cfg.Logger.File.File)
@@ -98,6 +100,7 @@ func TestLoadConfigFromFlags(t *testing.T) {
 	cfg, err := LoadConfig([]string{
 		"--health-port=9091",
 		"--http-timeout=45s",
+		"--retry-max=2",
 		"--scout-config=/tmp/scouts.yaml",
 		"--pg-host=127.0.0.1",
 		"--pg-port=5433",
@@ -107,6 +110,7 @@ func TestLoadConfigFromFlags(t *testing.T) {
 
 	assert.Equal(t, 9091, cfg.HealthPort)
 	assert.Equal(t, 45*time.Second, cfg.HTTPTimeout)
+	assert.Equal(t, 2, cfg.RetryMax)
 	assert.Equal(t, "/tmp/scouts.yaml", cfg.ScoutConfigPath)
 	assert.Equal(t, "127.0.0.1", cfg.Postgres.Host)
 	assert.Equal(t, 5433, cfg.Postgres.Port)

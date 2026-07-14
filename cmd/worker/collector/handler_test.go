@@ -255,6 +255,18 @@ func TestHandlerHandleMessageRecordsMetrics(t *testing.T) {
 	}
 }
 
+func TestHandlerHandleMessageIgnoresTerminalTask(t *testing.T) {
+	taskID := uuid.Must(uuid.NewV7())
+	h := newTestHandler(t, collector.Pipeline{}, nil)
+	tasks := repomocks.NewMockTasks(t)
+	h.taskReader = tasks
+	tasks.EXPECT().IsTaskRunning(mock.Anything, taskID).Return(false, nil)
+
+	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("stale", collectorTaskPayload(t, taskID, repo.TaskKindPageFetch, repo.SourceTypeParty)))
+	require.NoError(t, err)
+	require.True(t, ack)
+}
+
 func collectorTaskPayload(t *testing.T, taskID uuid.UUID, kind, sourceType string) []byte {
 	t.Helper()
 	payload, err := (&message.TaskSignal{
@@ -381,7 +393,7 @@ type stubReporter struct{}
 
 func (stubReporter) CompleteTask(context.Context, uuid.UUID) error { return nil }
 
-func (stubReporter) FailTask(context.Context, uuid.UUID) error { return nil }
+func (stubReporter) FailTask(context.Context, uuid.UUID, int) error { return nil }
 
 type metricsReporter struct {
 	completeErr error
@@ -390,4 +402,4 @@ type metricsReporter struct {
 
 func (r metricsReporter) CompleteTask(context.Context, uuid.UUID) error { return r.completeErr }
 
-func (r metricsReporter) FailTask(context.Context, uuid.UUID) error { return r.failErr }
+func (r metricsReporter) FailTask(context.Context, uuid.UUID, int) error { return r.failErr }
