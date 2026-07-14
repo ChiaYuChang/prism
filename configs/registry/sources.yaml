@@ -2,7 +2,7 @@ sources:
   - abbr: dpp
     name: 民主進步黨
     type: PARTY
-    base_url: https://www.ft.dk
+    base_url: https://www.dpp.org.tw
   - abbr: tpp
     name: 台灣民眾黨
     type: PARTY
@@ -22,7 +22,7 @@ sources:
   - abbr: ttv
     name: 台灣電視公司
     type: MEDIA
-    base_url: https://news.ttv.com.tw
+    base_url: https://www.ttv.com.tw
   - abbr: yahoo
     name: Yahoo奇摩新聞
     type: MEDIA

@@ -204,6 +204,7 @@ func (s *Server) createToken(ctx context.Context, tokenType, name string, rawExp
 		return repo.Token{}, "", err
 	}
 	created, err := s.Tokens.CreateToken(ctx, repo.CreateTokenParams{
+		ID:            id,
 		Type:          tokenType,
 		Name:          name,
 		HashAlgorithm: s.TokenHasher.Algorithm(),

@@ -30,3 +30,13 @@ schedules:
     url: https://www.kmt.org.tw/feeds/posts/summary/-/新聞稿?start-index=1&max-results=10
     frequency: 24h
     run_on_insert: true
+
+  - id: 019f23a0-0000-7000-8000-000000000004
+    name: party-npp-directory
+    enabled: true
+    source_type: PARTY
+    source_abbr: npp
+    kind: DIRECTORY_FETCH
+    url: https://newpowerparty.tw/news
+    frequency: 24h
+    run_on_insert: true

@@ -82,7 +82,7 @@ func Generate(tokenType Type, id uuid.UUID) (string, []byte, error) {
 }
 
 func Parse(raw string) (Parsed, error) {
-	parts := strings.Split(strings.TrimSpace(raw), "_")
+	parts := strings.SplitN(strings.TrimSpace(raw), "_", 3)
 	if len(parts) != 3 {
 		return Parsed{}, fmt.Errorf("invalid token format")
 	}

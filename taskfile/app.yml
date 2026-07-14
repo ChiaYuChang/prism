@@ -1,6 +1,11 @@
 version: "3"
 
 tasks:
+  auth:bootstrap:
+    desc: initialize root and admin token files after migrations
+    cmds:
+      - ./script/bootstrap-auth.sh
+
   scheduler:
     desc: run scheduler on host
     cmds:

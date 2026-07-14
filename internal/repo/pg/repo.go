@@ -654,6 +654,7 @@ func (r *PGPrompts) ListPromptVersionsByKey(ctx context.Context, key string, par
 // Tokens repository.
 func (r *PGTokens) CreateToken(ctx context.Context, arg repo.CreateTokenParams) (repo.Token, error) {
 	row, err := r.q.CreateToken(ctx, CreateTokenParams{
+		ID:            arg.ID,
 		Type:          arg.Type,
 		Name:          arg.Name,
 		HashAlgorithm: arg.HashAlgorithm,

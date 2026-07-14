@@ -58,7 +58,7 @@ func (a *sourceAPI) request(ctx context.Context, method, path string, body any, 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+a.token)
+	req.Header.Set("X-PRISM-TOKEN", a.token)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

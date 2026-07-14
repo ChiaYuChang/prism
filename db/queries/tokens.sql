@@ -1,11 +1,13 @@
 -- name: CreateToken :one
 INSERT INTO tokens (
+    id,
     type,
     name,
     hash_algorithm,
     token_hash,
     expires_at
 ) VALUES (
+    sqlc.arg(id),
     sqlc.arg(type),
     sqlc.arg(name),
     sqlc.arg(hash_algorithm),
