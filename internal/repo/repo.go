@@ -27,7 +27,7 @@ type Repository interface {
 // Scheduler so worker handlers only depend on what they actually call.
 type TaskReporter interface {
 	CompleteTask(ctx context.Context, id uuid.UUID) error
-	FailTask(ctx context.Context, id uuid.UUID) error
+	FailTask(ctx context.Context, id uuid.UUID, retryMax int) error
 }
 
 type Scheduler interface {
@@ -55,7 +55,9 @@ type Scout interface {
 
 type Tasks interface {
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
+	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	RetryFailedTask(ctx context.Context, id uuid.UUID) (Task, error)
 	// CreateTask is insert-or-recover: on unique-violation against an
 	// existing PENDING/RUNNING task it returns the existing row alongside
 	// repo.ErrTaskAlreadyActive, so callers that need the existing task_id

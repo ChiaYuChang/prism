@@ -8,6 +8,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/appconfig"
 	searchconfig "github.com/ChiaYuChang/prism/internal/discovery/search/config"
 	"github.com/ChiaYuChang/prism/internal/obs"
+	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -24,6 +25,7 @@ type Config struct {
 	Telemetry       obs.TelemetryConfig       `mapstructure:"telemetry"`
 	ScoutConfigPath string                    `mapstructure:"scout-config"   validate:"required"`
 	HTTPTimeout     time.Duration             `mapstructure:"http-timeout"   validate:"required,min=1s"`
+	RetryMax        int                       `mapstructure:"retry-max"      validate:"required,min=1"`
 	Postgres        appconfig.PostgresConfig  `mapstructure:"postgres"`
 	MessengerType   string                    `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
 	Messenger       appconfig.MessengerConfig `mapstructure:"-"`
@@ -56,6 +58,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
 	fs.String("scout-config", DefaultScoutConfigPath, "path to scout config file")
 	fs.Duration("http-timeout", 30*time.Second, "HTTP timeout for outbound discovery requests")
+	fs.Int("retry-max", repo.DefaultTaskRetryMax, "Maximum total task attempts before terminal failure")
 	fs.Bool("search-provider-brave-enable", false, "Enable Brave Search provider for KEYWORD_SEARCH")
 	fs.String("search-provider-brave-api-key", "", "Brave Search API subscription token")
 	fs.String("search-provider-brave-api-key-file", "", "Path to file containing the Brave Search API subscription token")

@@ -2,6 +2,7 @@ health-port: 8093
 shutdown-timeout: 2m
 http-timeout: 30s
 max-processing-time: 2m
+retry-max: 3
 archive: s3://prism-archives/errors
 s3:
   endpoint: http://seaweedfs:8333

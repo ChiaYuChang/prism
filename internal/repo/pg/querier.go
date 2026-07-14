@@ -37,7 +37,9 @@ type Querier interface {
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
-	FailTask(ctx context.Context, id uuid.UUID) error
+	// A claim increments retry_count before execution, so retry_count is the total
+	// number of attempts. Failed attempts below retry_max are made runnable again.
+	FailTask(ctx context.Context, arg FailTaskParams) error
 	// Finds batches where all tasks are completed and all candidates are promoted to contents.
 	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
 	GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error)
@@ -64,6 +66,7 @@ type Querier interface {
 	// Returns candidate IDs grouped by status plus a derived `terminal` flag (all
 	// items in COMPLETED / FAILED / ALREADY_COMPLETE).
 	GetUserFetchProgress(ctx context.Context, fetchID uuid.UUID) (GetUserFetchProgressRow, error)
+	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 	ListBatches(ctx context.Context, arg ListBatchesParams) ([]Batch, error)
 	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
 	ListCandidateEmbeddingsGemma2025(ctx context.Context, arg ListCandidateEmbeddingsGemma2025Params) ([]ListCandidateEmbeddingsGemma2025Row, error)
@@ -106,6 +109,9 @@ type Querier interface {
 	RenewToken(ctx context.Context, arg RenewTokenParams) (Token, error)
 	ReplaceContentExtractionPhrases(ctx context.Context, arg ReplaceContentExtractionPhrasesParams) error
 	ReplaceContentExtractionTopics(ctx context.Context, arg ReplaceContentExtractionTopicsParams) error
+	// Atomically reschedules a failed task while retaining its retry_count and
+	// last_run_at history. Non-failed existing tasks are returned with retried=false.
+	RetryFailedTask(ctx context.Context, id uuid.UUID) (RetryFailedTaskRow, error)
 	RevokeAllTokens(ctx context.Context) (int64, error)
 	RevokeToken(ctx context.Context, id uuid.UUID) (Token, error)
 	RotateToken(ctx context.Context, arg RotateTokenParams) (Token, error)

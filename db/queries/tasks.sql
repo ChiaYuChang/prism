@@ -4,6 +4,11 @@ FROM tasks
 WHERE id = $1
 LIMIT 1;
 
+-- name: IsTaskRunning :one
+SELECT status = 'RUNNING'::task_status AS is_running
+FROM tasks
+WHERE id = $1;
+
 -- name: ListTasksByBatchID :many
 SELECT *
 FROM tasks
@@ -133,11 +138,41 @@ WHERE id = sqlc.arg(id)
   AND status = 'RUNNING';
 
 -- name: FailTask :exec
+-- A claim increments retry_count before execution, so retry_count is the total
+-- number of attempts. Failed attempts below retry_max are made runnable again.
 UPDATE tasks
-SET status = 'FAILED',
+SET status = CASE
+        WHEN retry_count < sqlc.arg(retry_max) THEN 'PENDING'::task_status
+        ELSE 'FAILED'::task_status
+    END,
+    next_run_at = CASE
+        WHEN retry_count < sqlc.arg(retry_max) THEN NOW()
+        ELSE next_run_at
+    END,
     updated_at = NOW()
 WHERE id = sqlc.arg(id)
   AND status = 'RUNNING';
+
+-- name: RetryFailedTask :one
+-- Atomically reschedules a failed task while retaining its retry_count and
+-- last_run_at history. Non-failed existing tasks are returned with retried=false.
+WITH retried AS (
+    UPDATE tasks
+    SET status = 'PENDING',
+        next_run_at = NOW(),
+        updated_at = NOW()
+    WHERE tasks.id = sqlc.arg(id)
+      AND status = 'FAILED'
+    RETURNING tasks.*
+)
+SELECT r.*, TRUE AS retried
+FROM retried r
+UNION ALL
+SELECT t.*, FALSE AS retried
+FROM tasks t
+WHERE t.id = sqlc.arg(id)
+  AND NOT EXISTS (SELECT 1 FROM retried)
+LIMIT 1;
 
 -- name: ExtendActiveTaskExpiry :exec
 -- Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.

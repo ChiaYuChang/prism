@@ -7,6 +7,7 @@ import (
 
 	app "github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/obs"
+	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -21,6 +22,9 @@ type Config struct {
 	Logger          obs.LoggingConfig   `mapstructure:"logger"`
 	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
 	BatchSize       int                 `mapstructure:"batch-size"       validate:"required,min=1,max=200"`
+	RetryMax        int                 `mapstructure:"retry-max"        validate:"required,min=1"`
+	SchedulerName   string              `mapstructure:"scheduler-name"   validate:"required"`
+	StartPaused     bool                `mapstructure:"start-paused"`
 	Kinds           []string            `mapstructure:"kinds"            validate:"required,min=1,dive,oneof=DIRECTORY_FETCH KEYWORD_SEARCH PAGE_FETCH"`
 	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
 	MessengerType   string              `mapstructure:"messenger-type"   validate:"oneof=nats gochannel"`
@@ -91,6 +95,9 @@ func LoadConfig(args []string) (*Config, error) {
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.scheduler"))
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel, default: nats)")
 	fs.Int("batch-size", 100, "Number of tasks to claim per tick (max: 200, default: 100)")
+	fs.Int("retry-max", repo.DefaultTaskRetryMax, "Maximum total task attempts before terminal failure")
+	fs.String("scheduler-name", "default", "Runtime scheduler toggle name")
+	fs.Bool("start-paused", false, "Start without claiming or publishing tasks")
 	fs.StringSlice("kinds", []string{"DIRECTORY_FETCH", "KEYWORD_SEARCH"}, "Task kinds this scheduler instance will claim (comma-separated)")
 	fs.String("lock-key", "", "Valkey lock key for this scheduler instance (derived from kinds if empty)")
 	fs.Int("media-quota", 0, "Reserved PAGE_FETCH+MEDIA slots per tick; 0 disables priority split")

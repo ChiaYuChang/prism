@@ -179,8 +179,8 @@ func (r *PGScheduler) CompleteTask(ctx context.Context, id uuid.UUID) error {
 	return r.q.CompleteTask(ctx, id)
 }
 
-func (r *PGScheduler) FailTask(ctx context.Context, id uuid.UUID) error {
-	return r.q.FailTask(ctx, id)
+func (r *PGScheduler) FailTask(ctx context.Context, id uuid.UUID, retryMax int) error {
+	return r.q.FailTask(ctx, FailTaskParams{ID: id, RetryMax: int32(retryMax)})
 }
 
 func (r *PGScheduler) ListRunnableTasks(ctx context.Context, limit int32) ([]repo.Task, error) {
@@ -310,6 +310,14 @@ func (r *PGTasks) GetTaskByID(ctx context.Context, id uuid.UUID) (repo.Task, err
 	return dbTaskToRepoTask(row), nil
 }
 
+func (r *PGTasks) IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error) {
+	isRunning, err := r.q.IsTaskRunning(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return isRunning, err
+}
+
 func (r *PGTasks) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]repo.Task, error) {
 	rows, err := r.q.ListTasksByBatchID(ctx, batchID)
 	if err != nil {
@@ -320,6 +328,17 @@ func (r *PGTasks) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 		out[i] = dbTaskToRepoTask(row)
 	}
 	return out, nil
+}
+
+func (r *PGTasks) RetryFailedTask(ctx context.Context, id uuid.UUID) (repo.Task, error) {
+	row, err := r.q.RetryFailedTask(ctx, id)
+	if err != nil {
+		return repo.Task{}, err
+	}
+	if !row.Retried {
+		return repo.Task{}, repo.ErrTaskNotFailed
+	}
+	return dbRetryFailedTaskRowToRepoTask(row), nil
 }
 
 func (r *PGTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
