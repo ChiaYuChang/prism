@@ -445,6 +445,41 @@ func (s *Server) GetAdminTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toAdminTask(task))
 }
 
+// RetryAdminTask handles POST /api/v1/admin/tasks/{id}/retry.
+//
+// @Summary   Retry failed operator task
+// @Tags      admin
+// @Produce   json
+// @Param     id path string true "Task UUID"
+// @Success   200 {object} AdminTask
+// @Failure   400 {object} ErrorResponse
+// @Failure   404 {object} ErrorResponse
+// @Failure   409 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /admin/tasks/{id}/retry [post]
+func (s *Server) RetryAdminTask(w http.ResponseWriter, r *http.Request) {
+	taskID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid task id")
+		return
+	}
+
+	task, err := s.Tasks.RetryFailedTask(r.Context(), taskID)
+	if err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			writeError(w, http.StatusNotFound, "task not found")
+		case errors.Is(err, repo.ErrTaskNotFailed):
+			writeError(w, http.StatusConflict, "task is not failed")
+		default:
+			s.Logger.ErrorContext(r.Context(), "retry admin task failed", slog.String("task_id", taskID.String()), slog.Any("error", err))
+			writeError(w, http.StatusInternalServerError, "failed to retry task")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, toAdminTask(task))
+}
+
 // ListAdminTasks handles GET /api/v1/admin/tasks?batch_id=...
 //
 // @Summary   List operator tasks by batch

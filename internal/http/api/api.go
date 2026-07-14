@@ -20,6 +20,7 @@ import (
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
+	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
 )
@@ -191,22 +192,27 @@ func WithTokens(tokens repo.Tokens, hasher authtoken.Hasher, tokenTypes map[stri
 	}
 }
 
+func WithSchedulerToggles(toggles *infra.SchedulerToggleStore) ServerOption {
+	return func(s *Server) { s.SchedulerToggles = toggles }
+}
+
 // Server groups dependencies shared by all API handlers.
 type Server struct {
-	Logger          *slog.Logger
-	Scout           repo.Scout
-	Tasks           repo.Tasks
-	Pipeline        repo.Pipeline
-	UserFetches     repo.UserFetches
-	Operator        repo.Operator
-	Prompts         repo.Prompts
-	Tokens          repo.Tokens
-	TokenHasher     authtoken.Hasher
-	TokenTypes      map[string]TokenTypeConfig
-	Cache           ProgressCache
-	GetFetchLimiter middleware.IPLimiter
-	Monitor         StatusMonitor
-	PromptRoot      string
+	Logger           *slog.Logger
+	Scout            repo.Scout
+	Tasks            repo.Tasks
+	Pipeline         repo.Pipeline
+	UserFetches      repo.UserFetches
+	Operator         repo.Operator
+	Prompts          repo.Prompts
+	Tokens           repo.Tokens
+	TokenHasher      authtoken.Hasher
+	TokenTypes       map[string]TokenTypeConfig
+	Cache            ProgressCache
+	GetFetchLimiter  middleware.IPLimiter
+	Monitor          StatusMonitor
+	PromptRoot       string
+	SchedulerToggles *infra.SchedulerToggleStore
 }
 
 type TokenTypeConfig struct {
@@ -267,7 +273,7 @@ func (s *Server) RegisterV1(r RouteRegistrar) {
 	r.Handle("GET /status", http.HandlerFunc(s.GetStatus))
 }
 
-// RegisterV1Admin wires authenticated read-only v1 operator routes onto the supplied router.
+// RegisterV1Admin wires authenticated v1 operator routes onto the supplied router.
 func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("GET /candidates", s.requireAdmin(http.HandlerFunc(s.ListCandidates)))
 	r.Handle("GET /candidates/{id}", s.requireAdmin(http.HandlerFunc(s.GetAdminCandidate)))
@@ -279,6 +285,13 @@ func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("GET /embedding/{model_name}", s.requireAdmin(http.HandlerFunc(s.ListAdminEmbeddings)))
 	r.Handle("GET /tasks", s.requireAdmin(http.HandlerFunc(s.ListAdminTasks)))
 	r.Handle("GET /tasks/{id}", s.requireAdmin(http.HandlerFunc(s.GetAdminTask)))
+	r.Handle("POST /tasks/{id}/retry", s.requireAdmin(http.HandlerFunc(s.RetryAdminTask)))
+	r.Handle("GET /schedulers/{name}", s.requireAdmin(http.HandlerFunc(s.GetAdminSchedulerToggle)))
+	r.Handle("POST /schedulers/{name}/pause", s.requireAdmin(http.HandlerFunc(s.PauseAdminScheduler)))
+	r.Handle("POST /schedulers/{name}/resume", s.requireAdmin(http.HandlerFunc(s.ResumeAdminScheduler)))
+	r.Handle("GET /schedulers", s.requireAdmin(http.HandlerFunc(s.GetAdminGlobalSchedulerToggle)))
+	r.Handle("POST /schedulers/pause", s.requireAdmin(http.HandlerFunc(s.PauseAdminGlobalScheduler)))
+	r.Handle("POST /schedulers/resume", s.requireAdmin(http.HandlerFunc(s.ResumeAdminGlobalScheduler)))
 	r.Handle("GET /prompts", s.requireAdmin(http.HandlerFunc(s.ListPromptVersions)))
 	r.Handle("GET /prompts/{id}", s.requireAdmin(http.HandlerFunc(s.GetPromptVersion)))
 	r.Handle("GET /tokens", s.requireAdmin(http.HandlerFunc(s.ListTokens)))
