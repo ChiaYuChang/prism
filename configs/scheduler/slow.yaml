@@ -2,6 +2,8 @@ interval: 1m
 shutdown-timeout: 30s
 health-port: 8090
 batch-size: 100
+retry-max: 3
+scheduler-name: slow
 kinds:
   - DIRECTORY_FETCH
   - KEYWORD_SEARCH
