@@ -81,7 +81,7 @@ func (c *cliContext) bindPersistentFlags(cmd *cobra.Command) {
 	flags.StringVar(&c.rootToken, "root-token", "", "Raw root token; prefer --root-token-file")
 	flags.StringVar(&c.adminFile, "admin-token-file", "", "Path to admin token file inside the container")
 	flags.StringVar(&c.adminToken, "admin-token", "", "Raw admin token; prefer --admin-token-file")
-	flags.StringVar(&c.apiURL, "api-url", "http://localhost:8080/api/v1", "Prism API base URL")
+	flags.StringVar(&c.apiURL, "api-url", "http://localhost:8091/api/v1", "Prism admin API base URL")
 	_ = c.v.BindPFlag("auth.hash-algorithm", flags.Lookup("hash-algorithm"))
 	_ = c.v.BindPFlag("postgres.host", flags.Lookup("pg-host"))
 	_ = c.v.BindPFlag("postgres.port", flags.Lookup("pg-port"))

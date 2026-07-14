@@ -121,6 +121,7 @@ type CreatePromptVersionParams struct {
 }
 
 type CreateTokenParams struct {
+	ID            uuid.UUID `validate:"required"`
 	Type          string    `validate:"required"`
 	Name          string    `validate:"required"`
 	HashAlgorithm string    `validate:"required"`

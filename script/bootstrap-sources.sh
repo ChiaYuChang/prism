@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-API_URL="${PRISM_API_URL:-http://localhost:8080/api/v1}"
-HEALTH_URL="${PRISM_HEALTH_URL:-${API_URL%/api/v1}/healthz}"
+API_URL="${PRISM_API_URL:-http://localhost:8091/api/v1}"
+HEALTH_URL="${PRISM_HEALTH_URL:-${API_URL%/api/v1}/readyz}"
 MANIFEST="${PRISM_SOURCE_MANIFEST:-configs/registry/sources.yaml}"
 
 i=0

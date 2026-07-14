@@ -79,7 +79,7 @@ EOF
 
 cat > "$OUT_DIR/valkey/valkey_acl" <<EOF
 user default on nopass ~* &* -@all +ping
-user prism on #$valkey_hash ~prism:* ~api:* ~fetch:* &* +@read +@write +@scripting +ping -@dangerous -@admin
+user prism on #$valkey_hash ~prism:* ~api:* ~fetch:* ~scheduler:* ~scheduler.* &* +@read +@write +@scripting +ping -@dangerous -@admin
 EOF
 
 cat > "$OUT_DIR/otel/otel.yaml" <<'EOF'

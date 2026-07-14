@@ -135,6 +135,7 @@ func (s *Service) InitRoot(ctx context.Context, raw string) (repo.Token, error) 
 	}
 	created, err := s.tokens.CreateToken(ctx,
 		repo.CreateTokenParams{
+			ID:            uuid.Must(uuid.NewV7()),
 			Type:          string(authtoken.TypeRoot),
 			Name:          RootTokenName,
 			HashAlgorithm: s.hasher.Algorithm(),
@@ -226,6 +227,7 @@ func (s *Service) createToken(ctx context.Context, req CreateTokenRequest) (Toke
 		return TokenSecretResult{}, err
 	}
 	created, err := s.tokens.CreateToken(ctx, repo.CreateTokenParams{
+		ID:            id,
 		Type:          string(req.Type),
 		Name:          strings.TrimSpace(req.Name),
 		HashAlgorithm: s.hasher.Algorithm(),
@@ -289,5 +291,7 @@ func NormalizeRootSecret(raw string) (string, error) {
 }
 
 func farFuture() time.Time {
-	return time.Date(9999, time.December, 31, 23, 59, 59, 0, time.UTC)
+	// Keep the value safely inside the timestamp range supported by every
+	// JSON/SQL client while still making root tokens effectively permanent.
+	return time.Date(2099, time.December, 31, 23, 59, 59, 0, time.UTC)
 }

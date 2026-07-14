@@ -28,6 +28,15 @@ tasks:
     cmds:
       - ENV={{.ENV}} PROFILES={{.COMPOSE_PROFILES}} ./script/compose-bake.sh
 
+  secrets:sync:
+    desc: sync local secrets from the unlocked RBW vault
+    summary: |
+      Retrieves the configured Prism secrets from rbw and materializes them
+      under .secrets/ with owner-only permissions for Docker Compose mounts.
+      Existing generated root/admin token files are preserved.
+    cmds:
+      - go run ./cmd/prism-secrets
+
   bake:clean:
     desc: remove all per-(ENV,PROFILES) merged compose files
     summary: |
@@ -43,7 +52,6 @@ tasks:
       Starts the core infra stack plus any enabled profile services for the
       selected MODE. Records the active mode/profile in .task/ so later down
       and clean commands target the same Compose project.
-    deps: [ bake ]
     preconditions:
       - sh: |
           if [ -f {{.MODE_FILE}} ]; then
@@ -62,6 +70,8 @@ tasks:
       POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
       VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
     cmds:
+      - task: secrets:sync
+      - task: bake
       - mkdir -p {{.TASK_DIR}}
       - mkdir -p runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
       - chmod 0777 runtime/logs runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}

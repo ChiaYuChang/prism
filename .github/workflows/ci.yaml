@@ -22,3 +22,24 @@ jobs:
 
       - name: Run short tests
         run: go test -v -short -cover ./...
+
+  auth-bootstrap:
+    name: Auth Bootstrap Safety
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Unit-only coverage: token bootstrap must not require the API, Docker,
+      # external providers, or any network service in CI.
+      - name: Test root and admin token bootstrap
+        run: go test -v -short ./internal/auth/...
+
+      - name: Validate bootstrap script syntax
+        run: bash -n script/bootstrap-auth.sh

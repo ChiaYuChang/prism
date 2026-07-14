@@ -30,6 +30,7 @@ func (q *Queries) CountActiveAdminTokensExcluding(ctx context.Context, id uuid.U
 
 const createToken = `-- name: CreateToken :one
 INSERT INTO tokens (
+    id,
     type,
     name,
     hash_algorithm,
@@ -40,12 +41,14 @@ INSERT INTO tokens (
     $2,
     $3,
     $4,
-    $5
+    $5,
+    $6
 )
 RETURNING id, type, name, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
 `
 
 type CreateTokenParams struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
 	Type          string             `db:"type" json:"type"`
 	Name          string             `db:"name" json:"name"`
 	HashAlgorithm string             `db:"hash_algorithm" json:"hash_algorithm"`
@@ -55,6 +58,7 @@ type CreateTokenParams struct {
 
 func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (Token, error) {
 	row := q.db.QueryRow(ctx, createToken,
+		arg.ID,
 		arg.Type,
 		arg.Name,
 		arg.HashAlgorithm,
