@@ -450,6 +450,52 @@ func (_c *MockRepository_Scout_Call) RunAndReturn(run func() repo.Scout) *MockRe
 	return _c
 }
 
+// Sources provides a mock function for the type MockRepository
+func (_mock *MockRepository) Sources() repo.Sources {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Sources")
+	}
+
+	var r0 repo.Sources
+	if returnFunc, ok := ret.Get(0).(func() repo.Sources); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Sources)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Sources_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Sources'
+type MockRepository_Sources_Call struct {
+	*mock.Call
+}
+
+// Sources is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Sources() *MockRepository_Sources_Call {
+	return &MockRepository_Sources_Call{Call: _e.mock.On("Sources")}
+}
+
+func (_c *MockRepository_Sources_Call) Run(run func()) *MockRepository_Sources_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Sources_Call) Return(sources repo.Sources) *MockRepository_Sources_Call {
+	_c.Call.Return(sources)
+	return _c
+}
+
+func (_c *MockRepository_Sources_Call) RunAndReturn(run func() repo.Sources) *MockRepository_Sources_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Tasks provides a mock function for the type MockRepository
 func (_mock *MockRepository) Tasks() repo.Tasks {
 	ret := _mock.Called()

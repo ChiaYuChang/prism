@@ -2,6 +2,7 @@
 SELECT *
 FROM sources
 WHERE abbr = $1
+  AND deleted_at IS NULL
 LIMIT 1;
 
 -- name: ListSourcesByType :many
@@ -17,6 +18,32 @@ FROM sources
 ORDER BY type ASC, abbr ASC
 LIMIT sqlc.arg(lim)
 OFFSET sqlc.arg(off);
+
+-- name: CreateSource :one
+INSERT INTO sources (abbr, name, type, base_url)
+VALUES (sqlc.arg(abbr), sqlc.arg(name), sqlc.arg(type), sqlc.arg(base_url))
+RETURNING *;
+
+-- name: UpdateSource :one
+UPDATE sources
+SET name = sqlc.arg(name),
+    type = sqlc.arg(type),
+    base_url = sqlc.arg(base_url),
+    deleted_at = NULL
+WHERE abbr = sqlc.arg(abbr)
+RETURNING *;
+
+-- name: DeleteSource :one
+UPDATE sources
+SET deleted_at = COALESCE(deleted_at, NOW())
+WHERE abbr = sqlc.arg(abbr)
+RETURNING *;
+
+-- name: RestoreSource :one
+UPDATE sources
+SET deleted_at = NULL
+WHERE abbr = sqlc.arg(abbr)
+RETURNING *;
 
 -- name: GetModelByID :one
 SELECT *

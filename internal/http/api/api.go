@@ -196,6 +196,10 @@ func WithSchedulerToggles(toggles *infra.SchedulerToggleStore) ServerOption {
 	return func(s *Server) { s.SchedulerToggles = toggles }
 }
 
+func WithSources(sources repo.Sources) ServerOption {
+	return func(s *Server) { s.Sources = sources }
+}
+
 // Server groups dependencies shared by all API handlers.
 type Server struct {
 	Logger           *slog.Logger
@@ -203,6 +207,7 @@ type Server struct {
 	Tasks            repo.Tasks
 	Pipeline         repo.Pipeline
 	UserFetches      repo.UserFetches
+	Sources          repo.Sources
 	Operator         repo.Operator
 	Prompts          repo.Prompts
 	Tokens           repo.Tokens
@@ -292,6 +297,10 @@ func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("GET /schedulers", s.requireAdmin(http.HandlerFunc(s.GetAdminGlobalSchedulerToggle)))
 	r.Handle("POST /schedulers/pause", s.requireAdmin(http.HandlerFunc(s.PauseAdminGlobalScheduler)))
 	r.Handle("POST /schedulers/resume", s.requireAdmin(http.HandlerFunc(s.ResumeAdminGlobalScheduler)))
+	r.Handle("POST /sources", s.requireAdmin(http.HandlerFunc(s.CreateAdminSource)))
+	r.Handle("PUT /sources/{abbr}", s.requireAdmin(http.HandlerFunc(s.UpdateAdminSource)))
+	r.Handle("DELETE /sources/{abbr}", s.requireAdmin(http.HandlerFunc(s.DeleteAdminSource)))
+	r.Handle("POST /sources/{abbr}/restore", s.requireAdmin(http.HandlerFunc(s.RestoreAdminSource)))
 	r.Handle("GET /prompts", s.requireAdmin(http.HandlerFunc(s.ListPromptVersions)))
 	r.Handle("GET /prompts/{id}", s.requireAdmin(http.HandlerFunc(s.GetPromptVersion)))
 	r.Handle("GET /tokens", s.requireAdmin(http.HandlerFunc(s.ListTokens)))

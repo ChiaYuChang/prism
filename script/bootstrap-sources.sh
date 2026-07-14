@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -eu
+
+API_URL="${PRISM_API_URL:-http://localhost:8080/api/v1}"
+HEALTH_URL="${PRISM_HEALTH_URL:-${API_URL%/api/v1}/healthz}"
+MANIFEST="${PRISM_SOURCE_MANIFEST:-configs/registry/sources.yaml}"
+
+i=0
+while ! curl -fsS "$HEALTH_URL" >/dev/null 2>&1; do
+  i=$((i + 1))
+  if [ "$i" -ge "${PRISM_API_WAIT_ATTEMPTS:-60}" ]; then
+    printf '%s\n' "API did not become healthy: $HEALTH_URL" >&2
+    exit 1
+  fi
+  sleep "${PRISM_API_WAIT_SECONDS:-2}"
+done
+
+exec go run ./cmd/prismctl --api-url "$API_URL" admin sources sync --manifest "$MANIFEST"

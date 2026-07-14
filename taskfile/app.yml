@@ -15,3 +15,8 @@ tasks:
     desc: run pipeline worker on host
     cmds:
       - go run cmd/pipeline-worker/main.go
+
+  sources:bootstrap:
+    desc: synchronize the source registry through the API
+    cmds:
+      - ./script/bootstrap-sources.sh

@@ -20,6 +20,7 @@ type Repository interface {
 	Operator() Operator
 	Prompts() Prompts
 	Tokens() Tokens
+	Sources() Sources
 }
 
 // TaskReporter is the push side of the task lifecycle: workers use it to
@@ -51,6 +52,13 @@ type Scout interface {
 	CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
+}
+
+type Sources interface {
+	Create(ctx context.Context, arg CreateSourceParams) (Source, error)
+	Update(ctx context.Context, arg UpdateSourceParams) (Source, error)
+	Delete(ctx context.Context, abbr string) (Source, error)
+	Restore(ctx context.Context, abbr string) (Source, error)
 }
 
 type Tasks interface {

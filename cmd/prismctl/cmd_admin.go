@@ -14,7 +14,11 @@ func newAdminCommand(ctx *cliContext) *cobra.Command {
 	cmd := &cobra.Command{Use: "admin", Short: "Admin commands"}
 	tokens := &cobra.Command{Use: "tokens", Short: "Token commands"}
 	tokens.AddCommand(adminTokensCreateCommand(ctx), adminTokensListCommand(ctx), adminTokensGetCommand(ctx), adminTokensRevokeCommand(ctx))
-	cmd.AddCommand(tokens)
+	sources := &cobra.Command{Use: "sources", Short: "Source registry commands"}
+	sources.AddCommand(adminSourcesListCommand(ctx), adminSourcesSyncCommand(ctx), adminSourcesDeleteCommand(ctx), adminSourcesRestoreCommand(ctx))
+	schedulers := &cobra.Command{Use: "schedulers", Short: "Scheduler runtime controls"}
+	schedulers.AddCommand(adminSchedulerPauseCommand(ctx), adminSchedulerStartCommand(ctx), adminSchedulerStatusCommand(ctx))
+	cmd.AddCommand(tokens, sources, schedulers)
 	return cmd
 }
 

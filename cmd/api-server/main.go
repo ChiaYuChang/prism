@@ -123,6 +123,7 @@ func main() {
 
 	serverOpts := []api.ServerOption{
 		api.WithOperator(repository.Operator()),
+		api.WithSources(repository.Sources()),
 		api.WithStatusMonitor(statusMonitor),
 	}
 	if config.SchedulerControl.Enabled {

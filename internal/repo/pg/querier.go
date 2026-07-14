@@ -23,6 +23,7 @@ type Querier interface {
 	CreateContentEmbeddingGemma2025(ctx context.Context, arg CreateContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
+	CreateSource(ctx context.Context, arg CreateSourceParams) (Source, error)
 	// Single-round-trip insert-or-recover. On unique-violation against either
 	// uq_tasks_active_payload or uq_tasks_active_page_fetch, returns the
 	// existing PENDING/RUNNING row with inserted=false. Adapter maps
@@ -33,6 +34,7 @@ type Querier interface {
 	CreateToken(ctx context.Context, arg CreateTokenParams) (Token, error)
 	CreateUserFetch(ctx context.Context, userID pgtype.UUID) (Fetch, error)
 	CreateUserFetchItem(ctx context.Context, arg CreateUserFetchItemParams) (FetchItem, error)
+	DeleteSource(ctx context.Context, abbr string) (Source, error)
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
@@ -109,6 +111,7 @@ type Querier interface {
 	RenewToken(ctx context.Context, arg RenewTokenParams) (Token, error)
 	ReplaceContentExtractionPhrases(ctx context.Context, arg ReplaceContentExtractionPhrasesParams) error
 	ReplaceContentExtractionTopics(ctx context.Context, arg ReplaceContentExtractionTopicsParams) error
+	RestoreSource(ctx context.Context, abbr string) (Source, error)
 	// Atomically reschedules a failed task while retaining its retry_count and
 	// last_run_at history. Non-failed existing tasks are returned with retried=false.
 	RetryFailedTask(ctx context.Context, id uuid.UUID) (RetryFailedTaskRow, error)
@@ -119,6 +122,7 @@ type Querier interface {
 	SearchCandidatesByVector(ctx context.Context, arg SearchCandidatesByVectorParams) ([]SearchCandidatesByVectorRow, error)
 	SearchContentsByVector(ctx context.Context, arg SearchContentsByVectorParams) ([]SearchContentsByVectorRow, error)
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
+	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 	UpsertEntity(ctx context.Context, arg UpsertEntityParams) (Entity, error)
 	UpsertPrompt(ctx context.Context, arg UpsertPromptParams) (Prompt, error)

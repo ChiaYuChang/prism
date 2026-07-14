@@ -13,7 +13,7 @@ func main() {
 	cmd := newRootCommand()
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		if !errors.Is(err, errAlreadyRendered) {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
 		os.Exit(1)
 	}

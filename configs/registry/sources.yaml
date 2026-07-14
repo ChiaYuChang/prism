@@ -1,0 +1,33 @@
+sources:
+  - abbr: dpp
+    name: 民主進步黨
+    type: PARTY
+    base_url: https://www.ft.dk
+  - abbr: tpp
+    name: 台灣民眾黨
+    type: PARTY
+    base_url: https://www.tpp.org.tw
+  - abbr: kmt
+    name: 中國國民黨
+    type: PARTY
+    base_url: https://www.kmt.org.tw
+  - abbr: cna
+    name: 中央通訊社
+    type: MEDIA
+    base_url: https://www.cna.com.tw
+  - abbr: pts
+    name: 公共電視台
+    type: MEDIA
+    base_url: https://news.pts.org.tw
+  - abbr: ttv
+    name: 台灣電視公司
+    type: MEDIA
+    base_url: https://news.ttv.com.tw
+  - abbr: yahoo
+    name: Yahoo奇摩新聞
+    type: MEDIA
+    base_url: https://tw.news.yahoo.com
+  - abbr: npp
+    name: 時代力量
+    type: PARTY
+    base_url: https://newpowerparty.tw
