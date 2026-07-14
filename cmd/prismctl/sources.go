@@ -91,6 +91,36 @@ func (a *sourceAPI) list(ctx context.Context) ([]sourceView, error) {
 	return out.Items, nil
 }
 
+func adminSourcesCreateCommand(ctx *cliContext) *cobra.Command {
+	var abbr, name, typ, baseURL string
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a source",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			a, warnings, err := ctx.sourceAPI()
+			if err != nil {
+				return err
+			}
+			var out sourceView
+			body := sourceView{Abbr: abbr, Name: name, Type: typ, BaseURL: baseURL}
+			path := "/admin/sources?abbr=" + url.QueryEscape(abbr)
+			if err := a.request(cmd.Context(), http.MethodPost, path, body, &out); err != nil {
+				return renderError(ctx, "admin", "sources_create", err, warnings)
+			}
+			return render(ctx, "admin", "sources_create", out, warnings)
+		},
+	}
+	cmd.Flags().StringVar(&abbr, "abbr", "", "Source abbreviation")
+	cmd.Flags().StringVar(&name, "name", "", "Source display name")
+	cmd.Flags().StringVar(&typ, "type", "", "Source type: PARTY or MEDIA")
+	cmd.Flags().StringVar(&baseURL, "base-url", "", "Source base URL")
+	_ = cmd.MarkFlagRequired("abbr")
+	_ = cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("type")
+	_ = cmd.MarkFlagRequired("base-url")
+	return cmd
+}
+
 func adminSourcesListCommand(ctx *cliContext) *cobra.Command {
 	return &cobra.Command{Use: "list", Short: "List sources", RunE: func(cmd *cobra.Command, args []string) error {
 		a, warnings, err := ctx.sourceAPI()
