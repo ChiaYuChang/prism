@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
+	"strings"
 
 	prismauth "github.com/ChiaYuChang/prism/internal/auth"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
@@ -113,6 +116,9 @@ func (c *cliContext) runJSONRoot(ctx context.Context, env commandEnvelope) error
 }
 
 func (c *cliContext) runJSONAdmin(ctx context.Context, env commandEnvelope) error {
+	if strings.HasPrefix(env.Action, "sources_") {
+		return c.runJSONAdminSources(ctx, env)
+	}
 	actor, warnings, err := c.adminActorFromJSON(ctx, env.Auth)
 	if err != nil {
 		return err
@@ -205,6 +211,53 @@ func (c *cliContext) runJSONAdmin(ctx context.Context, env commandEnvelope) erro
 	}
 }
 
+func (c *cliContext) runJSONAdminSources(ctx context.Context, env commandEnvelope) error {
+	cred, err := c.adminCredentialFromJSON(env.Auth)
+	if err != nil {
+		return err
+	}
+	a := &sourceAPI{baseURL: strings.TrimRight(c.apiURL, "/"), token: cred.Secret, client: http.DefaultClient}
+	switch env.Action {
+	case "sources_create":
+		var params sourceView
+		if err := json.Unmarshal(env.Params, &params); err != nil {
+			return err
+		}
+		var out sourceView
+		path := "/admin/sources?abbr=" + url.QueryEscape(params.Abbr)
+		if err := a.request(ctx, http.MethodPost, path, params, &out); err != nil {
+			return renderError(c, "admin", env.Action, err, cred.Warnings)
+		}
+		return render(c, "admin", env.Action, out, cred.Warnings)
+	case "sources_list":
+		items, err := a.list(ctx)
+		if err != nil {
+			return renderError(c, "admin", env.Action, err, cred.Warnings)
+		}
+		return render(c, "admin", env.Action, map[string]any{"items": items, "count": len(items)}, cred.Warnings)
+	case "sources_delete", "sources_restore":
+		var params struct {
+			Abbr string `json:"abbr"`
+		}
+		if err := json.Unmarshal(env.Params, &params); err != nil {
+			return err
+		}
+		path := "/admin/sources/" + url.PathEscape(params.Abbr)
+		method := http.MethodDelete
+		if env.Action == "sources_restore" {
+			method = http.MethodPost
+			path += "/restore"
+		}
+		var out sourceView
+		if err := a.request(ctx, method, path, nil, &out); err != nil {
+			return renderError(c, "admin", env.Action, err, cred.Warnings)
+		}
+		return render(c, "admin", env.Action, out, cred.Warnings)
+	default:
+		return renderError(c, "admin", env.Action, fmt.Errorf("unsupported source action %q", env.Action), cred.Warnings)
+	}
+}
+
 func (c *cliContext) rootCredentialFromJSON(auth jsonAuth) (credential, error) {
 	if auth.RootTokenFile != "" || auth.RootToken != "" {
 		return loadCredential(credentialRequest{File: auth.RootTokenFile, Raw: auth.RootToken, Name: "root"})
@@ -232,4 +285,11 @@ func (c *cliContext) adminActorFromJSON(ctx context.Context, auth jsonAuth) (pri
 		return prismauth.Actor{}, cred.Warnings, err
 	}
 	return actor, cred.Warnings, nil
+}
+
+func (c *cliContext) adminCredentialFromJSON(auth jsonAuth) (credential, error) {
+	if auth.AdminTokenFile != "" || auth.AdminToken != "" {
+		return loadCredential(credentialRequest{File: auth.AdminTokenFile, Raw: auth.AdminToken, Name: "admin"})
+	}
+	return c.adminCredential()
 }
