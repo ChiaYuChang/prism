@@ -48,21 +48,26 @@ type PromptConfig struct {
 
 // Config is the runtime configuration for the API server.
 type Config struct {
-	Port            int                 `mapstructure:"port"              validate:"required,min=1024,max=65535"`
-	Admin           AdminConfig         `mapstructure:"admin"`
-	ReadTimeout     time.Duration       `mapstructure:"read-timeout"      validate:"required,min=1s"`
-	WriteTimeout    time.Duration       `mapstructure:"write-timeout"     validate:"required,min=1s"`
-	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout"  validate:"required,min=1s"`
-	CORSOrigins     []string            `mapstructure:"cors-origins"`
-	Logger          obs.LoggingConfig   `mapstructure:"logger"`
-	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
-	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
-	Valkey          app.ValkeyConfig    `mapstructure:"valkey"`
-	Cache           CacheConfig         `mapstructure:"cache"`
-	RateLimit       RateLimitConfig     `mapstructure:"rate-limit"`
-	Auth            AuthConfig          `mapstructure:"auth"`
-	Prompts         PromptConfig        `mapstructure:"prompts"`
-	Monitoring      MonitoringConfig    `mapstructure:"monitoring"`
+	Port             int                    `mapstructure:"port"              validate:"required,min=1024,max=65535"`
+	Admin            AdminConfig            `mapstructure:"admin"`
+	ReadTimeout      time.Duration          `mapstructure:"read-timeout"      validate:"required,min=1s"`
+	WriteTimeout     time.Duration          `mapstructure:"write-timeout"     validate:"required,min=1s"`
+	ShutdownTimeout  time.Duration          `mapstructure:"shutdown-timeout"  validate:"required,min=1s"`
+	CORSOrigins      []string               `mapstructure:"cors-origins"`
+	Logger           obs.LoggingConfig      `mapstructure:"logger"`
+	Telemetry        obs.TelemetryConfig    `mapstructure:"telemetry"`
+	Postgres         app.PostgresConfig     `mapstructure:"postgres"`
+	Valkey           app.ValkeyConfig       `mapstructure:"valkey"`
+	Cache            CacheConfig            `mapstructure:"cache"`
+	RateLimit        RateLimitConfig        `mapstructure:"rate-limit"`
+	Auth             AuthConfig             `mapstructure:"auth"`
+	Prompts          PromptConfig           `mapstructure:"prompts"`
+	Monitoring       MonitoringConfig       `mapstructure:"monitoring"`
+	SchedulerControl SchedulerControlConfig `mapstructure:"scheduler-control"`
+}
+
+type SchedulerControlConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 }
 
 type AdminConfig struct {

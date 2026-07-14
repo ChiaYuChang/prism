@@ -92,7 +92,7 @@ func main() {
 	}
 	defer func() { _ = repositoryCloser.Close() }()
 
-	valkeyNeeded := config.Cache.Enabled || config.Monitoring.Backend == "valkey"
+	valkeyNeeded := config.Cache.Enabled || config.Monitoring.Backend == "valkey" || config.SchedulerControl.Enabled
 	var valkeyClient *redis.Client
 	if valkeyNeeded {
 		valkeyClient, err = infra.NewValkeyClient(ctx, infra.ValkeyClientConfig{
@@ -124,6 +124,14 @@ func main() {
 	serverOpts := []api.ServerOption{
 		api.WithOperator(repository.Operator()),
 		api.WithStatusMonitor(statusMonitor),
+	}
+	if config.SchedulerControl.Enabled {
+		toggles, err := infra.NewSchedulerToggleStore(valkeyClient)
+		if err != nil {
+			logger.Error("failed to construct scheduler toggle store", "error", err)
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, api.WithSchedulerToggles(toggles))
 	}
 
 	if config.Cache.Enabled {
