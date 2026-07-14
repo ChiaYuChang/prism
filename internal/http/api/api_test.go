@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/http/api"
+	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/mocks"
 	"github.com/google/uuid"
@@ -146,6 +148,76 @@ func TestGetAdminTask_HappyPath(t *testing.T) {
 	require.Equal(t, batchID, body.BatchID)
 	require.Equal(t, repo.TaskStatusPending, body.Status)
 	require.JSONEq(t, `{"candidate_id":"abc"}`, string(body.Payload))
+}
+
+func TestRetryAdminTask_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	taskID := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC()
+	m.tasks.EXPECT().RetryFailedTask(mock.Anything, taskID).Return(repo.Task{
+		ID:         taskID,
+		NextRunAt:  now,
+		Status:     repo.TaskStatusPending,
+		RetryCount: 3,
+		LastRunAt:  &now,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodPost, "/tasks/"+taskID.String()+"/retry", nil)
+	req.SetPathValue("id", taskID.String())
+	rec := httptest.NewRecorder()
+	srv.RetryAdminTask(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AdminTask
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, repo.TaskStatusPending, body.Status)
+	require.Equal(t, 3, body.RetryCount)
+	require.Equal(t, now, *body.LastRunAt)
+}
+
+func TestRetryAdminTask_NotFailed(t *testing.T) {
+	srv, m := newTestServer(t)
+	taskID := uuid.Must(uuid.NewV7())
+	m.tasks.EXPECT().RetryFailedTask(mock.Anything, taskID).Return(repo.Task{}, repo.ErrTaskNotFailed).Once()
+
+	req := httptest.NewRequest(http.MethodPost, "/tasks/"+taskID.String()+"/retry", nil)
+	req.SetPathValue("id", taskID.String())
+	rec := httptest.NewRecorder()
+	srv.RetryAdminTask(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestRegisterV1Admin_RetryTaskRequiresAdmin(t *testing.T) {
+	srv, m := newTestServer(t)
+	mux := http.NewServeMux()
+	srv.RegisterV1Admin(mux)
+
+	taskID := uuid.Must(uuid.NewV7())
+	req := httptest.NewRequest(http.MethodPost, "/tasks/"+taskID.String()+"/retry", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+
+	now := time.Now().UTC()
+	m.tasks.EXPECT().RetryFailedTask(mock.Anything, taskID).Return(repo.Task{
+		ID:        taskID,
+		NextRunAt: now,
+		Status:    repo.TaskStatusPending,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil).Once()
+	adminReq := req.WithContext(middleware.WithPrincipal(req.Context(), middleware.Principal{
+		TokenID: uuid.Must(uuid.NewV7()),
+		Type:    authtoken.TypeAdmin,
+	}))
+	adminRec := httptest.NewRecorder()
+	mux.ServeHTTP(adminRec, adminReq)
+	require.Equal(t, http.StatusOK, adminRec.Code)
 }
 
 func TestListAdminTasks_ByBatchID(t *testing.T) {
