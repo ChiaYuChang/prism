@@ -21,6 +21,15 @@ type CreateCandidateParams struct {
 
 type UpsertCandidateParams = CreateCandidateParams
 
+type CreateSourceParams struct {
+	Abbr    string `validate:"required,max=16"`
+	Name    string `validate:"required,max=128"`
+	Type    string `validate:"required,oneof=PARTY MEDIA"`
+	BaseURL string `validate:"required,url"`
+}
+
+type UpdateSourceParams = CreateSourceParams
+
 type ListCandidatesParams struct {
 	Query      *string    `validate:"omitempty"`
 	SourceAbbr *string    `validate:"omitempty"`

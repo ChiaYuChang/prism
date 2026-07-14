@@ -76,6 +76,10 @@ type PGTokens struct {
 	q *Queries
 }
 
+type PGSources struct {
+	q *Queries
+}
+
 type pgBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
@@ -93,6 +97,7 @@ var _ repo.Schedules = (*PGSchedules)(nil)
 var _ repo.Operator = (*PGOperator)(nil)
 var _ repo.Prompts = (*PGPrompts)(nil)
 var _ repo.Tokens = (*PGTokens)(nil)
+var _ repo.Sources = (*PGSources)(nil)
 
 // Repository root getters.
 func (r *PGRepository) Scheduler() repo.Scheduler {
@@ -141,6 +146,10 @@ func (r *PGRepository) Prompts() repo.Prompts {
 
 func (r *PGRepository) Tokens() repo.Tokens {
 	return &PGTokens{q: r.q}
+}
+
+func (r *PGRepository) Sources() repo.Sources {
+	return &PGSources{q: r.q}
 }
 
 // Scheduler repository.
@@ -720,6 +729,38 @@ func (r *PGTokens) RevokeAllTokens(ctx context.Context) (int64, error) {
 
 func (r *PGTokens) CountActiveAdminTokensExcluding(ctx context.Context, id uuid.UUID) (int64, error) {
 	return r.q.CountActiveAdminTokensExcluding(ctx, id)
+}
+
+func (r *PGSources) Create(ctx context.Context, arg repo.CreateSourceParams) (repo.Source, error) {
+	row, err := r.q.CreateSource(ctx, CreateSourceParams{Abbr: arg.Abbr, Name: arg.Name, Type: SourceType(arg.Type), BaseUrl: arg.BaseURL})
+	if err != nil {
+		return repo.Source{}, err
+	}
+	return dbSourceToRepoSource(row), nil
+}
+
+func (r *PGSources) Update(ctx context.Context, arg repo.UpdateSourceParams) (repo.Source, error) {
+	row, err := r.q.UpdateSource(ctx, UpdateSourceParams{Abbr: arg.Abbr, Name: arg.Name, Type: SourceType(arg.Type), BaseUrl: arg.BaseURL})
+	if err != nil {
+		return repo.Source{}, err
+	}
+	return dbSourceToRepoSource(row), nil
+}
+
+func (r *PGSources) Delete(ctx context.Context, abbr string) (repo.Source, error) {
+	row, err := r.q.DeleteSource(ctx, abbr)
+	if err != nil {
+		return repo.Source{}, err
+	}
+	return dbSourceToRepoSource(row), nil
+}
+
+func (r *PGSources) Restore(ctx context.Context, abbr string) (repo.Source, error) {
+	row, err := r.q.RestoreSource(ctx, abbr)
+	if err != nil {
+		return repo.Source{}, err
+	}
+	return dbSourceToRepoSource(row), nil
 }
 
 func operatorOffset(params repo.ListOperatorParams) int32 {

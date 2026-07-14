@@ -11,6 +11,59 @@ import (
 	"github.com/google/uuid"
 )
 
+const createSource = `-- name: CreateSource :one
+INSERT INTO sources (abbr, name, type, base_url)
+VALUES ($1, $2, $3, $4)
+RETURNING abbr, name, type, base_url, created_at, deleted_at
+`
+
+type CreateSourceParams struct {
+	Abbr    string     `db:"abbr" json:"abbr"`
+	Name    string     `db:"name" json:"name"`
+	Type    SourceType `db:"type" json:"type"`
+	BaseUrl string     `db:"base_url" json:"base_url"`
+}
+
+func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) (Source, error) {
+	row := q.db.QueryRow(ctx, createSource,
+		arg.Abbr,
+		arg.Name,
+		arg.Type,
+		arg.BaseUrl,
+	)
+	var i Source
+	err := row.Scan(
+		&i.Abbr,
+		&i.Name,
+		&i.Type,
+		&i.BaseUrl,
+		&i.CreatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const deleteSource = `-- name: DeleteSource :one
+UPDATE sources
+SET deleted_at = COALESCE(deleted_at, NOW())
+WHERE abbr = $1
+RETURNING abbr, name, type, base_url, created_at, deleted_at
+`
+
+func (q *Queries) DeleteSource(ctx context.Context, abbr string) (Source, error) {
+	row := q.db.QueryRow(ctx, deleteSource, abbr)
+	var i Source
+	err := row.Scan(
+		&i.Abbr,
+		&i.Name,
+		&i.Type,
+		&i.BaseUrl,
+		&i.CreatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const getModelByID = `-- name: GetModelByID :one
 SELECT id, name, provider, type, publish_date, url, tag, created_at, deleted_at
 FROM models
@@ -108,6 +161,7 @@ const getSourceByAbbr = `-- name: GetSourceByAbbr :one
 SELECT abbr, name, type, base_url, created_at, deleted_at
 FROM sources
 WHERE abbr = $1
+  AND deleted_at IS NULL
 LIMIT 1
 `
 
@@ -241,6 +295,63 @@ func (q *Queries) ListSourcesByType(ctx context.Context, type_ SourceType) ([]So
 		return nil, err
 	}
 	return items, nil
+}
+
+const restoreSource = `-- name: RestoreSource :one
+UPDATE sources
+SET deleted_at = NULL
+WHERE abbr = $1
+RETURNING abbr, name, type, base_url, created_at, deleted_at
+`
+
+func (q *Queries) RestoreSource(ctx context.Context, abbr string) (Source, error) {
+	row := q.db.QueryRow(ctx, restoreSource, abbr)
+	var i Source
+	err := row.Scan(
+		&i.Abbr,
+		&i.Name,
+		&i.Type,
+		&i.BaseUrl,
+		&i.CreatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const updateSource = `-- name: UpdateSource :one
+UPDATE sources
+SET name = $1,
+    type = $2,
+    base_url = $3,
+    deleted_at = NULL
+WHERE abbr = $4
+RETURNING abbr, name, type, base_url, created_at, deleted_at
+`
+
+type UpdateSourceParams struct {
+	Name    string     `db:"name" json:"name"`
+	Type    SourceType `db:"type" json:"type"`
+	BaseUrl string     `db:"base_url" json:"base_url"`
+	Abbr    string     `db:"abbr" json:"abbr"`
+}
+
+func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error) {
+	row := q.db.QueryRow(ctx, updateSource,
+		arg.Name,
+		arg.Type,
+		arg.BaseUrl,
+		arg.Abbr,
+	)
+	var i Source
+	err := row.Scan(
+		&i.Abbr,
+		&i.Name,
+		&i.Type,
+		&i.BaseUrl,
+		&i.CreatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const upsertPrompt = `-- name: UpsertPrompt :one
