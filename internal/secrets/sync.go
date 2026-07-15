@@ -32,8 +32,10 @@ func DefaultMappings() []Mapping {
 	}
 }
 
-// Sync retrieves mappings and writes them below dir with owner-only
-// permissions. Existing files outside mappings are preserved.
+// Sync retrieves mappings and writes them below dir with container-readable
+// permissions. The owner-only directory prevents other host users from
+// traversing the generated secret tree. Existing files outside mappings are
+// preserved.
 func Sync(ctx context.Context, store SecretStore, dir string, mappings []Mapping) error {
 	if store == nil {
 		return fmt.Errorf("%w: store", ErrParamMissing)
@@ -89,7 +91,7 @@ func writeSecret(path string, value []byte) error {
 	}
 	tmpPath := tmp.Name()
 	defer func() { _ = os.Remove(tmpPath) }()
-	if err := tmp.Chmod(0o600); err != nil {
+	if err := tmp.Chmod(0o444); err != nil {
 		_ = tmp.Close()
 		return err
 	}

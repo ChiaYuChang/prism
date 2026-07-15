@@ -133,7 +133,7 @@ func TestSyncWritesMappedSecrets(t *testing.T) {
 	assert.Equal(t, []byte("value"), value)
 	info, err := os.Stat(filepath.Join(dir, "nested", "secret"))
 	require.NoError(t, err)
-	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	assert.Equal(t, os.FileMode(0o444), info.Mode().Perm())
 }
 
 func TestSyncRetrievesAllBeforeWriting(t *testing.T) {

@@ -32,7 +32,8 @@ tasks:
     desc: sync local secrets from the unlocked RBW vault
     summary: |
       Retrieves the configured Prism secrets from rbw and materializes them
-      under .secrets/ with owner-only permissions for Docker Compose mounts.
+      under an owner-only .secrets/ directory with container-readable files
+      for Docker Compose mounts.
       Existing generated root/admin token files are preserved.
     cmds:
       - go run ./cmd/prism-secrets
