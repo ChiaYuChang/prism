@@ -15,6 +15,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
+	"github.com/ChiaYuChang/prism/internal/storage/objectstore"
 )
 
 const TracerName = "prism.worker.archive"
@@ -104,7 +105,7 @@ func openArchiver(ctx context.Context, uri string, s3cfg appconfig.S3Config, log
 	if err != nil {
 		return nil, fmt.Errorf("build s3 client: %w", err)
 	}
-	if err := archiver.EnsureBucket(ctx, client, u.Host); err != nil {
+	if err := objectstore.EnsureBucket(ctx, client, u.Host); err != nil {
 		return nil, err
 	}
 	return archiver.NewS3Archiver(client, u.Host, strings.TrimPrefix(u.Path, "/"), logger)

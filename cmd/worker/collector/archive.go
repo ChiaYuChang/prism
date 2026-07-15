@@ -9,6 +9,7 @@ import (
 
 	"github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/collector/archiver"
+	"github.com/ChiaYuChang/prism/internal/storage/objectstore"
 )
 
 // openArchiver constructs an Archiver from an archive URI. For "s3://bucket/prefix"
@@ -29,7 +30,7 @@ func openArchiver(ctx context.Context, uri string, s3cfg appconfig.S3Config, log
 		if err != nil {
 			return nil, fmt.Errorf("build s3 client: %w", err)
 		}
-		if err := archiver.EnsureBucket(ctx, client, bucket); err != nil {
+		if err := objectstore.EnsureBucket(ctx, client, bucket); err != nil {
 			return nil, err
 		}
 		return archiver.NewS3Archiver(client, bucket, prefix, logger)

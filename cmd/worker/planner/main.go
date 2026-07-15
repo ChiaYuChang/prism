@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +22,8 @@ import (
 	"github.com/ChiaYuChang/prism/internal/prompt"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
+	"github.com/ChiaYuChang/prism/internal/storage"
+	"github.com/ChiaYuChang/prism/internal/storage/filesystem"
 )
 
 const (
@@ -88,6 +92,12 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() { _ = dbRepoCloser.Close() }()
+	plannerModel, err := loadPlannerModel(ctx, dbRepo.Embedding(), config.LLM.Model)
+	if err != nil {
+		logger.Error("configured planner model is not registered", "model", config.LLM.Model, "error", err)
+		monitor.SetStatus(obs.LevelError, "Configured planner model is not registered")
+		os.Exit(1)
+	}
 
 	providerName, err := config.LLM.ProviderName()
 	if err != nil {
@@ -104,7 +114,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	promptBody, promptLogAttrs, err := loadPlannerPrompt(ctx, dbRepo.Prompts(), *config)
+	promptStore, err := filesystem.NewLocalStore(config.PromptRoot)
+	if err != nil {
+		logger.Error("failed to initialize prompt storage", "error", err)
+		monitor.SetStatus(obs.LevelError, "Failed to initialize prompt storage")
+		os.Exit(1)
+	}
+	promptBody, promptVersion, promptLogAttrs, err := loadPlannerPrompt(ctx, dbRepo.Prompts(), promptStore, *config)
 	if err != nil {
 		logger.Error("failed to load prompt", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to load prompt")
@@ -118,7 +134,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	plan, err := planner.New(logger, tracer, ext, dbRepo.Tasks(), dbRepo.Pipeline())
+	plan, err := planner.NewAtomic(logger, tracer, ext, dbRepo.Pipeline(), dbRepo.Planner(), plannerModel.ID, promptVersion.ID)
 	if err != nil {
 		logger.Error("failed to initialize planner", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize planner")
@@ -181,6 +197,25 @@ func main() {
 	}
 }
 
+func ensurePlannerModel(ctx context.Context, embeddings repo.Embeddings, modelName string) error {
+	_, err := loadPlannerModel(ctx, embeddings, modelName)
+	return err
+}
+
+func loadPlannerModel(ctx context.Context, embeddings repo.Embeddings, modelName string) (repo.Model, error) {
+	if embeddings == nil {
+		return repo.Model{}, fmt.Errorf("embedding repository is missing")
+	}
+	if strings.TrimSpace(modelName) == "" {
+		return repo.Model{}, fmt.Errorf("planner model is missing")
+	}
+	model, err := embeddings.GetModelByNameAndType(ctx, modelName, "EXTRACTOR")
+	if err != nil {
+		return repo.Model{}, fmt.Errorf("planner model %q is not registered: %w", modelName, err)
+	}
+	return model, nil
+}
+
 func warnIfOllamaUnavailable(ctx context.Context, config appconfig.LLMConfig, providerName string, logger *slog.Logger) {
 	if providerName != "ollama" {
 		return
@@ -206,30 +241,30 @@ func warnIfOllamaUnavailable(ctx context.Context, config appconfig.LLMConfig, pr
 		logger.Warn("Ollama endpoint unavailable at startup", "base_url", baseURL, "error", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode >= http.StatusBadRequest {
 		logger.Warn("Ollama endpoint returned an error at startup", "base_url", baseURL, "status", resp.StatusCode)
 	}
 }
 
-func loadPlannerPrompt(ctx context.Context, prompts repo.Prompts, config Config) ([]byte, []any, error) {
+func loadPlannerPrompt(ctx context.Context, prompts repo.Prompts, store storage.Store, config Config) ([]byte, repo.PromptVersion, []any, error) {
 	if config.Prompt.Enabled() {
-		body, version, err := prompt.Resolve(ctx, prompts, config.Prompt)
+		body, version, err := prompt.Resolve(ctx, prompts, store, config.Prompt)
 		if err != nil {
-			return nil, nil, err
+			return nil, repo.PromptVersion{}, nil, err
 		}
-		return body, []any{
+		return body, version, []any{
 			"prompt_id", version.ID.String(),
-			"prompt_key", version.Key,
+			"prompt_name", version.Name,
 			"prompt_version", version.Version,
 			"prompt_hash", version.Hash,
-			"prompt_path", version.Path,
+			"prompt_root", config.PromptRoot,
 		}, nil
 	}
 	body, err := os.ReadFile(config.PromptPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, repo.PromptVersion{}, nil, err
 	}
-	return body, []any{"prompt_path", config.PromptPath}, nil
+	return body, repo.PromptVersion{}, []any{"prompt_path", config.PromptPath}, nil
 }

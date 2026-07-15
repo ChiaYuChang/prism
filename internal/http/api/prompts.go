@@ -1,19 +1,21 @@
 package api
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/prompt"
 	"github.com/ChiaYuChang/prism/internal/repo"
+	"github.com/ChiaYuChang/prism/internal/storage"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -23,12 +25,9 @@ const maxPromptUploadBytes = 1 << 20
 var promptKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*(/[a-z0-9][a-z0-9_-]*){1,8}$`)
 
 type AdminPromptVersion struct {
-	ID        uuid.UUID `json:"id"`
-	KeyID     uuid.UUID `json:"key_id"`
-	Key       string    `json:"key"`
+	Name      string    `json:"name"`
 	Version   int32     `json:"version"`
 	Hash      string    `json:"hash"`
-	Path      string    `json:"path"`
 	SizeBytes int64     `json:"size_bytes"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -46,7 +45,7 @@ type AdminListPromptVersionsResponse struct {
 // @Tags      admin
 // @Accept    multipart/form-data
 // @Produce   json
-// @Param     key  formData string true  "Prompt key, e.g. worker/planner/analysis/extractor"
+// @Param     name formData string true  "Prompt name, e.g. worker/planner/analysis/extractor"
 // @Param     hash formData string false "Expected SHA-256 hash, formatted as sha256:<hex>"
 // @Param     file formData file   true  "Prompt markdown file"
 // @Success   200 {object} AdminPromptVersion
@@ -64,9 +63,9 @@ func (s *Server) CreatePromptVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := strings.TrimSpace(r.FormValue("key"))
-	if !validPromptKey(key) {
-		writeError(w, http.StatusBadRequest, "invalid prompt key")
+	name := normalizePromptName(r.FormValue("name"))
+	if !validPromptName(name) {
+		writeError(w, http.StatusBadRequest, "invalid prompt name")
 		return
 	}
 
@@ -93,21 +92,20 @@ func (s *Server) CreatePromptVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, err := s.writePromptObject(key, hash, body)
+	err = s.writePromptObject(r.Context(), hash, body)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "write prompt object failed", slog.String("key", key), slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "write prompt object failed", slog.String("name", name), slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to store prompt file")
 		return
 	}
 
 	prompt, err := prompts.CreatePromptVersion(r.Context(), repo.CreatePromptVersionParams{
-		Key:       key,
+		Name:      name,
 		Hash:      hash,
-		Path:      path,
 		SizeBytes: int64(len(body)),
 	})
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "create prompt version failed", slog.String("key", key), slog.Any("error", err))
+		s.Logger.ErrorContext(r.Context(), "create prompt version failed", slog.String("name", name), slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to create prompt version")
 		return
 	}
@@ -153,7 +151,7 @@ func (s *Server) GetPromptVersion(w http.ResponseWriter, r *http.Request) {
 // @Summary   List operator prompt versions
 // @Tags      admin
 // @Produce   json
-// @Param     key   query string false "Prompt key"
+// @Param     name  query string false "Prompt name"
 // @Param     limit query int    false "Page size (default 50, max 500)"
 // @Param     next  query int    false "Cursor for next page (default 1)"
 // @Success   200 {object} AdminListPromptVersionsResponse
@@ -169,7 +167,7 @@ func (s *Server) ListPromptVersions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	key := strings.TrimSpace(r.URL.Query().Get("key"))
+	key := normalizePromptName(r.URL.Query().Get("name"))
 	var (
 		rows []repo.PromptVersion
 		err  error
@@ -177,8 +175,8 @@ func (s *Server) ListPromptVersions(w http.ResponseWriter, r *http.Request) {
 	if key == "" {
 		rows, err = prompts.ListPromptVersions(r.Context(), params)
 	} else {
-		if !validPromptKey(key) {
-			writeError(w, http.StatusBadRequest, "invalid prompt key")
+		if !validPromptName(key) {
+			writeError(w, http.StatusBadRequest, "invalid prompt name")
 			return
 		}
 		rows, err = prompts.ListPromptVersionsByKey(r.Context(), key, params)
@@ -203,44 +201,19 @@ func (s *Server) promptsOrError(w http.ResponseWriter) repo.Prompts {
 	return s.Prompts
 }
 
-func (s *Server) writePromptObject(key string, hash string, body []byte) (string, error) {
-	hexHash := strings.TrimPrefix(hash, "sha256:")
-	dir := filepath.Join(append([]string{s.PromptRoot}, strings.Split(key, "/")...)...)
-	path := filepath.Join(dir, hexHash+".md")
-
-	if existing, err := os.ReadFile(path); err == nil {
-		if promptHash(existing) != hash {
-			return "", fmt.Errorf("prompt object hash collision at %s", path)
-		}
-		return path, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", err
+func (s *Server) writePromptObject(ctx context.Context, hash string, body []byte) error {
+	if s.PromptStore == nil {
+		return fmt.Errorf("prompt storage is unavailable")
 	}
-
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	tmp, err := os.CreateTemp(dir, ".prompt-*.tmp")
-	if err != nil {
-		return "", err
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if _, err := tmp.Write(body); err != nil {
-		_ = tmp.Close()
-		return "", err
-	}
-	if err := tmp.Close(); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return "", err
-	}
-	return path, nil
+	return s.PromptStore.Put(ctx, prompt.ObjectKey(hash), bytes.NewReader(body), storage.PutOptions{ContentType: "text/markdown"})
 }
 
-func validPromptKey(key string) bool {
-	return promptKeyPattern.MatchString(key) && !strings.Contains(key, "..")
+func normalizePromptName(name string) string {
+	return strings.ReplaceAll(strings.Trim(strings.TrimSpace(name), "."), "/", ".")
+}
+
+func validPromptName(name string) bool {
+	return promptKeyPattern.MatchString(strings.ReplaceAll(name, ".", "/")) && !strings.Contains(name, "..")
 }
 
 func promptHash(body []byte) string {
@@ -250,12 +223,9 @@ func promptHash(body []byte) string {
 
 func toAdminPromptVersion(prompt repo.PromptVersion) AdminPromptVersion {
 	return AdminPromptVersion{
-		ID:        prompt.ID,
-		KeyID:     prompt.KeyID,
-		Key:       prompt.Key,
+		Name:      prompt.Name,
 		Version:   prompt.Version,
 		Hash:      prompt.Hash,
-		Path:      prompt.Path,
 		SizeBytes: prompt.SizeBytes,
 		CreatedAt: prompt.CreatedAt,
 	}
