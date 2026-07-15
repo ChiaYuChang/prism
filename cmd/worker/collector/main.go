@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/prompt"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
+	"github.com/ChiaYuChang/prism/internal/storage/filesystem"
 )
 
 const (
@@ -316,16 +318,20 @@ func minDuration(a, b time.Duration) time.Duration {
 
 func loadCollectorFallbackPrompt(ctx context.Context, prompts repo.Prompts, cfg parserconfig.FallbackConfig) (string, []any, error) {
 	if cfg.Prompt.Enabled() {
-		body, version, err := prompt.Resolve(ctx, prompts, cfg.Prompt)
+		store, err := filesystem.NewLocalStore(filepath.Dir(cfg.PromptFile))
+		if err != nil {
+			return "", nil, err
+		}
+		body, version, err := prompt.Resolve(ctx, prompts, store, cfg.Prompt)
 		if err != nil {
 			return "", nil, err
 		}
 		return strings.TrimRight(string(body), " \t\n\r"), []any{
 			"prompt_id", version.ID.String(),
-			"prompt_key", version.Key,
+			"prompt_name", version.Name,
 			"prompt_version", version.Version,
 			"prompt_hash", version.Hash,
-			"prompt_path", version.Path,
+			"prompt_root", filepath.Dir(cfg.PromptFile),
 		}, nil
 	}
 	body, err := parserconfig.LoadFallbackPrompt(cfg)

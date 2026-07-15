@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +22,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
+	"github.com/ChiaYuChang/prism/internal/storage"
 )
 
 var ErrParamMissing = errors.New("param missing")
@@ -171,15 +171,15 @@ func WithOperator(operator repo.Operator) ServerOption {
 	}
 }
 
-// WithPrompts attaches the prompt version repository and storage root used by
+// WithPrompts attaches the prompt version repository and storage used by
 // authenticated prompt management endpoints.
-func WithPrompts(prompts repo.Prompts, root string) ServerOption {
+func WithPrompts(prompts repo.Prompts, store storage.Store) ServerOption {
 	return func(s *Server) {
 		if prompts != nil {
 			s.Prompts = prompts
 		}
-		if strings.TrimSpace(root) != "" {
-			s.PromptRoot = filepath.Clean(root)
+		if store != nil {
+			s.PromptStore = store
 		}
 	}
 }
@@ -216,7 +216,7 @@ type Server struct {
 	Cache            ProgressCache
 	GetFetchLimiter  middleware.IPLimiter
 	Monitor          StatusMonitor
-	PromptRoot       string
+	PromptStore      storage.Store
 	SchedulerToggles *infra.SchedulerToggleStore
 }
 
@@ -252,7 +252,6 @@ func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline
 		Cache:           NoOpProgressCache{},
 		GetFetchLimiter: middleware.NoOpIPLimiter{},
 		Monitor:         NewInMemoryMonitor(""),
-		PromptRoot:      "runtime/prompts",
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -283,6 +282,7 @@ func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("GET /candidates", s.requireAdmin(http.HandlerFunc(s.ListCandidates)))
 	r.Handle("GET /candidates/{id}", s.requireAdmin(http.HandlerFunc(s.GetAdminCandidate)))
 	r.Handle("GET /models", s.requireAdmin(http.HandlerFunc(s.ListAdminModels)))
+	r.Handle("POST /models", s.requireAdmin(http.HandlerFunc(s.CreateAdminModel)))
 	r.Handle("GET /sources", s.requireAdmin(http.HandlerFunc(s.ListAdminSources)))
 	r.Handle("GET /batches", s.requireAdmin(http.HandlerFunc(s.ListAdminBatches)))
 	r.Handle("GET /entities", s.requireAdmin(http.HandlerFunc(s.ListAdminEntities)))
@@ -302,6 +302,7 @@ func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("DELETE /sources/{abbr}", s.requireAdmin(http.HandlerFunc(s.DeleteAdminSource)))
 	r.Handle("POST /sources/{abbr}/restore", s.requireAdmin(http.HandlerFunc(s.RestoreAdminSource)))
 	r.Handle("GET /prompts", s.requireAdmin(http.HandlerFunc(s.ListPromptVersions)))
+	r.Handle("POST /prompts", s.requireAdmin(http.HandlerFunc(s.CreatePromptVersion)))
 	r.Handle("GET /prompts/{id}", s.requireAdmin(http.HandlerFunc(s.GetPromptVersion)))
 	r.Handle("GET /tokens", s.requireAdmin(http.HandlerFunc(s.ListTokens)))
 	r.Handle("GET /tokens/{id}", s.requireAdmin(http.HandlerFunc(s.GetToken)))
