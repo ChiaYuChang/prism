@@ -136,6 +136,15 @@ func TestSyncWritesMappedSecrets(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o444), info.Mode().Perm())
 }
 
+func TestWithPrefix(t *testing.T) {
+	mappings := []Mapping{{Item: "google-gemini", Path: "google-gemini"}}
+
+	got := WithPrefix(mappings, "prism_")
+
+	assert.Equal(t, []Mapping{{Item: "prism_google-gemini", Path: "google-gemini"}}, got)
+	assert.Equal(t, "google-gemini", mappings[0].Item)
+}
+
 func TestSyncRetrievesAllBeforeWriting(t *testing.T) {
 	dir := t.TempDir()
 	store := fakeStore{values: map[string][]byte{"one": []byte("value")}, err: errors.New("missing")}

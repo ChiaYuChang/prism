@@ -105,6 +105,72 @@ func (_c *MockPrompts_CreatePromptVersion_Call) RunAndReturn(run func(ctx contex
 	return _c
 }
 
+// GetLatestPromptVersionByName provides a mock function for the type MockPrompts
+func (_mock *MockPrompts) GetLatestPromptVersionByName(ctx context.Context, name string) (repo.PromptVersion, error) {
+	ret := _mock.Called(ctx, name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLatestPromptVersionByName")
+	}
+
+	var r0 repo.PromptVersion
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (repo.PromptVersion, error)); ok {
+		return returnFunc(ctx, name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) repo.PromptVersion); ok {
+		r0 = returnFunc(ctx, name)
+	} else {
+		r0 = ret.Get(0).(repo.PromptVersion)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, name)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPrompts_GetLatestPromptVersionByName_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestPromptVersionByName'
+type MockPrompts_GetLatestPromptVersionByName_Call struct {
+	*mock.Call
+}
+
+// GetLatestPromptVersionByName is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name string
+func (_e *MockPrompts_Expecter) GetLatestPromptVersionByName(ctx interface{}, name interface{}) *MockPrompts_GetLatestPromptVersionByName_Call {
+	return &MockPrompts_GetLatestPromptVersionByName_Call{Call: _e.mock.On("GetLatestPromptVersionByName", ctx, name)}
+}
+
+func (_c *MockPrompts_GetLatestPromptVersionByName_Call) Run(run func(ctx context.Context, name string)) *MockPrompts_GetLatestPromptVersionByName_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPrompts_GetLatestPromptVersionByName_Call) Return(promptVersion repo.PromptVersion, err error) *MockPrompts_GetLatestPromptVersionByName_Call {
+	_c.Call.Return(promptVersion, err)
+	return _c
+}
+
+func (_c *MockPrompts_GetLatestPromptVersionByName_Call) RunAndReturn(run func(ctx context.Context, name string) (repo.PromptVersion, error)) *MockPrompts_GetLatestPromptVersionByName_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetPromptVersionByID provides a mock function for the type MockPrompts
 func (_mock *MockPrompts) GetPromptVersionByID(ctx context.Context, id uuid.UUID) (repo.PromptVersion, error) {
 	ret := _mock.Called(ctx, id)

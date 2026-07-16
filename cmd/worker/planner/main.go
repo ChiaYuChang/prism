@@ -133,7 +133,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	plan, err := planner.NewAtomic(logger, tracer, ext, dbRepo.Pipeline(), dbRepo.Planner(), plannerModel.ID, promptVersion.ID)
+	plan, err := planner.NewAtomic(logger, tracer, ext, dbRepo.Pipeline(), dbRepo.Planner(), plannerModel.ID, promptVersion.ID, config.MaxSearchTasks)
 	if err != nil {
 		logger.Error("failed to initialize planner", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize planner")

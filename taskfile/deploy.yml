@@ -6,7 +6,7 @@ tasks:
     summary: |
       Preflights required local secret files, bakes env/local/test.local.env and
       build/infra runtime config, then starts the full containerized stack via
-      the existing compose:start flow. This intentionally uses a fresh nested
+       the existing compose:up flow. This intentionally uses a fresh nested
       `task` process after baking secrets so Task's dotenv layer reloads the
       generated env/local/test.local.env file.
     vars:
@@ -16,7 +16,7 @@ tasks:
       - task: preflight:test
       - ENV={{.DEPLOY_ENV}} ./script/secrets-bake.sh
       - ENV={{.DEPLOY_ENV}} ./script/infra-bake.sh
-      - task compose:start ENV={{.DEPLOY_ENV}} COMPOSE_PROFILES={{.DEPLOY_PROFILES}}
+      - task compose:up ENV={{.DEPLOY_ENV}} COMPOSE_PROFILES={{.DEPLOY_PROFILES}}
       - |
         printf '\nLocal test stack is starting/running.\n'
         printf 'API health:   http://localhost:8090/healthz\n'
@@ -61,7 +61,7 @@ tasks:
         require_file .secrets/pg-prism
         require_file .secrets/nats-auth-token
         require_file .secrets/seaweedfs
-        require_file .secrets/valkey_prism
+        require_file .secrets/valkey-prism
         require_file .secrets/grafana
 
         case ",{{.DEPLOY_PROFILES}}," in

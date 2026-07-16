@@ -1,11 +1,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	app "github.com/ChiaYuChang/prism/internal/appconfig"
+	"github.com/ChiaYuChang/prism/internal/repo"
+	"github.com/ChiaYuChang/prism/internal/repo/mocks"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,11 +22,19 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 
 	require.Equal(t, 8094, cfg.HealthPort)
 	require.Equal(t, "/app/assets/worker/planner/prompts/analysis/extractor.md", cfg.PromptPath)
+	require.Equal(t, 20, cfg.MaxSearchTasks)
 	require.Equal(t, "postgres", cfg.Postgres.Host)
 	providerName, err := cfg.LLM.ProviderName()
 	require.NoError(t, err)
 	require.Equal(t, "ollama", providerName)
 	require.Equal(t, "gemma4:31b-cloud", cfg.LLM.Model)
+	natsCfg, ok := cfg.Messenger.(*app.NatsConfig)
+	require.True(t, ok)
+	require.Equal(t, 3*time.Minute+15*time.Second, natsCfg.AckWaitTimeout)
+	require.Equal(t, "prism_batch_completed", natsCfg.Stream)
+	require.Equal(t, "planner-worker", natsCfg.Consumer)
+	require.NotNil(t, natsCfg.AutoProvision)
+	require.False(t, *natsCfg.AutoProvision)
 	providerCfg, err := cfg.LLM.ProviderConfig()
 	require.NoError(t, err)
 	require.Equal(t, "http://host.docker.internal:11434", providerCfg["base_url"])
@@ -38,6 +51,22 @@ func setShippedConfigEnv(t *testing.T) {
 	t.Setenv("PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE", "true")
 	t.Setenv("PRISM_WORKER_OTEL_ENABLED", "true")
 	t.Setenv("OTEL_COLLECTOR_ENDPOINT", "otel-collector:4317")
+}
+
+func TestEnsurePlannerModel(t *testing.T) {
+	embeddings := mocks.NewMockEmbeddings(t)
+	embeddings.EXPECT().GetModelByNameAndType(context.Background(), "gemma4:31b-cloud", "EXTRACTOR").Return(repo.Model{ID: 1}, nil)
+
+	require.NoError(t, ensurePlannerModel(context.Background(), embeddings, "gemma4:31b-cloud"))
+}
+
+func TestEnsurePlannerModelMissing(t *testing.T) {
+	embeddings := mocks.NewMockEmbeddings(t)
+	embeddings.EXPECT().GetModelByNameAndType(context.Background(), "missing", "EXTRACTOR").Return(repo.Model{}, errors.New("not found"))
+
+	err := ensurePlannerModel(context.Background(), embeddings, "missing")
+
+	require.Error(t, err)
 }
 
 func TestLoadConfigSearchTargetsFromYAML(t *testing.T) {

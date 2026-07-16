@@ -106,7 +106,7 @@ the catalog refactor cutover.
 
 Goal: replace implicit "external service must be running" assumptions with self-contained, reproducible integration tests that work identically on dev laptops and CI.
 
-**Current pain:** `internal/collector/archiver/s3_test.go` fails when SeaweedFS isn't running at `localhost:8333`. Nothing in the test harness documents or provisions that dependency — it's a silent requirement on `task compose:up`.
+**Current pain:** `internal/collector/archiver/s3_test.go` fails when SeaweedFS isn't running at `localhost:8333`. Nothing in the test harness documents or provisions that dependency — it's a silent requirement on `task compose:infra`.
 
 ### Scope (start narrow, expand as need proves)
 
@@ -153,7 +153,7 @@ jobs:
 
 Why testcontainers-go over GH Actions `services:` block:
 
-- **One code path for local and CI** — `go test -tags=integration` runs the same way on a laptop and in Actions. `services:` only exists in CI, which means local developers fall back to `task compose:up` and the two paths silently diverge.
+- **One code path for local and CI** — `go test -tags=integration` runs the same way on a laptop and in Actions. `services:` only exists in CI, which means local developers fall back to `task compose:infra` and the two paths silently diverge.
 - **No workflow YAML churn** as test dependencies evolve — the containers are declared in Go, next to the tests that need them.
 - **Per-test isolation** — fresh DB / bucket per test is trivial; `services:` gives you one shared instance for the whole job.
 - Docker is preinstalled on `ubuntu-latest`, so there's no runner setup cost.
@@ -288,11 +288,11 @@ verification is out of scope for Phase 6.
    captured DPP/KMT/TPP fixtures from Phase 1 rather than
    handcrafting new HTML.
 3. **Bucket pre-creation** — SeaweedFS bucket must exist before the
-   archiver's first write. Confirm whether `compose:up` already
+   archiver's first write. Confirm whether `compose:infra` already
    handles this; if not, add a one-shot init container or a `psql`-
    style seed step. Step 6 mitigates by being optional.
 4. **Worker readiness race** — the driver currently has no
-   `wait-for-it` step beyond `compose:up`. If the api-server or
+   `wait-for-it` step beyond `compose:infra`. If the api-server or
    collector is slow to bind, step 2/3 may hit `connection refused`.
    Add a small `script/e2e-wait.sh` polling `/healthz` if observed.
 

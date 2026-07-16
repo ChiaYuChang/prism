@@ -10,6 +10,9 @@ nats-port: 4222
 queue-group: discovery-worker
 subscribers-count: 1
 ack-wait-timeout: 30s
+nats-stream: prism_task
+nats-consumer: discovery-worker
+nats-auto-provision: false
 postgres:
   host: '{{ env "POSTGRES_HOST" "postgres" }}'
   port: {{ env "POSTGRES_PORT" "5432" }}
@@ -19,14 +22,23 @@ postgres:
   metrics-enabled: true
 search:
   provider:
-    serpapi:
+    brave:
       enable: true
+      api_key_file: '{{ env "PRISM_DISCOVERY_WORKER_SEARCH_PROVIDER_BRAVE_API_KEY_FILE" "" }}'
+      ui_lang: zh-TW
+      search_lang: zh-hant
+      country: TW
+      safesearch: off
+      count: 20
+      freshness: pw
+    serpapi:
+      enable: false
       api_key_file: '{{ env "PRISM_DISCOVERY_WORKER_SERPAPI_API_KEY_FILE" "" }}'
       google_news:
-        enable: true
+        enable: false
         params:
           tw:
-            enable: true
+            enable: false
             geolocation: tw
             host_language: zh-TW
 telemetry:

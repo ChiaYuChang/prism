@@ -20,6 +20,8 @@ import (
 	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/infra"
+	"github.com/ChiaYuChang/prism/internal/infra/natsadmin"
+	"github.com/ChiaYuChang/prism/internal/infra/natsdiag"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/storage"
@@ -200,6 +202,30 @@ func WithSources(sources repo.Sources) ServerOption {
 	return func(s *Server) { s.Sources = sources }
 }
 
+// WithNATSInspector attaches the read-only JetStream inspector used by admin
+// diagnostics. It cannot publish, subscribe, acknowledge, or mutate NATS.
+func WithNATSInspector(inspector NATSInspector) ServerOption {
+	return func(s *Server) { s.NATSInspector = inspector }
+}
+
+func WithNATSAdmin(admin NATSAdmin) ServerOption {
+	return func(s *Server) { s.NATSAdmin = admin }
+}
+
+type NATSInspector interface {
+	Snapshot(context.Context) (natsdiag.Snapshot, error)
+}
+
+type NATSAdmin interface {
+	Apply(context.Context, natsadmin.Manifest, natsadmin.ApplyOptions) (natsadmin.ApplyReport, error)
+	PauseConsumer(context.Context, natsadmin.ConsumerRef, natsadmin.PauseRequest) (natsadmin.PauseResult, error)
+	ResumeConsumer(context.Context, natsadmin.ConsumerRef) (natsadmin.PauseResult, error)
+	DeleteConsumer(context.Context, natsadmin.ConsumerRef) error
+	DeleteStream(context.Context, string) error
+	PurgeStream(context.Context, string) error
+	PublishTestMessage(context.Context, string) (natsadmin.TestMessageResult, error)
+}
+
 // Server groups dependencies shared by all API handlers.
 type Server struct {
 	Logger           *slog.Logger
@@ -218,6 +244,8 @@ type Server struct {
 	Monitor          StatusMonitor
 	PromptStore      storage.Store
 	SchedulerToggles *infra.SchedulerToggleStore
+	NATSInspector    NATSInspector
+	NATSAdmin        NATSAdmin
 }
 
 type TokenTypeConfig struct {
@@ -289,6 +317,16 @@ func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("GET /schedules", s.requireAdmin(http.HandlerFunc(s.ListAdminSchedules)))
 	r.Handle("GET /embedding/{model_name}", s.requireAdmin(http.HandlerFunc(s.ListAdminEmbeddings)))
 	r.Handle("GET /tasks", s.requireAdmin(http.HandlerFunc(s.ListAdminTasks)))
+	r.Handle("POST /tasks", s.requireAdmin(http.HandlerFunc(s.CreateAdminTask)))
+	r.Handle("GET /nats", s.requireAdmin(http.HandlerFunc(s.GetAdminNATS)))
+	r.Handle("POST /nats/apply", s.requireAdmin(http.HandlerFunc(s.ApplyAdminNATS)))
+	r.Handle("POST /nats/streams/{stream}/purge", s.requireAdmin(http.HandlerFunc(s.PurgeAdminNATSStream)))
+	r.Handle("DELETE /nats/streams/{stream}", s.requireAdmin(http.HandlerFunc(s.DeleteAdminNATSStream)))
+	r.Handle("POST /nats/streams/{stream}/consumers/{consumer}/pause", s.requireAdmin(http.HandlerFunc(s.PauseAdminNATSConsumer)))
+	r.Handle("POST /nats/streams/{stream}/consumers/{consumer}/resume", s.requireAdmin(http.HandlerFunc(s.ResumeAdminNATSConsumer)))
+	r.Handle("DELETE /nats/streams/{stream}/consumers/{consumer}", s.requireAdmin(http.HandlerFunc(s.DeleteAdminNATSConsumer)))
+	r.Handle("POST /nats/test-message", s.requireAdmin(http.HandlerFunc(s.PublishAdminNATSTestMessage)))
+	r.Handle("GET /diagnostics", s.requireAdmin(http.HandlerFunc(s.GetAdminDiagnostics)))
 	r.Handle("GET /tasks/{id}", s.requireAdmin(http.HandlerFunc(s.GetAdminTask)))
 	r.Handle("POST /tasks/{id}/retry", s.requireAdmin(http.HandlerFunc(s.RetryAdminTask)))
 	r.Handle("GET /schedulers/{name}", s.requireAdmin(http.HandlerFunc(s.GetAdminSchedulerToggle)))

@@ -327,7 +327,7 @@ func (s *Scheduler) DispatchTasks(ctx context.Context, tasks []repo.Task) error 
 			span.RecordError(err)
 			result = "error"
 			tLogger.Error("failed to publish task signal", "error", err)
-			if failErr := s.scheduler.FailTask(ctx, task.ID, s.retryMax); failErr != nil {
+			if failErr := s.scheduler.FailTask(ctx, task.ID, s.retryMax, err.Error()); failErr != nil {
 				span.RecordError(failErr)
 				s.metrics.recordTask(ctx, task, "mark_failed_error")
 				tLogger.Error("failed to mark task as failed", "error", failErr)

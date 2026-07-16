@@ -175,6 +175,39 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/diagnostics": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Show aggregate operator diagnostics",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Number of recent failures",
+                        "name": "failure_limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.AdminDiagnostics"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/embedding/{model_name}": {
             "get": {
                 "produces": [
@@ -317,6 +350,351 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/nats": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Inspect NATS JetStream state",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/natsdiag.Snapshot"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/nats/apply": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Apply a JetStream manifest",
+                "parameters": [
+                    {
+                        "description": "JetStream manifest",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ApplyNATSRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/natsadmin.ApplyReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/nats/streams/{stream}": {
+            "delete": {
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Delete a JetStream stream",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stream name",
+                        "name": "stream",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stream name confirmation",
+                        "name": "confirm",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/nats/streams/{stream}/consumers/{consumer}": {
+            "delete": {
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Delete a JetStream consumer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stream name",
+                        "name": "stream",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Consumer name",
+                        "name": "consumer",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Consumer name confirmation",
+                        "name": "confirm",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/nats/streams/{stream}/consumers/{consumer}/pause": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Pause a JetStream consumer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stream name",
+                        "name": "stream",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Consumer name",
+                        "name": "consumer",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Pause deadline",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.PauseNATSConsumerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/natsadmin.PauseResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/nats/streams/{stream}/consumers/{consumer}/resume": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Resume a JetStream consumer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stream name",
+                        "name": "stream",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Consumer name",
+                        "name": "consumer",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/natsadmin.PauseResult"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/nats/streams/{stream}/purge": {
+            "post": {
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Purge a JetStream stream",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Stream name",
+                        "name": "stream",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stream name confirmation",
+                        "name": "confirm",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/nats/test-message": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Publish a restricted JetStream test message",
+                "parameters": [
+                    {
+                        "description": "Test subject",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.NATSTestMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/natsadmin.TestMessageResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/prompts": {
             "get": {
                 "produces": [
@@ -329,8 +707,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Prompt key",
-                        "name": "key",
+                        "description": "Prompt name",
+                        "name": "name",
                         "in": "query"
                     },
                     {
@@ -531,6 +909,55 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Create controlled operator task",
+                "parameters": [
+                    {
+                        "description": "Task request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.adminCreateTaskRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/api.AdminTask"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -1138,6 +1565,35 @@ const docTemplate = `{
                 }
             }
         },
+        "api.AdminDiagnostics": {
+            "type": "object",
+            "properties": {
+                "nats": {
+                    "$ref": "#/definitions/natsdiag.Snapshot"
+                },
+                "nats_error": {
+                    "type": "string"
+                },
+                "recent_failures": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.AdminFailedTaskSummary"
+                    }
+                },
+                "services": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/obs.HealthStatus"
+                    }
+                },
+                "task_summary": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.AdminTaskStatusSummary"
+                    }
+                }
+            }
+        },
         "api.AdminEmbeddingListResponse": {
             "type": "object",
             "properties": {
@@ -1203,6 +1659,29 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.AdminFailedTaskSummary": {
+            "type": "object",
+            "properties": {
+                "failure_message": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "source_abbr": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "url": {
                     "type": "string"
                 }
             }
@@ -1408,13 +1887,7 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "key": {
-                    "type": "string"
-                },
-                "key_id": {
-                    "type": "string"
-                },
-                "path": {
+                "name": {
                     "type": "string"
                 },
                 "size_bytes": {
@@ -1522,6 +1995,9 @@ const docTemplate = `{
                 "expires_at": {
                     "type": "string"
                 },
+                "failure_message": {
+                    "type": "string"
+                },
                 "frequency": {
                     "type": "integer"
                 },
@@ -1569,6 +2045,20 @@ const docTemplate = `{
                 }
             }
         },
+        "api.AdminTaskStatusSummary": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/repo.TaskStatus"
+                }
+            }
+        },
         "api.AdminToken": {
             "type": "object",
             "properties": {
@@ -1601,6 +2091,17 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "string"
+                }
+            }
+        },
+        "api.ApplyNATSRequest": {
+            "type": "object",
+            "properties": {
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "manifest": {
+                    "$ref": "#/definitions/natsadmin.Manifest"
                 }
             }
         },
@@ -1751,6 +2252,14 @@ const docTemplate = `{
                 }
             }
         },
+        "api.NATSTestMessageRequest": {
+            "type": "object",
+            "properties": {
+                "subject": {
+                    "type": "string"
+                }
+            }
+        },
         "api.PageFetchItem": {
             "type": "object",
             "properties": {
@@ -1787,6 +2296,17 @@ const docTemplate = `{
                 }
             }
         },
+        "api.PauseNATSConsumerRequest": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string"
+                },
+                "until": {
+                    "type": "string"
+                }
+            }
+        },
         "api.PostStatusPayload": {
             "type": "object",
             "properties": {
@@ -1812,6 +2332,273 @@ const docTemplate = `{
             "properties": {
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "api.adminCreateTaskRequest": {
+            "type": "object",
+            "properties": {
+                "batch_id": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "meta": {
+                    "type": "object"
+                },
+                "next_run_at": {
+                    "type": "string"
+                },
+                "payload": {
+                    "type": "object"
+                },
+                "source_abbr": {
+                    "type": "string"
+                },
+                "source_type": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "natsadmin.ApplyReport": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "unchanged": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updated": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "natsadmin.ConsumerManifest": {
+            "type": "object",
+            "properties": {
+                "ack_policy": {
+                    "type": "string"
+                },
+                "ack_wait": {
+                    "type": "string"
+                },
+                "deliver_policy": {
+                    "type": "string"
+                },
+                "filter_subject": {
+                    "type": "string"
+                },
+                "max_ack_pending": {
+                    "type": "integer"
+                },
+                "max_deliver": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "queue_group": {
+                    "type": "string"
+                },
+                "stream": {
+                    "type": "string"
+                }
+            }
+        },
+        "natsadmin.Manifest": {
+            "type": "object",
+            "properties": {
+                "consumers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/natsadmin.ConsumerManifest"
+                    }
+                },
+                "streams": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/natsadmin.StreamManifest"
+                    }
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "natsadmin.PauseResult": {
+            "type": "object",
+            "properties": {
+                "consumer": {
+                    "type": "string"
+                },
+                "pause_until": {
+                    "type": "string"
+                },
+                "paused": {
+                    "type": "boolean"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "stream": {
+                    "type": "string"
+                }
+            }
+        },
+        "natsadmin.StreamManifest": {
+            "type": "object",
+            "properties": {
+                "allow_test_publish": {
+                    "type": "boolean"
+                },
+                "max_age": {
+                    "type": "string"
+                },
+                "max_messages": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "replicas": {
+                    "type": "integer"
+                },
+                "retention": {
+                    "type": "string"
+                },
+                "storage": {
+                    "type": "string"
+                },
+                "subjects": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "natsadmin.TestMessageResult": {
+            "type": "object",
+            "properties": {
+                "sequence": {
+                    "type": "integer"
+                },
+                "stream": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                }
+            }
+        },
+        "natsdiag.ConsumerInfo": {
+            "type": "object",
+            "properties": {
+                "ack_floor_stream_sequence": {
+                    "type": "integer"
+                },
+                "ack_pending": {
+                    "type": "integer"
+                },
+                "delivered_stream_sequence": {
+                    "type": "integer"
+                },
+                "filter_subject": {
+                    "type": "string"
+                },
+                "last_active": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "redelivered": {
+                    "type": "integer"
+                },
+                "stream": {
+                    "type": "string"
+                },
+                "waiting": {
+                    "type": "integer"
+                }
+            }
+        },
+        "natsdiag.Snapshot": {
+            "type": "object",
+            "properties": {
+                "collected_at": {
+                    "type": "string"
+                },
+                "rtt": {
+                    "type": "integer"
+                },
+                "streams": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/natsdiag.StreamInfo"
+                    }
+                }
+            }
+        },
+        "natsdiag.StreamInfo": {
+            "type": "object",
+            "properties": {
+                "bytes": {
+                    "type": "integer"
+                },
+                "consumers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/natsdiag.ConsumerInfo"
+                    }
+                },
+                "first_sequence": {
+                    "type": "integer"
+                },
+                "last_sequence": {
+                    "type": "integer"
+                },
+                "messages": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "subject_counts": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "subjects": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },

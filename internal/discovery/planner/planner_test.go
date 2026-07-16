@@ -71,6 +71,31 @@ func TestPlannerPlanCreatesMediaTasksFromUniquePhrases(t *testing.T) {
 	}
 }
 
+func TestPlannerPlanCapsSearchTasksDeterministically(t *testing.T) {
+	extractor := discoverymocks.NewMockExtractor(t)
+	tasks := repomocks.NewMockTasks(t)
+	pipeline := repomocks.NewMockPipeline(t)
+
+	batchID := uuid.Must(uuid.NewV7())
+	p, err := New(testPlannerLogger(), noop.NewTracerProvider().Tracer("test"), extractor, tasks, pipeline)
+	require.NoError(t, err)
+	p.maxSearchTasks = 2
+
+	pipeline.EXPECT().ListContentsByBatchID(mock.Anything, batchID).Return([]repo.Content{{ID: uuid.Must(uuid.NewV7()), Title: "A", Content: "Body A"}}, nil)
+	extractor.EXPECT().Extract(mock.Anything, mock.Anything).Return(&model.ExtractionOutput{
+		Phrases: []string{"one", "two", "three", "four"},
+	}, nil)
+	tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).Return(repo.Task{ID: uuid.Must(uuid.NewV7())}, nil).Times(2)
+
+	result, err := p.Plan(context.Background(), discovery.PlannerRequest{
+		BatchID: batchID, TraceID: "trace-123",
+		Targets: []discovery.PlannerTarget{{SourceAbbr: "cna", URL: "https://example.com/search"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 4, result.UniquePhrases)
+	require.Equal(t, 2, result.TasksCreated)
+}
+
 func TestPlannerPlanReturnsNoSeedContents(t *testing.T) {
 	extractor := discoverymocks.NewMockExtractor(t)
 	tasks := repomocks.NewMockTasks(t)

@@ -285,7 +285,7 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 
 	if err := h.process(ctx, sig); err != nil {
 		logger.ErrorContext(ctx, "discovery task failed", "error", err)
-		if failErr := h.reporter.FailTask(ctx, sig.TaskID, h.retryMax); failErr != nil {
+		if failErr := h.reporter.FailTask(ctx, sig.TaskID, h.retryMax, err.Error()); failErr != nil {
 			h.metrics.recordTask(ctx, sig, "nacked", started)
 			return false, fmt.Errorf(
 				"process task %s: %w; mark failed: %w",

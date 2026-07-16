@@ -8,8 +8,65 @@ package pg
 import (
 	"context"
 
-	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const createModel = `-- name: CreateModel :one
+INSERT INTO models (
+    name,
+    provider,
+    type,
+    publish_date,
+    url,
+    tag
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6
+)
+ON CONFLICT (name, provider, type) DO UPDATE
+SET deleted_at = NULL,
+    publish_date = EXCLUDED.publish_date,
+    url = EXCLUDED.url,
+    tag = EXCLUDED.tag
+RETURNING id, name, provider, type, publish_date, url, tag, created_at, deleted_at
+`
+
+type CreateModelParams struct {
+	Name        string      `db:"name" json:"name"`
+	Provider    string      `db:"provider" json:"provider"`
+	Type        ModelType   `db:"type" json:"type"`
+	PublishDate pgtype.Date `db:"publish_date" json:"publish_date"`
+	Url         pgtype.Text `db:"url" json:"url"`
+	Tag         pgtype.Text `db:"tag" json:"tag"`
+}
+
+func (q *Queries) CreateModel(ctx context.Context, arg CreateModelParams) (Model, error) {
+	row := q.db.QueryRow(ctx, createModel,
+		arg.Name,
+		arg.Provider,
+		arg.Type,
+		arg.PublishDate,
+		arg.Url,
+		arg.Tag,
+	)
+	var i Model
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Provider,
+		&i.Type,
+		&i.PublishDate,
+		&i.Url,
+		&i.Tag,
+		&i.CreatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
 
 const createSource = `-- name: CreateSource :one
 INSERT INTO sources (abbr, name, type, base_url)
@@ -115,44 +172,6 @@ func (q *Queries) GetModelByNameAndType(ctx context.Context, arg GetModelByNameA
 		&i.Tag,
 		&i.CreatedAt,
 		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const getPromptByHash = `-- name: GetPromptByHash :one
-SELECT id, hash, path, created_at
-FROM prompts
-WHERE hash = $1
-LIMIT 1
-`
-
-func (q *Queries) GetPromptByHash(ctx context.Context, hash string) (Prompt, error) {
-	row := q.db.QueryRow(ctx, getPromptByHash, hash)
-	var i Prompt
-	err := row.Scan(
-		&i.ID,
-		&i.Hash,
-		&i.Path,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const getPromptByID = `-- name: GetPromptByID :one
-SELECT id, hash, path, created_at
-FROM prompts
-WHERE id = $1
-LIMIT 1
-`
-
-func (q *Queries) GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error) {
-	row := q.db.QueryRow(ctx, getPromptByID, id)
-	var i Prompt
-	err := row.Scan(
-		&i.ID,
-		&i.Hash,
-		&i.Path,
-		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -350,36 +369,6 @@ func (q *Queries) UpdateSource(ctx context.Context, arg UpdateSourceParams) (Sou
 		&i.BaseUrl,
 		&i.CreatedAt,
 		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const upsertPrompt = `-- name: UpsertPrompt :one
-INSERT INTO prompts (
-    hash,
-    path
-) VALUES (
-    $1,
-    $2
-)
-ON CONFLICT (hash) DO UPDATE
-SET path = EXCLUDED.path
-RETURNING id, hash, path, created_at
-`
-
-type UpsertPromptParams struct {
-	Hash string `db:"hash" json:"hash"`
-	Path string `db:"path" json:"path"`
-}
-
-func (q *Queries) UpsertPrompt(ctx context.Context, arg UpsertPromptParams) (Prompt, error) {
-	row := q.db.QueryRow(ctx, upsertPrompt, arg.Hash, arg.Path)
-	var i Prompt
-	err := row.Scan(
-		&i.ID,
-		&i.Hash,
-		&i.Path,
-		&i.CreatedAt,
 	)
 	return i, err
 }

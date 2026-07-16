@@ -47,8 +47,8 @@ restructure landed in commits `38716c4` → `9418956` (Phase 4 of
 | `POSTGRES_APP_PASSWORD` | `.secrets/pg-prism` | bake-managed via `secrets-bake.sh` (planned migration of bake map) |
 | `POSTGRES_ADMIN_PASSWORD` | `.secrets/pg-admin` | file-based, read via `cat $POSTGRES_ADMIN_PASSWORD_FILE` |
 | `NATS_AUTH_TOKEN` | `.secrets/nats-auth-token` | file-based, read via `cat $NATS_AUTH_TOKEN_FILE` |
-| `VALKEY_APP_PASSWORD` | `.secrets/valkey_prism` → bake → `env/local/<env>.local.env` | bake-managed (in `secrets-bake.sh` MAP) |
-| `VALKEY_ADMIN_PASSWORD` | `.secrets/valkey_admin` | file-based |
+| `VALKEY_APP_PASSWORD` | `.secrets/valkey-prism` → bake → `env/local/<env>.local.env` | bake-managed (in `secrets-bake.sh` MAP) |
+| `VALKEY_ADMIN_PASSWORD` | `.secrets/valkey-admin` | file-based |
 | `SEAWEEDFS_*` | `.secrets/seaweedfs` | file-based |
 | LLM provider API keys (Gemini / OpenAI) | `.secrets/` | file-based |
 | `BRAVE_SEARCH_API` | env var (`env/local/<env>.user.env`) | deferred — should move to `.secrets/` |
@@ -98,8 +98,8 @@ one credential, no trailing newline. Gitignored. Examples:
 .secrets/pg-admin
 .secrets/pg-prism
 .secrets/nats-auth-token
-.secrets/valkey_admin
-.secrets/valkey_prism
+.secrets/valkey-admin
+.secrets/valkey-prism
 .secrets/seaweedfs
 ```
 
@@ -110,7 +110,7 @@ expressions in `vars:` blocks. The path-pointer env vars
 ### 2.2 Bake target — `env/local/<env>.local.env`
 
 `script/secrets-bake.sh` reads selected `.secrets/*` entries (currently
-just `valkey_prism → VALKEY_APP_PASSWORD`) and writes them to
+just `valkey-prism → VALKEY_APP_PASSWORD`) and writes them to
 `env/local/<env>.local.env` for Taskfile dotenv layering. Gitignored.
 Mode `0600`. Regenerate after rotation.
 
@@ -150,10 +150,10 @@ ENV=test ./script/secrets-bake.sh
 task compose:bake ENV=test COMPOSE_PROFILES=dev,obs
 
 # 3. Start infra stack
-task compose:up ENV=test COMPOSE_PROFILES=dev,obs
+task compose:infra ENV=test COMPOSE_PROFILES=dev,obs
 
-# 4. Optionally start containerized workers
-task compose:worker
+# 4. Start the ready-to-go application stack
+task compose:up ENV=test COMPOSE_PROFILES=dev,obs
 ```
 
 ### 3.2 Rotate a credential

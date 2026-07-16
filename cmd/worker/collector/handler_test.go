@@ -149,6 +149,15 @@ func TestHandlerProcess_ArchivesStageErrorWithRecoverablePayloadKind(t *testing.
 	}
 }
 
+func TestRetryMaxForError(t *testing.T) {
+	parseErr := &collector.StageError{Stage: collector.PipelineStageParse, Err: errors.New("parser mismatch")}
+	fetchErr := &collector.StageError{Stage: collector.PipelineStageFetch, Err: errors.New("temporary fetch failure")}
+
+	assert.Equal(t, 1, retryMaxForError(parseErr, 3))
+	assert.Equal(t, 3, retryMaxForError(fetchErr, 3))
+	assert.Equal(t, 3, retryMaxForError(errors.New("unknown failure"), 3))
+}
+
 func TestHandlerHandleMessageRecordsMetrics(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -393,7 +402,7 @@ type stubReporter struct{}
 
 func (stubReporter) CompleteTask(context.Context, uuid.UUID) error { return nil }
 
-func (stubReporter) FailTask(context.Context, uuid.UUID, int) error { return nil }
+func (stubReporter) FailTask(context.Context, uuid.UUID, int, string) error { return nil }
 
 type metricsReporter struct {
 	completeErr error
@@ -402,4 +411,4 @@ type metricsReporter struct {
 
 func (r metricsReporter) CompleteTask(context.Context, uuid.UUID) error { return r.completeErr }
 
-func (r metricsReporter) FailTask(context.Context, uuid.UUID, int) error { return r.failErr }
+func (r metricsReporter) FailTask(context.Context, uuid.UUID, int, string) error { return r.failErr }

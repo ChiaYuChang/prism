@@ -19,6 +19,7 @@ type Repository interface {
 	Schedules() Schedules
 	Operator() Operator
 	Prompts() Prompts
+	Planner() PlannerResults
 	Tokens() Tokens
 	Sources() Sources
 }
@@ -28,7 +29,7 @@ type Repository interface {
 // Scheduler so worker handlers only depend on what they actually call.
 type TaskReporter interface {
 	CompleteTask(ctx context.Context, id uuid.UUID) error
-	FailTask(ctx context.Context, id uuid.UUID, retryMax int) error
+	FailTask(ctx context.Context, id uuid.UUID, retryMax int, failureMessage string) error
 }
 
 type Scheduler interface {
@@ -65,6 +66,8 @@ type Tasks interface {
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
 	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	ListTaskStatusSummary(ctx context.Context) ([]TaskStatusSummary, error)
+	ListRecentFailedTasks(ctx context.Context, limit int32) ([]FailedTaskSummary, error)
 	RetryFailedTask(ctx context.Context, id uuid.UUID) (Task, error)
 	// CreateTask is insert-or-recover: on unique-violation against an
 	// existing PENDING/RUNNING task it returns the existing row alongside
@@ -83,6 +86,7 @@ type Schedules interface {
 
 type Operator interface {
 	ListModels(ctx context.Context, params ListOperatorParams) ([]Model, error)
+	CreateModel(ctx context.Context, arg CreateModelParams) (Model, error)
 	ListSources(ctx context.Context, params ListOperatorParams) ([]Source, error)
 	ListBatches(ctx context.Context, params ListOperatorParams) ([]Batch, error)
 	ListEntities(ctx context.Context, params ListOperatorParams) ([]Entity, error)
@@ -94,8 +98,13 @@ type Operator interface {
 type Prompts interface {
 	CreatePromptVersion(ctx context.Context, arg CreatePromptVersionParams) (PromptVersion, error)
 	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (PromptVersion, error)
+	GetLatestPromptVersionByName(ctx context.Context, name string) (PromptVersion, error)
 	ListPromptVersions(ctx context.Context, params ListOperatorParams) ([]PromptVersion, error)
 	ListPromptVersionsByKey(ctx context.Context, key string, params ListOperatorParams) ([]PromptVersion, error)
+}
+
+type PlannerResults interface {
+	PersistPlannerResult(ctx context.Context, arg PersistPlannerResultParams) (PlannerResult, error)
 }
 
 type Tokens interface {
@@ -157,9 +166,6 @@ type UserFetches interface {
 }
 
 type Analysis interface {
-	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
-	GetPromptByHash(ctx context.Context, hash string) (Prompt, error)
-	UpsertPrompt(ctx context.Context, arg UpsertPromptParams) (Prompt, error)
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	GetContentExtractionByID(ctx context.Context, id uuid.UUID) (ContentExtraction, error)
 	GetContentExtractionSnapshot(ctx context.Context, arg GetContentExtractionSnapshotParams) (ContentExtraction, error)

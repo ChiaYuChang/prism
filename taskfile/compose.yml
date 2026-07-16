@@ -35,8 +35,15 @@ tasks:
       under an owner-only .secrets/ directory with container-readable files
       for Docker Compose mounts.
       Existing generated root/admin token files are preserved.
+      Set PRISM_SECRETS_SYNC=0 to use already-materialized .secrets/ files when
+      the RBW vault is unavailable.
     cmds:
-      - go run ./cmd/prism-secrets
+      - |
+        if [ "${PRISM_SECRETS_SYNC:-1}" = "0" ]; then
+          printf '%s\n' 'skipping RBW secret sync; using existing .secrets files'
+        else
+          go run ./cmd/prism-secrets
+        fi
 
   bake:clean:
     desc: remove all per-(ENV,PROFILES) merged compose files
@@ -47,12 +54,12 @@ tasks:
     cmds:
       - rm -f .*-*.docker-compose.merged.yaml
 
-  up:
-    desc: start all services (project = {NAME}-{MODE}; refuses if .task/mode exists)
+  infra:
+    desc: start infrastructure services (project = {NAME}-{MODE}; refuses if .task/mode exists)
     summary: |
-      Starts the core infra stack plus any enabled profile services for the
-      selected MODE. Records the active mode/profile in .task/ so later down
-      and clean commands target the same Compose project.
+      Starts Postgres, NATS, Valkey, SeaweedFS, and enabled dev/observability
+      services for the selected MODE. Records the active mode/profile in .task/
+      so later down and clean commands target the same Compose project.
     preconditions:
       - sh: |
           if [ -f {{.MODE_FILE}} ]; then
@@ -74,7 +81,7 @@ tasks:
       - task: secrets:sync
       - task: bake
       - mkdir -p {{.TASK_DIR}}
-      - mkdir -p runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - mkdir -p runtime/prompts runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
       - chmod 0777 runtime/logs runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
       - docker compose -f {{.COMPOSE_MERGED}} up -d
       - "echo {{.MODE}} > {{.MODE_FILE}}"
@@ -156,7 +163,7 @@ tasks:
     desc: list all service logs
     summary: |
       Follows logs for the currently baked stack using the active or requested
-      Compose project name. Useful after compose:up when multiple service logs
+      Compose project name. Useful after compose:infra or compose:up when multiple service logs
       need to be inspected together.
     deps: [ bake ]
     env:
@@ -165,42 +172,55 @@ tasks:
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f
 
-  start:
-    desc: start full containerized stack
+  up:
+    desc: start the ready-to-go containerized stack
     summary: |
       Starts the deployable local stack: core infra, enabled dev/observability
-      profile services, database migrations, and containerized app services.
+      profile services, database migrations, API and trigger services,
+      collection workers, and the planner.
       Fixture replay services are intentionally excluded from this real-world
       collection path.
     cmds:
-      - for: [start:up, start:migrate:up, start:worker, start:app]
+      - for: [up:infra, up:migrate:up, up:app, up:nats:bootstrap, up:worker, up:planner]
         task: "{{.ITEM}}"
 
-  start:up:
+  up:infra:
     internal: true
     cmds:
-      - task: up
+      - task: infra
         vars:
           COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
 
-  start:migrate:up:
+  up:migrate:up:
     internal: true
     cmds:
       - task: :migrate:up
 
-  start:worker:
+  up:worker:
     internal: true
     cmds:
       - task: worker
         vars:
           COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
 
-  start:app:
+  up:nats:bootstrap:
+    internal: true
+    cmds:
+      - task: :app:nats:bootstrap
+
+  up:app:
     internal: true
     cmds:
       - task: app
         vars:
           COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}},worker"
+
+  up:planner:
+    internal: true
+    cmds:
+      - task: planner
+        vars:
+          COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
 
   migrate:up:
     internal: true
@@ -227,7 +247,7 @@ tasks:
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
-        msg: "infra stack is not up. Run 'task compose:up' first."
+        msg: "infra stack is not up. Run 'task compose:infra' first."
     env:
       COMPOSE_PROFILES: "{{.APP_PROFILES}}"
       NATS_AUTH_TOKEN:
@@ -268,7 +288,7 @@ tasks:
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
-        msg: "infra stack is not up. Run 'task compose:up' first."
+        msg: "infra stack is not up. Run 'task compose:infra' first."
     env:
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
       NATS_AUTH_TOKEN:
@@ -355,7 +375,7 @@ tasks:
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
-        msg: "infra stack is not up. Run 'task compose:up' first."
+        msg: "infra stack is not up. Run 'task compose:infra' first."
     env:
       COMPOSE_PROFILES: "{{.FIXTURE_PROFILES}}"
       WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
@@ -365,11 +385,10 @@ tasks:
       - "echo {{.FIXTURE_PROFILES}} > {{.PROFILES_FILE}}"
 
   planner:
-    desc: build and start containerized planner worker (requires host Ollama)
+    desc: build and start the containerized planner worker
     summary: |
-      Starts the LLM-backed planner worker. This is kept out of compose:app so
-      real-world PARTY collection can run without an LLM dependency; enable it
-      when downstream MEDIA planning is needed.
+      Starts the LLM-backed planner worker using the provider configured in the
+      planner configuration. It is part of the normal ready-to-go stack.
     deps:
       - task: bake
         vars:
@@ -384,9 +403,7 @@ tasks:
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
-        msg: "infra stack is not up. Run 'task compose:up' first."
-      - sh: "curl --fail --silent --show-error --max-time 5 http://127.0.0.1:11434/ > /dev/null"
-        msg: "host Ollama is unavailable at http://127.0.0.1:11434"
+        msg: "infra stack is not up. Run 'task compose:infra' first."
     env:
       COMPOSE_PROFILES: "{{.PLANNER_PROFILES}}"
       NATS_AUTH_TOKEN:

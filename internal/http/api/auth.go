@@ -21,24 +21,25 @@ const (
 
 // AdminTask is the operator JSON shape returned by admin task endpoints.
 type AdminTask struct {
-	ID          uuid.UUID       `json:"id"`
-	BatchID     uuid.UUID       `json:"batch_id"`
-	TraceID     string          `json:"trace_id"`
-	Kind        string          `json:"kind"`
-	SourceType  string          `json:"source_type"`
-	SourceAbbr  string          `json:"source_abbr"`
-	URL         string          `json:"url"`
-	Payload     json.RawMessage `json:"payload,omitempty"       swaggertype:"object"`
-	PayloadHash *string         `json:"payload_hash,omitempty"`
-	Meta        json.RawMessage `json:"meta,omitempty"          swaggertype:"object"`
-	Frequency   *time.Duration  `json:"frequency,omitempty"     swaggertype:"integer"`
-	NextRunAt   time.Time       `json:"next_run_at"`
-	ExpiresAt   *time.Time      `json:"expires_at,omitempty"`
-	Status      repo.TaskStatus `json:"status"`
-	RetryCount  int             `json:"retry_count"`
-	LastRunAt   *time.Time      `json:"last_run_at,omitempty"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	ID             uuid.UUID       `json:"id"`
+	BatchID        uuid.UUID       `json:"batch_id"`
+	TraceID        string          `json:"trace_id"`
+	Kind           string          `json:"kind"`
+	SourceType     string          `json:"source_type"`
+	SourceAbbr     string          `json:"source_abbr"`
+	URL            string          `json:"url"`
+	Payload        json.RawMessage `json:"payload,omitempty"       swaggertype:"object"`
+	PayloadHash    *string         `json:"payload_hash,omitempty"`
+	Meta           json.RawMessage `json:"meta,omitempty"          swaggertype:"object"`
+	Frequency      *time.Duration  `json:"frequency,omitempty"     swaggertype:"integer"`
+	NextRunAt      time.Time       `json:"next_run_at"`
+	ExpiresAt      *time.Time      `json:"expires_at,omitempty"`
+	Status         repo.TaskStatus `json:"status"`
+	RetryCount     int             `json:"retry_count"`
+	FailureMessage *string         `json:"failure_message,omitempty"`
+	LastRunAt      *time.Time      `json:"last_run_at,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
 type AdminListTasksResponse struct {
@@ -556,24 +557,25 @@ func (s *Server) GetAdminCandidate(w http.ResponseWriter, r *http.Request) {
 
 func toAdminTask(task repo.Task) AdminTask {
 	return AdminTask{
-		ID:          task.ID,
-		BatchID:     task.BatchID,
-		TraceID:     task.TraceID,
-		Kind:        task.Kind,
-		SourceType:  task.SourceType,
-		SourceAbbr:  task.SourceAbbr,
-		URL:         task.URL,
-		Payload:     rawJSON(task.Payload),
-		PayloadHash: task.PayloadHash,
-		Meta:        rawJSON(task.Meta),
-		Frequency:   task.Frequency,
-		NextRunAt:   task.NextRunAt,
-		ExpiresAt:   task.ExpiresAt,
-		Status:      task.Status,
-		RetryCount:  task.RetryCount,
-		LastRunAt:   task.LastRunAt,
-		CreatedAt:   task.CreatedAt,
-		UpdatedAt:   task.UpdatedAt,
+		ID:             task.ID,
+		BatchID:        task.BatchID,
+		TraceID:        task.TraceID,
+		Kind:           task.Kind,
+		SourceType:     task.SourceType,
+		SourceAbbr:     task.SourceAbbr,
+		URL:            task.URL,
+		Payload:        rawJSON(task.Payload),
+		PayloadHash:    task.PayloadHash,
+		Meta:           rawJSON(task.Meta),
+		Frequency:      task.Frequency,
+		NextRunAt:      task.NextRunAt,
+		ExpiresAt:      task.ExpiresAt,
+		Status:         task.Status,
+		RetryCount:     task.RetryCount,
+		FailureMessage: task.FailureMessage,
+		LastRunAt:      task.LastRunAt,
+		CreatedAt:      task.CreatedAt,
+		UpdatedAt:      task.UpdatedAt,
 	}
 }
 

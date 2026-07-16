@@ -315,7 +315,7 @@ func TestHandlerHandleMessageKeywordSearchNoProviders(t *testing.T) {
 	require.NoError(t, err)
 
 	scheduler.EXPECT().
-		FailTask(mock.Anything, taskID, repo.DefaultTaskRetryMax).
+		FailTask(mock.Anything, taskID, repo.DefaultTaskRetryMax, mock.Anything).
 		Return(nil)
 
 	ack, err := h.HandleMessage(context.Background(), wm.NewMessage("id", sigPayload))
@@ -588,7 +588,7 @@ func TestHandlerHandleMessageRecordsMetrics(t *testing.T) {
 	scout.EXPECT().Discover(mock.Anything, "https://www.dpp.org.tw/media/fail").Return(nil, failedErr)
 	sink.EXPECT().Handle(mock.Anything, mock.Anything).Return(nil).Once()
 	scheduler.EXPECT().CompleteTask(mock.Anything, okTaskID).Return(nil)
-	scheduler.EXPECT().FailTask(mock.Anything, failTaskID, repo.DefaultTaskRetryMax).Return(nil)
+	scheduler.EXPECT().FailTask(mock.Anything, failTaskID, repo.DefaultTaskRetryMax, mock.Anything).Return(nil)
 
 	tcs := []struct {
 		name        string

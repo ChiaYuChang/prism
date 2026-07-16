@@ -29,6 +29,15 @@ tasks:
     cmds:
       - go test -v -short -cover ./...
 
+  test:bootstrap:
+    desc: bootstrap an already-running local stack without provider calls
+    summary: |
+      Waits for the local admin API, initializes root/admin credentials, syncs
+      sources, and idempotently registers the planner extractor model and prompt.
+      This task does not start workers or invoke LLM/search providers.
+    cmds:
+      - ./script/bootstrap-test.sh
+
   # NOTE: secrets flow via env vars (PRISM_<APP>_POSTGRES_PASSWORD etc.) so
   # they never appear on argv where `ps -ef` would expose them to any user on
   # the host. Viper's AutomaticEnv + the per-cmd prefix picks them up; the
@@ -110,7 +119,7 @@ tasks:
     cmds:
       - task: compose:bake
         vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
-      - task: compose:up
+      - task: compose:infra
         vars: { MODE: "{{.MODE}}", PROJECT: "{{.PROJECT}}" }
       - task: migrate:up
 

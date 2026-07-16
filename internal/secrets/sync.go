@@ -16,20 +16,31 @@ type Mapping struct {
 // DefaultMappings returns the local development secret mappings.
 func DefaultMappings() []Mapping {
 	return []Mapping{
-		{Item: "prism_brave-search-api", Path: "brave-search-api"},
-		{Item: "prism_google-cse-api", Path: "google/cse-id"},
-		{Item: "prism_google-gcloud", Path: "google/gcloud"},
-		{Item: "prism_google-gemini", Path: "google/gemini"},
-		{Item: "prism_grafana", Path: "grafana"},
-		{Item: "prism_nats-auth-token", Path: "nats-auth-token"},
-		{Item: "prism_opencode", Path: "opencode"},
-		{Item: "prism_pg-admin", Path: "pg-admin"},
-		{Item: "prism_pg-prism", Path: "pg-prism"},
-		{Item: "prism_seaweedfs", Path: "seaweedfs"},
-		{Item: "prism_serpapi", Path: "serpapi"},
-		{Item: "prism_valkey-admin", Path: "valkey-admin"},
-		{Item: "prism_valkey-prism", Path: "valkey-app"},
+		{Item: "brave-search-api", Path: "brave-search-api"},
+		{Item: "google-cse-api", Path: "google-cse-api"},
+		{Item: "google-gcloud", Path: "google-gcloud"},
+		{Item: "google-gemini", Path: "google-gemini"},
+		{Item: "grafana", Path: "grafana"},
+		{Item: "nats-auth-token", Path: "nats-auth-token"},
+		{Item: "opencode", Path: "opencode"},
+		{Item: "pg-admin", Path: "pg-admin"},
+		{Item: "pg-prism", Path: "pg-prism"},
+		{Item: "seaweedfs", Path: "seaweedfs"},
+		{Item: "serpapi", Path: "serpapi"},
+		{Item: "valkey-admin", Path: "valkey-admin"},
+		{Item: "valkey-prism", Path: "valkey-app"},
 	}
+}
+
+// WithPrefix returns mappings whose item names are prefixed for the external
+// secret store. Output paths are unchanged.
+func WithPrefix(mappings []Mapping, prefix string) []Mapping {
+	result := make([]Mapping, len(mappings))
+	for i, mapping := range mappings {
+		mapping.Item = prefix + mapping.Item
+		result[i] = mapping
+	}
+	return result
 }
 
 // Sync retrieves mappings and writes them below dir with container-readable

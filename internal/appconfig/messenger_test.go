@@ -8,10 +8,25 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockHandler struct {
 	records []slog.Record
+}
+
+func TestNatsConfigRequiresStreamAndConsumerTogether(t *testing.T) {
+	_, err := (&NatsConfig{Host: "localhost", Port: 4222, Stream: "prism_task"}).NewMessenger(slog.Default())
+	require.EqualError(t, err, "nats stream and consumer must be configured together")
+}
+
+func TestNatsConfigAutoProvisionDefaultsTrue(t *testing.T) {
+	cfg := NatsConfig{}
+	require.True(t, cfg.autoProvision())
+
+	disabled := false
+	cfg.AutoProvision = &disabled
+	require.False(t, cfg.autoProvision())
 }
 
 func (h *mockHandler) Enabled(context.Context, slog.Level) bool {

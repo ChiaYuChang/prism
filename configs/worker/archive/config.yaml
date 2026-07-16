@@ -7,6 +7,9 @@ nats-port: 4222
 queue-group: archive-worker
 subscribers-count: 1
 ack-wait-timeout: 30s
+nats-stream: prism_archive
+nats-consumer: archive-worker
+nats-auto-provision: false
 s3:
   endpoint: http://seaweedfs:8333
   region: '{{ env "SEAWEEDFS_S3_REGION" "us-east-1" }}'

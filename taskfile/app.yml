@@ -25,3 +25,8 @@ tasks:
     desc: synchronize the source registry through the API
     cmds:
       - ./script/bootstrap-sources.sh
+
+  nats:bootstrap:
+    desc: create or update JetStream resources through the API
+    cmds:
+      - ./script/bootstrap-jetstream.sh

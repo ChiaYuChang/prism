@@ -118,6 +118,11 @@ services:
 networks:
   prism-net:
     driver: bridge
+    # Keep the source range stable for host-firewall access to services such
+    # as Ollama exposed through host.docker.internal.
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
 
 secrets:
   postgres_admin:
@@ -128,8 +133,8 @@ secrets:
     file: ../${NATS_AUTH_TOKEN_FILE}
   sw_secret_key:
     file: ../${SEAWEEDFS_SECRET_KEY_FILE}
-  serpapi:
-    file: ../${SERPAPI_API_KEY_FILE}
+  brave_search_api:
+    file: ../${BRAVE_SEARCH_API_FILE}
   valkey_acl:
     file: ../build/infra/valkey/valkey_acl
   grafana:

@@ -266,6 +266,52 @@ func (_c *MockRepository_Pipeline_Call) RunAndReturn(run func() repo.Pipeline) *
 	return _c
 }
 
+// Planner provides a mock function for the type MockRepository
+func (_mock *MockRepository) Planner() repo.PlannerResults {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Planner")
+	}
+
+	var r0 repo.PlannerResults
+	if returnFunc, ok := ret.Get(0).(func() repo.PlannerResults); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.PlannerResults)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Planner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Planner'
+type MockRepository_Planner_Call struct {
+	*mock.Call
+}
+
+// Planner is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Planner() *MockRepository_Planner_Call {
+	return &MockRepository_Planner_Call{Call: _e.mock.On("Planner")}
+}
+
+func (_c *MockRepository_Planner_Call) Run(run func()) *MockRepository_Planner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Planner_Call) Return(plannerResults repo.PlannerResults) *MockRepository_Planner_Call {
+	_c.Call.Return(plannerResults)
+	return _c
+}
+
+func (_c *MockRepository_Planner_Call) RunAndReturn(run func() repo.PlannerResults) *MockRepository_Planner_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Prompts provides a mock function for the type MockRepository
 func (_mock *MockRepository) Prompts() repo.Prompts {
 	ret := _mock.Called()

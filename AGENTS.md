@@ -32,6 +32,9 @@ ENV=test ./script/secrets-bake.sh
 task compose:bake ENV=test COMPOSE_PROFILES=dev,obs
 
 # Start local infra (Postgres, NATS, Valkey, SeaweedFS); honors ENV / COMPOSE_PROFILES
+task compose:infra
+
+# Start the ready-to-go local stack, including API, workers, and planner
 task compose:up
 
 # Build + start containerized workers alongside the running infra stack

@@ -1,7 +1,7 @@
 # Test/dev overlay — exposes core infra ports on the host loopback so the
 # host-mode worker tasks (task worker:start, task test:scheduler*, psql, etc.)
 # can reach them at localhost:<port>. Restart policy is `no` because dev
-# infra is brought up and torn down explicitly via task compose:up/down; we
+# infra is brought up and torn down explicitly via task compose:infra/down; we
 # do not want a crashed container to silently bounce.
 
 services:

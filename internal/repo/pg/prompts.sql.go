@@ -12,29 +12,95 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createPromptVersion = `-- name: CreatePromptVersion :one
+WITH locked AS (
+    SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
+)
+INSERT INTO prompts (name, version, hash, size_bytes)
+SELECT $1, COALESCE(MAX(p.version), 0) + 1, $2, $3
+FROM prompts AS p, locked
+WHERE p.name = $1
+RETURNING id, name AS key, version, hash, size_bytes, created_at
+`
+
+type CreatePromptVersionParams struct {
+	Name      string `db:"name" json:"name"`
+	Hash      string `db:"hash" json:"hash"`
+	SizeBytes int64  `db:"size_bytes" json:"size_bytes"`
+}
+
+type CreatePromptVersionRow struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	Key       string             `db:"key" json:"key"`
+	Version   int32              `db:"version" json:"version"`
+	Hash      string             `db:"hash" json:"hash"`
+	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) CreatePromptVersion(ctx context.Context, arg CreatePromptVersionParams) (CreatePromptVersionRow, error) {
+	row := q.db.QueryRow(ctx, createPromptVersion, arg.Name, arg.Hash, arg.SizeBytes)
+	var i CreatePromptVersionRow
+	err := row.Scan(
+		&i.ID,
+		&i.Key,
+		&i.Version,
+		&i.Hash,
+		&i.SizeBytes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLatestPromptVersionByName = `-- name: GetLatestPromptVersionByName :one
+SELECT id, name AS key, version, hash, size_bytes, created_at
+FROM prompts
+WHERE name = $1
+ORDER BY version DESC
+LIMIT 1
+`
+
+type GetLatestPromptVersionByNameRow struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	Key       string             `db:"key" json:"key"`
+	Version   int32              `db:"version" json:"version"`
+	Hash      string             `db:"hash" json:"hash"`
+	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) GetLatestPromptVersionByName(ctx context.Context, name string) (GetLatestPromptVersionByNameRow, error) {
+	row := q.db.QueryRow(ctx, getLatestPromptVersionByName, name)
+	var i GetLatestPromptVersionByNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Key,
+		&i.Version,
+		&i.Hash,
+		&i.SizeBytes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getPromptVersionByID = `-- name: GetPromptVersionByID :one
 SELECT
-    pv.id,
-    pk.id AS key_id,
-    pk.key,
-    pv.version,
-    pv.hash,
-    pv.path,
-    pv.size_bytes,
-    pv.created_at
-FROM prompt_versions pv
-JOIN prompt_keys pk ON pk.id = pv.key_id
-WHERE pv.id = $1
+    id,
+    name AS key,
+    version,
+    hash,
+    size_bytes,
+    created_at
+FROM prompts
+WHERE id = $1
 LIMIT 1
 `
 
 type GetPromptVersionByIDRow struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
-	KeyID     uuid.UUID          `db:"key_id" json:"key_id"`
 	Key       string             `db:"key" json:"key"`
 	Version   int32              `db:"version" json:"version"`
 	Hash      string             `db:"hash" json:"hash"`
-	Path      string             `db:"path" json:"path"`
 	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
@@ -44,11 +110,9 @@ func (q *Queries) GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPr
 	var i GetPromptVersionByIDRow
 	err := row.Scan(
 		&i.ID,
-		&i.KeyID,
 		&i.Key,
 		&i.Version,
 		&i.Hash,
-		&i.Path,
 		&i.SizeBytes,
 		&i.CreatedAt,
 	)
@@ -57,17 +121,14 @@ func (q *Queries) GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPr
 
 const listPromptVersions = `-- name: ListPromptVersions :many
 SELECT
-    pv.id,
-    pk.id AS key_id,
-    pk.key,
-    pv.version,
-    pv.hash,
-    pv.path,
-    pv.size_bytes,
-    pv.created_at
-FROM prompt_versions pv
-JOIN prompt_keys pk ON pk.id = pv.key_id
-ORDER BY pk.key ASC, pv.version DESC
+    id,
+    name AS key,
+    version,
+    hash,
+    size_bytes,
+    created_at
+FROM prompts
+ORDER BY name ASC, version DESC
 LIMIT $2
 OFFSET $1
 `
@@ -79,11 +140,9 @@ type ListPromptVersionsParams struct {
 
 type ListPromptVersionsRow struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
-	KeyID     uuid.UUID          `db:"key_id" json:"key_id"`
 	Key       string             `db:"key" json:"key"`
 	Version   int32              `db:"version" json:"version"`
 	Hash      string             `db:"hash" json:"hash"`
-	Path      string             `db:"path" json:"path"`
 	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
@@ -99,11 +158,9 @@ func (q *Queries) ListPromptVersions(ctx context.Context, arg ListPromptVersions
 		var i ListPromptVersionsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.KeyID,
 			&i.Key,
 			&i.Version,
 			&i.Hash,
-			&i.Path,
 			&i.SizeBytes,
 			&i.CreatedAt,
 		); err != nil {
@@ -119,18 +176,15 @@ func (q *Queries) ListPromptVersions(ctx context.Context, arg ListPromptVersions
 
 const listPromptVersionsByKey = `-- name: ListPromptVersionsByKey :many
 SELECT
-    pv.id,
-    pk.id AS key_id,
-    pk.key,
-    pv.version,
-    pv.hash,
-    pv.path,
-    pv.size_bytes,
-    pv.created_at
-FROM prompt_versions pv
-JOIN prompt_keys pk ON pk.id = pv.key_id
-WHERE pk.key = $1
-ORDER BY pv.version DESC
+    id,
+    name AS key,
+    version,
+    hash,
+    size_bytes,
+    created_at
+FROM prompts
+WHERE name = $1
+ORDER BY version DESC
 LIMIT $3
 OFFSET $2
 `
@@ -143,11 +197,9 @@ type ListPromptVersionsByKeyParams struct {
 
 type ListPromptVersionsByKeyRow struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
-	KeyID     uuid.UUID          `db:"key_id" json:"key_id"`
 	Key       string             `db:"key" json:"key"`
 	Version   int32              `db:"version" json:"version"`
 	Hash      string             `db:"hash" json:"hash"`
-	Path      string             `db:"path" json:"path"`
 	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
@@ -163,11 +215,9 @@ func (q *Queries) ListPromptVersionsByKey(ctx context.Context, arg ListPromptVer
 		var i ListPromptVersionsByKeyRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.KeyID,
 			&i.Key,
 			&i.Version,
 			&i.Hash,
-			&i.Path,
 			&i.SizeBytes,
 			&i.CreatedAt,
 		); err != nil {
@@ -179,90 +229,4 @@ func (q *Queries) ListPromptVersionsByKey(ctx context.Context, arg ListPromptVer
 		return nil, err
 	}
 	return items, nil
-}
-
-const upsertPromptVersion = `-- name: UpsertPromptVersion :one
-WITH prompt_key AS (
-    INSERT INTO prompt_keys (key)
-    VALUES ($1)
-    ON CONFLICT (key) DO UPDATE SET key = EXCLUDED.key
-    RETURNING id, key
-), existing AS (
-    SELECT
-        pv.id,
-        pk.id AS key_id,
-        pk.key,
-        pv.version,
-        pv.hash,
-        pv.path,
-        pv.size_bytes,
-        pv.created_at
-    FROM prompt_versions pv
-    JOIN prompt_key pk ON pk.id = pv.key_id
-    WHERE pv.hash = $2
-), next_version AS (
-    SELECT COALESCE(MAX(pv.version), 0) + 1 AS version
-    FROM prompt_versions pv
-    JOIN prompt_key pk ON pk.id = pv.key_id
-), inserted AS (
-    INSERT INTO prompt_versions (key_id, version, hash, path, size_bytes)
-    SELECT pk.id, nv.version, $2, $3, $4
-    FROM prompt_key pk
-    CROSS JOIN next_version nv
-    WHERE NOT EXISTS (SELECT 1 FROM existing)
-    RETURNING id, key_id, version, hash, path, size_bytes, created_at
-)
-SELECT
-    i.id,
-    i.key_id,
-    pk.key,
-    i.version,
-    i.hash,
-    i.path,
-    i.size_bytes,
-    i.created_at
-FROM inserted i
-JOIN prompt_key pk ON pk.id = i.key_id
-UNION ALL
-SELECT id, key_id, key, version, hash, path, size_bytes, created_at FROM existing
-LIMIT 1
-`
-
-type UpsertPromptVersionParams struct {
-	Key       string `db:"key" json:"key"`
-	Hash      string `db:"hash" json:"hash"`
-	Path      string `db:"path" json:"path"`
-	SizeBytes int64  `db:"size_bytes" json:"size_bytes"`
-}
-
-type UpsertPromptVersionRow struct {
-	ID        uuid.UUID          `db:"id" json:"id"`
-	KeyID     uuid.UUID          `db:"key_id" json:"key_id"`
-	Key       string             `db:"key" json:"key"`
-	Version   int32              `db:"version" json:"version"`
-	Hash      string             `db:"hash" json:"hash"`
-	Path      string             `db:"path" json:"path"`
-	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-}
-
-func (q *Queries) UpsertPromptVersion(ctx context.Context, arg UpsertPromptVersionParams) (UpsertPromptVersionRow, error) {
-	row := q.db.QueryRow(ctx, upsertPromptVersion,
-		arg.Key,
-		arg.Hash,
-		arg.Path,
-		arg.SizeBytes,
-	)
-	var i UpsertPromptVersionRow
-	err := row.Scan(
-		&i.ID,
-		&i.KeyID,
-		&i.Key,
-		&i.Version,
-		&i.Hash,
-		&i.Path,
-		&i.SizeBytes,
-		&i.CreatedAt,
-	)
-	return i, err
 }

@@ -27,6 +27,8 @@ import (
 	"github.com/ChiaYuChang/prism/internal/http/api"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/infra"
+	"github.com/ChiaYuChang/prism/internal/infra/natsadmin"
+	"github.com/ChiaYuChang/prism/internal/infra/natsdiag"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -126,6 +128,26 @@ func main() {
 		api.WithSources(repository.Sources()),
 		api.WithStatusMonitor(statusMonitor),
 	}
+	natsInspector, err := natsdiag.New(natsdiag.Config{
+		Host: config.NATS.Host, Port: config.NATS.Port,
+		Username: config.NATS.Username, Password: config.NATS.Password,
+		Token: config.NATS.Token,
+	})
+	if err != nil {
+		logger.Error("failed to configure NATS diagnostics", "error", err)
+		os.Exit(1)
+	}
+	serverOpts = append(serverOpts, api.WithNATSInspector(natsInspector))
+	natsAdmin, err := natsadmin.New(natsadmin.Config{
+		Host: config.NATS.Host, Port: config.NATS.Port,
+		Username: config.NATS.Username, Password: config.NATS.Password,
+		Token: config.NATS.Token,
+	})
+	if err != nil {
+		logger.Error("failed to configure NATS administration", "error", err)
+		os.Exit(1)
+	}
+	serverOpts = append(serverOpts, api.WithNATSAdmin(natsAdmin))
 	if config.SchedulerControl.Enabled {
 		toggles, err := infra.NewSchedulerToggleStore(valkeyClient)
 		if err != nil {

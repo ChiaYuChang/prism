@@ -54,6 +54,25 @@ definitions:
       url:
         type: string
     type: object
+  api.AdminDiagnostics:
+    properties:
+      nats:
+        $ref: '#/definitions/natsdiag.Snapshot'
+      nats_error:
+        type: string
+      recent_failures:
+        items:
+          $ref: '#/definitions/api.AdminFailedTaskSummary'
+        type: array
+      services:
+        additionalProperties:
+          $ref: '#/definitions/obs.HealthStatus'
+        type: object
+      task_summary:
+        items:
+          $ref: '#/definitions/api.AdminTaskStatusSummary'
+        type: array
+    type: object
   api.AdminEmbeddingListResponse:
     properties:
       candidate_embeddings:
@@ -97,6 +116,21 @@ definitions:
       id:
         type: integer
       type:
+        type: string
+    type: object
+  api.AdminFailedTaskSummary:
+    properties:
+      failure_message:
+        type: string
+      id:
+        type: string
+      kind:
+        type: string
+      source_abbr:
+        type: string
+      updated_at:
+        type: string
+      url:
         type: string
     type: object
   api.AdminListBatchesResponse:
@@ -230,11 +264,7 @@ definitions:
         type: string
       id:
         type: string
-      key:
-        type: string
-      key_id:
-        type: string
-      path:
+      name:
         type: string
       size_bytes:
         type: integer
@@ -305,6 +335,8 @@ definitions:
         type: string
       expires_at:
         type: string
+      failure_message:
+        type: string
       frequency:
         type: integer
       id:
@@ -336,6 +368,15 @@ definitions:
       url:
         type: string
     type: object
+  api.AdminTaskStatusSummary:
+    properties:
+      count:
+        type: integer
+      kind:
+        type: string
+      status:
+        $ref: '#/definitions/repo.TaskStatus'
+    type: object
   api.AdminToken:
     properties:
       created_at:
@@ -358,6 +399,13 @@ definitions:
         type: string
       type:
         type: string
+    type: object
+  api.ApplyNATSRequest:
+    properties:
+      dry_run:
+        type: boolean
+      manifest:
+        $ref: '#/definitions/natsadmin.Manifest'
     type: object
   api.Candidate:
     properties:
@@ -455,6 +503,11 @@ definitions:
       offset:
         type: integer
     type: object
+  api.NATSTestMessageRequest:
+    properties:
+      subject:
+        type: string
+    type: object
   api.PageFetchItem:
     properties:
       candidate_id:
@@ -478,6 +531,13 @@ definitions:
           $ref: '#/definitions/api.PageFetchItem'
         type: array
     type: object
+  api.PauseNATSConsumerRequest:
+    properties:
+      reason:
+        type: string
+      until:
+        type: string
+    type: object
   api.PostStatusPayload:
     properties:
       level:
@@ -495,6 +555,181 @@ definitions:
     properties:
       status:
         type: string
+    type: object
+  api.adminCreateTaskRequest:
+    properties:
+      batch_id:
+        type: string
+      expires_at:
+        type: string
+      kind:
+        type: string
+      meta:
+        type: object
+      next_run_at:
+        type: string
+      payload:
+        type: object
+      source_abbr:
+        type: string
+      source_type:
+        type: string
+      trace_id:
+        type: string
+      url:
+        type: string
+    type: object
+  natsadmin.ApplyReport:
+    properties:
+      created:
+        items:
+          type: string
+        type: array
+      unchanged:
+        items:
+          type: string
+        type: array
+      updated:
+        items:
+          type: string
+        type: array
+    type: object
+  natsadmin.ConsumerManifest:
+    properties:
+      ack_policy:
+        type: string
+      ack_wait:
+        type: string
+      deliver_policy:
+        type: string
+      filter_subject:
+        type: string
+      max_ack_pending:
+        type: integer
+      max_deliver:
+        type: integer
+      name:
+        type: string
+      queue_group:
+        type: string
+      stream:
+        type: string
+    type: object
+  natsadmin.Manifest:
+    properties:
+      consumers:
+        items:
+          $ref: '#/definitions/natsadmin.ConsumerManifest'
+        type: array
+      streams:
+        items:
+          $ref: '#/definitions/natsadmin.StreamManifest'
+        type: array
+      version:
+        type: integer
+    type: object
+  natsadmin.PauseResult:
+    properties:
+      consumer:
+        type: string
+      pause_until:
+        type: string
+      paused:
+        type: boolean
+      reason:
+        type: string
+      stream:
+        type: string
+    type: object
+  natsadmin.StreamManifest:
+    properties:
+      allow_test_publish:
+        type: boolean
+      max_age:
+        type: string
+      max_messages:
+        type: integer
+      name:
+        type: string
+      replicas:
+        type: integer
+      retention:
+        type: string
+      storage:
+        type: string
+      subjects:
+        items:
+          type: string
+        type: array
+    type: object
+  natsadmin.TestMessageResult:
+    properties:
+      sequence:
+        type: integer
+      stream:
+        type: string
+      subject:
+        type: string
+    type: object
+  natsdiag.ConsumerInfo:
+    properties:
+      ack_floor_stream_sequence:
+        type: integer
+      ack_pending:
+        type: integer
+      delivered_stream_sequence:
+        type: integer
+      filter_subject:
+        type: string
+      last_active:
+        type: string
+      name:
+        type: string
+      pending:
+        type: integer
+      redelivered:
+        type: integer
+      stream:
+        type: string
+      waiting:
+        type: integer
+    type: object
+  natsdiag.Snapshot:
+    properties:
+      collected_at:
+        type: string
+      rtt:
+        type: integer
+      streams:
+        items:
+          $ref: '#/definitions/natsdiag.StreamInfo'
+        type: array
+    type: object
+  natsdiag.StreamInfo:
+    properties:
+      bytes:
+        type: integer
+      consumers:
+        items:
+          $ref: '#/definitions/natsdiag.ConsumerInfo'
+        type: array
+      first_sequence:
+        type: integer
+      last_sequence:
+        type: integer
+      messages:
+        type: integer
+      name:
+        type: string
+      subject_counts:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
+      subjects:
+        items:
+          type: string
+        type: array
     type: object
   obs.HealthLevel:
     enum:
@@ -641,6 +876,27 @@ paths:
       summary: Get operator candidate
       tags:
       - admin
+  /admin/diagnostics:
+    get:
+      parameters:
+      - description: Number of recent failures
+        in: query
+        name: failure_limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.AdminDiagnostics'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Show aggregate operator diagnostics
+      tags:
+      - admin
   /admin/embedding/{model_name}:
     get:
       parameters:
@@ -733,12 +989,238 @@ paths:
       summary: List operator models
       tags:
       - admin
+  /admin/nats:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/natsdiag.Snapshot'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Inspect NATS JetStream state
+      tags:
+      - admin
+  /admin/nats/apply:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: JetStream manifest
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.ApplyNATSRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/natsadmin.ApplyReport'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Apply a JetStream manifest
+      tags:
+      - admin
+  /admin/nats/streams/{stream}:
+    delete:
+      parameters:
+      - description: Stream name
+        in: path
+        name: stream
+        required: true
+        type: string
+      - description: Stream name confirmation
+        in: query
+        name: confirm
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Delete a JetStream stream
+      tags:
+      - admin
+  /admin/nats/streams/{stream}/consumers/{consumer}:
+    delete:
+      parameters:
+      - description: Stream name
+        in: path
+        name: stream
+        required: true
+        type: string
+      - description: Consumer name
+        in: path
+        name: consumer
+        required: true
+        type: string
+      - description: Consumer name confirmation
+        in: query
+        name: confirm
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Delete a JetStream consumer
+      tags:
+      - admin
+  /admin/nats/streams/{stream}/consumers/{consumer}/pause:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Stream name
+        in: path
+        name: stream
+        required: true
+        type: string
+      - description: Consumer name
+        in: path
+        name: consumer
+        required: true
+        type: string
+      - description: Pause deadline
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.PauseNATSConsumerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/natsadmin.PauseResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Pause a JetStream consumer
+      tags:
+      - admin
+  /admin/nats/streams/{stream}/consumers/{consumer}/resume:
+    post:
+      parameters:
+      - description: Stream name
+        in: path
+        name: stream
+        required: true
+        type: string
+      - description: Consumer name
+        in: path
+        name: consumer
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/natsadmin.PauseResult'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Resume a JetStream consumer
+      tags:
+      - admin
+  /admin/nats/streams/{stream}/purge:
+    post:
+      parameters:
+      - description: Stream name
+        in: path
+        name: stream
+        required: true
+        type: string
+      - description: Stream name confirmation
+        in: query
+        name: confirm
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Purge a JetStream stream
+      tags:
+      - admin
+  /admin/nats/test-message:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Test subject
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.NATSTestMessageRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/natsadmin.TestMessageResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Publish a restricted JetStream test message
+      tags:
+      - admin
   /admin/prompts:
     get:
       parameters:
-      - description: Prompt key
+      - description: Prompt name
         in: query
-        name: key
+        name: name
         type: string
       - description: Page size (default 50, max 500)
         in: query
@@ -878,6 +1360,38 @@ paths:
           schema:
             $ref: '#/definitions/api.ErrorResponse'
       summary: List operator tasks by batch
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Task request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.adminCreateTaskRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.AdminTask'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Create controlled operator task
       tags:
       - admin
   /admin/tasks/{id}:

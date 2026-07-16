@@ -1,5 +1,5 @@
 # Worker stack — long-running Prism worker services gated behind the `worker`
-# profile so the daily infra-only `task compose:up` is unaffected. Activate with
+# profile so the infra-only `task compose:infra` is unaffected. Activate with
 # `task compose:worker` (sets COMPOSE_PROFILES=worker) or
 # `docker compose --profile worker up`.
 #
@@ -114,9 +114,9 @@ services:
       PRISM_DISCOVERY_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_DISCOVERY_WORKER_FIXTURE_BASE: ${FIXTURE_BASE:-}
       PRISM_DISCOVERY_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
-      PRISM_DISCOVERY_WORKER_SERPAPI_API_KEY_FILE: /run/secrets/serpapi
+      PRISM_DISCOVERY_WORKER_SEARCH_PROVIDER_BRAVE_API_KEY_FILE: /run/secrets/brave_search_api
     secrets:
-      - serpapi
+      - brave_search_api
     networks:
       - prism-net
     volumes:
@@ -240,6 +240,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ../runtime/logs/planner:/logs
+      - ../runtime/prompts:/app/runtime/prompts
     stop_grace_period: 210s
     depends_on:
       postgres:

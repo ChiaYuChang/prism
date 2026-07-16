@@ -50,7 +50,7 @@ mkdir -p "$OUT_DIR"
 # Map .secrets/<file> → env-var name. Add new entries here when a new
 # .secrets/<file> needs to ship into the env layer.
 declare -a MAP=(
-    "valkey_prism:VALKEY_APP_PASSWORD"
+    "valkey-prism:VALKEY_APP_PASSWORD"
 )
 
 # Optional secrets are baked when present. Profile-specific preflight checks

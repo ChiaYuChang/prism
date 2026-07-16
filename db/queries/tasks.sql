@@ -15,6 +15,19 @@ FROM tasks
 WHERE batch_id = $1
 ORDER BY created_at ASC, next_run_at ASC;
 
+-- name: ListTaskStatusSummary :many
+SELECT kind, status, COUNT(*)::bigint AS count
+FROM tasks
+GROUP BY kind, status
+ORDER BY kind ASC, status ASC;
+
+-- name: ListRecentFailedTasks :many
+SELECT id, kind, source_abbr, url, failure_message, updated_at
+FROM tasks
+WHERE status = 'FAILED'
+ORDER BY updated_at DESC
+LIMIT $1;
+
 -- name: GetActiveTaskByPayloadDedup :one
 SELECT *
 FROM tasks
@@ -88,6 +101,7 @@ LIMIT 1;
 UPDATE tasks
 SET status = 'RUNNING',
     retry_count = retry_count + 1,
+    failure_message = NULL,
     last_run_at = NOW(),
     updated_at = NOW()
 WHERE id IN (
@@ -120,19 +134,20 @@ RETURNING *;
 
 -- name: CompleteTask :exec
 UPDATE tasks
-SET status = CASE
+     SET status = CASE
         WHEN frequency IS NOT NULL
          AND (expires_at IS NULL OR NOW() + frequency <= expires_at)
             THEN 'PENDING'::task_status
         ELSE 'COMPLETED'::task_status
     END,
-    next_run_at = CASE
+     next_run_at = CASE
         WHEN frequency IS NOT NULL
          AND (expires_at IS NULL OR NOW() + frequency <= expires_at)
-            THEN NOW() + frequency
+             THEN NOW() + frequency
         ELSE next_run_at
-    END,
-    last_run_at = NOW(),
+     END,
+     failure_message = NULL,
+     last_run_at = NOW(),
     updated_at = NOW()
 WHERE id = sqlc.arg(id)
   AND status = 'RUNNING';
@@ -145,11 +160,12 @@ SET status = CASE
         WHEN retry_count < sqlc.arg(retry_max) THEN 'PENDING'::task_status
         ELSE 'FAILED'::task_status
     END,
-    next_run_at = CASE
-        WHEN retry_count < sqlc.arg(retry_max) THEN NOW()
-        ELSE next_run_at
-    END,
-    updated_at = NOW()
+     next_run_at = CASE
+         WHEN retry_count < sqlc.arg(retry_max) THEN NOW()
+         ELSE next_run_at
+     END,
+     failure_message = LEFT(sqlc.arg(failure_message), 2048),
+     updated_at = NOW()
 WHERE id = sqlc.arg(id)
   AND status = 'RUNNING';
 
@@ -159,6 +175,7 @@ WHERE id = sqlc.arg(id)
 WITH retried AS (
     UPDATE tasks
     SET status = 'PENDING',
+        failure_message = NULL,
         next_run_at = NOW(),
         updated_at = NOW()
     WHERE tasks.id = sqlc.arg(id)

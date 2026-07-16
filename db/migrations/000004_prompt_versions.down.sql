@@ -1,6 +1,5 @@
 BEGIN;
 
-DROP TABLE IF EXISTS prompt_versions;
-DROP TABLE IF EXISTS prompt_keys;
+-- Prompt versions are part of the initial schema.
 
 COMMIT;

@@ -133,6 +133,9 @@ services:
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
       VALKEY_APP_USER: ${VALKEY_APP_USER:-prism}
+      PRISM_API_NATS_HOST: nats
+      PRISM_API_NATS_PORT: 4222
+      PRISM_API_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
       PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
       PRISM_API_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
@@ -150,10 +153,13 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/api-server:/logs
+      - ../runtime/prompts:/app/runtime/prompts
     stop_grace_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
       valkey:
+        condition: service_healthy
+      nats:
         condition: service_healthy
     restart: unless-stopped

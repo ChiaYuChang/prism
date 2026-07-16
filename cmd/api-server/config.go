@@ -59,6 +59,7 @@ type Config struct {
 	Postgres         app.PostgresConfig     `mapstructure:"postgres"`
 	S3               app.S3Config           `mapstructure:"s3"`
 	Valkey           app.ValkeyConfig       `mapstructure:"valkey"`
+	NATS             app.NatsConfig         `mapstructure:"nats"`
 	Cache            CacheConfig            `mapstructure:"cache"`
 	RateLimit        RateLimitConfig        `mapstructure:"rate-limit"`
 	Auth             AuthConfig             `mapstructure:"auth"`
@@ -123,6 +124,8 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetDefault("admin.enabled", true)
 	v.SetDefault("admin.port", 8091)
 	v.SetDefault("prompts.storage-uri", "file://runtime/prompts")
+	v.SetDefault("nats.nats-host", "nats")
+	v.SetDefault("nats.nats-port", 4222)
 	v.SetDefault("auth.hash-algorithm", "sha256")
 	v.SetDefault("auth.token-types.admin.prefix", "padm")
 	v.SetDefault("auth.token-types.admin.default-ttl", 720*time.Hour)
@@ -162,6 +165,13 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("valkey-password", "", "Valkey/Redis password")
 	fs.String("valkey-password-file", "", "Path to file containing the Valkey password")
 	fs.Int("valkey-db", 0, "Valkey/Redis DB index")
+	fs.String("nats-host", "nats", "NATS host")
+	fs.Int("nats-port", 4222, "NATS client port")
+	fs.String("nats-username", "", "NATS username")
+	fs.String("nats-password", "", "NATS password")
+	fs.String("nats-token", "", "NATS authentication token")
+	fs.String("nats-password-file", "", "Path to file containing the NATS password")
+	fs.String("nats-token-file", "", "Path to file containing the NATS token")
 
 	fs.Bool("cache-enabled", false, "Enable Valkey-backed progress cache for GET /fetches/{id}")
 	fs.Duration("cache-live-ttl", 2*time.Second, "Progress cache TTL for non-terminal responses")
@@ -228,6 +238,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := bindPromptFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := bindNATSFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := bindMonitoringFlags(v, fs); err != nil {
 		return nil, err
 	}
@@ -246,6 +259,9 @@ func LoadConfig(args []string) (*Config, error) {
 	cfg.Telemetry = telemetryCfg
 	if err := cfg.S3.ResolveSecrets(); err != nil {
 		return nil, fmt.Errorf("s3 secrets: %w", err)
+	}
+	if err := cfg.NATS.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("nats secrets: %w", err)
 	}
 
 	if cfg.Cache.Enabled || cfg.Monitoring.Backend == "valkey" {
@@ -334,6 +350,23 @@ func bindAuthFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 func bindPromptFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 	if err := v.BindPFlag("prompts.storage-uri", fs.Lookup("prompts-storage-uri")); err != nil {
 		return fmt.Errorf("bind prompts.storage-uri: %w", err)
+	}
+	return nil
+}
+
+func bindNATSFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	for flag, key := range map[string]string{
+		"nats-host":          "nats.nats-host",
+		"nats-port":          "nats.nats-port",
+		"nats-username":      "nats.nats-username",
+		"nats-password":      "nats.nats-password",
+		"nats-token":         "nats.nats-token",
+		"nats-password-file": "nats.nats-password-file",
+		"nats-token-file":    "nats.nats-token-file",
+	} {
+		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
+			return fmt.Errorf("bind %s: %w", key, err)
+		}
 	}
 	return nil
 }
