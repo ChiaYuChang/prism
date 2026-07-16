@@ -23,7 +23,6 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 	"github.com/ChiaYuChang/prism/internal/storage"
-	"github.com/ChiaYuChang/prism/internal/storage/filesystem"
 )
 
 const (
@@ -114,7 +113,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	promptStore, err := filesystem.NewLocalStore(config.PromptRoot)
+	promptStore, err := appconfig.NewStorage(ctx, config.PromptStorageURI, config.S3)
 	if err != nil {
 		logger.Error("failed to initialize prompt storage", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize prompt storage")
@@ -259,7 +258,7 @@ func loadPlannerPrompt(ctx context.Context, prompts repo.Prompts, store storage.
 			"prompt_name", version.Name,
 			"prompt_version", version.Version,
 			"prompt_hash", version.Hash,
-			"prompt_root", config.PromptRoot,
+			"prompt_storage", config.PromptStorageURI,
 		}, nil
 	}
 	body, err := os.ReadFile(config.PromptPath)

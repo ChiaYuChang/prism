@@ -49,7 +49,13 @@ auth:
       default-ttl: 720h
       max-ttl: 2160h
 prompts:
-  root: '{{ env "PRISM_PROMPTS_ROOT" "/app/runtime/prompts" }}'
+  storage-uri: '{{ env "PRISM_PROMPT_STORAGE_URI" "file:///app/runtime/prompts" }}'
+s3:
+  endpoint: '{{ env "PRISM_API_S3_ENDPOINT" "" }}'
+  region: '{{ env "PRISM_API_S3_REGION" "us-east-1" }}'
+  access-key: '{{ env "PRISM_API_S3_ACCESS_KEY" "" }}'
+  secret-key-file: '{{ env "PRISM_API_S3_SECRET_KEY_FILE" "" }}'
+  use-path-style: {{ env "PRISM_API_S3_USE_PATH_STYLE" "true" }}
 telemetry:
   enabled: true
   service-name: prism.api

@@ -29,7 +29,6 @@ import (
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
-	"github.com/ChiaYuChang/prism/internal/storage/filesystem"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -180,7 +179,7 @@ func main() {
 	}
 	authMiddleware := []middleware.Middleware{middleware.TokenAuthMiddleware(middleware.TokenAuthenticator{Authenticator: authenticator, ErrorDetail: middleware.AuthErrorAdmin})}
 	serverOpts = append(serverOpts, api.WithTokens(repository.Tokens(), hasher, tokenTypes))
-	promptStore, err := filesystem.NewLocalStore(config.Prompts.Root)
+	promptStore, err := appconfig.NewStorage(ctx, config.Prompts.StorageURI, config.S3)
 	if err != nil {
 		logger.Error("failed to initialize prompt storage", "error", err)
 		os.Exit(1)

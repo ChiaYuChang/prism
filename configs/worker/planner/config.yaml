@@ -1,13 +1,15 @@
 health-port: 8094
 shutdown-timeout: 3m
 prompt-path: /app/assets/worker/planner/prompts/analysis/extractor.md
-# Optional DB-registered prompt pin. When id is set, worker loads prompt by id,
-# verifies key/version/hash, then reads the API-managed file from shared volume.
-# prompt:
-#   id: 00000000-0000-0000-0000-000000000000
-#   key: worker/planner/analysis/extractor
-#   version: 1
-#   hash: sha256:...
+prompt:
+  key: worker/planner/analysis/extractor
+prompt-storage: '{{ env "PRISM_PROMPT_STORAGE_URI" "file:///app/runtime/prompts" }}'
+s3:
+  endpoint: '{{ env "PRISM_PLANNER_S3_ENDPOINT" "" }}'
+  region: '{{ env "PRISM_PLANNER_S3_REGION" "us-east-1" }}'
+  access-key: '{{ env "PRISM_PLANNER_S3_ACCESS_KEY" "" }}'
+  secret-key-file: '{{ env "PRISM_PLANNER_S3_SECRET_KEY_FILE" "" }}'
+  use-path-style: {{ env "PRISM_PLANNER_S3_USE_PATH_STYLE" "true" }}
 messenger-type: nats
 nats-host: nats
 nats-port: 4222

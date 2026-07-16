@@ -11,6 +11,7 @@ s3:
   secret-key-file: '{{ env "PRISM_COLLECTOR_WORKER_S3_SECRET_KEY_FILE" "" }}'
   use-path-style: true
 parsers-config: /app/configs/worker/collector/parsers.yaml
+prompt-storage: '{{ env "PRISM_PROMPT_STORAGE_URI" "file:///app/runtime/prompts" }}'
 fixture-base: '{{ env "FIXTURE_BASE" "" }}'
 force-minify-error: false
 messenger-type: nats

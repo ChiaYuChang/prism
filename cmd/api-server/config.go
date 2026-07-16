@@ -43,7 +43,7 @@ type TokenTypeConfig struct {
 }
 
 type PromptConfig struct {
-	Root string `mapstructure:"root" validate:"required"`
+	StorageURI string `mapstructure:"storage-uri" validate:"required"`
 }
 
 // Config is the runtime configuration for the API server.
@@ -57,6 +57,7 @@ type Config struct {
 	Logger           obs.LoggingConfig      `mapstructure:"logger"`
 	Telemetry        obs.TelemetryConfig    `mapstructure:"telemetry"`
 	Postgres         app.PostgresConfig     `mapstructure:"postgres"`
+	S3               app.S3Config           `mapstructure:"s3"`
 	Valkey           app.ValkeyConfig       `mapstructure:"valkey"`
 	Cache            CacheConfig            `mapstructure:"cache"`
 	RateLimit        RateLimitConfig        `mapstructure:"rate-limit"`
@@ -121,7 +122,7 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetDefault("monitoring.internal-port", 8089)
 	v.SetDefault("admin.enabled", true)
 	v.SetDefault("admin.port", 8091)
-	v.SetDefault("prompts.root", "runtime/prompts")
+	v.SetDefault("prompts.storage-uri", "file://runtime/prompts")
 	v.SetDefault("auth.hash-algorithm", "sha256")
 	v.SetDefault("auth.token-types.admin.prefix", "padm")
 	v.SetDefault("auth.token-types.admin.default-ttl", 720*time.Hour)
@@ -172,7 +173,13 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("rate-limit-ip-cache-size", 4096, "Max distinct IPs tracked by the rate limiter (LRU)")
 
 	fs.String("auth-hash-algorithm", "sha256", "Token hash algorithm")
-	fs.String("prompts-root", "runtime/prompts", "Root directory for uploaded prompt objects")
+	fs.String("prompts-storage-uri", "file://runtime/prompts", "Storage URI for uploaded prompt objects")
+	fs.String("s3-endpoint", "", "S3 endpoint URL")
+	fs.String("s3-region", "us-east-1", "S3 region")
+	fs.String("s3-access-key", "", "S3 access key")
+	fs.String("s3-secret-key", "", "S3 secret key")
+	fs.String("s3-secret-key-file", "", "Path to file containing the S3 secret key")
+	fs.Bool("s3-use-path-style", true, "Use path style addressing")
 
 	fs.String("monitoring-mode", "pull", "Monitoring mode: pull or push")
 	fs.String("monitoring-backend", "memory", "Monitoring status backend: memory or valkey")
@@ -206,6 +213,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := cfg.Valkey.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := cfg.S3.BindFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := bindCacheFlags(v, fs); err != nil {
 		return nil, err
 	}
@@ -234,6 +244,9 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Telemetry = telemetryCfg
+	if err := cfg.S3.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("s3 secrets: %w", err)
+	}
 
 	if cfg.Cache.Enabled || cfg.Monitoring.Backend == "valkey" {
 		if err := cfg.Valkey.ResolveSecrets(); err != nil {
@@ -319,8 +332,8 @@ func bindAuthFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 }
 
 func bindPromptFlags(v *viper.Viper, fs *pflag.FlagSet) error {
-	if err := v.BindPFlag("prompts.root", fs.Lookup("prompts-root")); err != nil {
-		return fmt.Errorf("bind prompts.root: %w", err)
+	if err := v.BindPFlag("prompts.storage-uri", fs.Lookup("prompts-storage-uri")); err != nil {
+		return fmt.Errorf("bind prompts.storage-uri: %w", err)
 	}
 	return nil
 }
