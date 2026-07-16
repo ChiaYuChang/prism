@@ -681,23 +681,9 @@ type Model struct {
 // Prompt asset registry. hash = SHA-256(body), used to pin extraction provenance.
 type Prompt struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
-	Hash      string             `db:"hash" json:"hash"`
-	Path      string             `db:"path" json:"path"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-}
-
-type PromptKey struct {
-	ID        uuid.UUID          `db:"id" json:"id"`
-	Key       string             `db:"key" json:"key"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-}
-
-type PromptVersion struct {
-	ID        uuid.UUID          `db:"id" json:"id"`
-	KeyID     uuid.UUID          `db:"key_id" json:"key_id"`
+	Name      string             `db:"name" json:"name"`
 	Version   int32              `db:"version" json:"version"`
 	Hash      string             `db:"hash" json:"hash"`
-	Path      string             `db:"path" json:"path"`
 	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
@@ -755,17 +741,18 @@ type Task struct {
 	// Request details (e.g. {query, site} for KEYWORD_SEARCH). Search keywords belong here, not as columns.
 	Payload []byte `db:"payload" json:"payload"`
 	// SHA-256(canonical JSON payload), hex. KEYWORD_SEARCH dedup via uq_tasks_active_payload. PAGE_FETCH dedups on url instead.
-	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
-	Meta        []byte             `db:"meta" json:"meta"`
-	TraceID     string             `db:"trace_id" json:"trace_id"`
-	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
-	NextRunAt   pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
-	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	Status      TaskStatus         `db:"status" json:"status"`
-	RetryCount  int32              `db:"retry_count" json:"retry_count"`
-	LastRunAt   pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
-	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	PayloadHash    pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta           []byte             `db:"meta" json:"meta"`
+	TraceID        string             `db:"trace_id" json:"trace_id"`
+	Frequency      pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt      pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Status         TaskStatus         `db:"status" json:"status"`
+	RetryCount     int32              `db:"retry_count" json:"retry_count"`
+	FailureMessage pgtype.Text        `db:"failure_message" json:"failure_message"`
+	LastRunAt      pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type Token struct {

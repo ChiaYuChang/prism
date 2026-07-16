@@ -22,7 +22,7 @@ case "$ENV" in
         ;;
 esac
 
-valkey_password_file="$SECRETS_DIR/valkey_prism"
+valkey_password_file="$SECRETS_DIR/valkey-prism"
 if [ ! -f "$valkey_password_file" ]; then
     echo "missing $valkey_password_file" >&2
     exit 1

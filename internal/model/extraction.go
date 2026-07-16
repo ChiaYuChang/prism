@@ -8,6 +8,8 @@ type ExtractionInput struct {
 
 // ExtractionOutput represents the structured insights from LLM analysis.
 type ExtractionOutput struct {
+	// RawResult is the validated JSON response returned by the model.
+	RawResult []byte `json:"-"`
 	// Title is a neutral, audit-friendly title summarizing the article.
 	Title string `json:"title"`
 	// Entities contains key people, parties, or organizations with normalized and source forms.

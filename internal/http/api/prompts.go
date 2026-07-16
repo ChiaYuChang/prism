@@ -25,6 +25,7 @@ const maxPromptUploadBytes = 1 << 20
 var promptKeyPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*(/[a-z0-9][a-z0-9_-]*){1,8}$`)
 
 type AdminPromptVersion struct {
+	ID        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`
 	Version   int32     `json:"version"`
 	Hash      string    `json:"hash"`
@@ -223,6 +224,7 @@ func promptHash(body []byte) string {
 
 func toAdminPromptVersion(prompt repo.PromptVersion) AdminPromptVersion {
 	return AdminPromptVersion{
+		ID:        prompt.ID,
 		Name:      prompt.Name,
 		Version:   prompt.Version,
 		Hash:      prompt.Hash,

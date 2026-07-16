@@ -294,6 +294,136 @@ func (_c *MockTasks_IsTaskRunning_Call) RunAndReturn(run func(ctx context.Contex
 	return _c
 }
 
+// ListRecentFailedTasks provides a mock function for the type MockTasks
+func (_mock *MockTasks) ListRecentFailedTasks(ctx context.Context, limit int32) ([]repo.FailedTaskSummary, error) {
+	ret := _mock.Called(ctx, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListRecentFailedTasks")
+	}
+
+	var r0 []repo.FailedTaskSummary
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) ([]repo.FailedTaskSummary, error)); ok {
+		return returnFunc(ctx, limit)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) []repo.FailedTaskSummary); ok {
+		r0 = returnFunc(ctx, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.FailedTaskSummary)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32) error); ok {
+		r1 = returnFunc(ctx, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTasks_ListRecentFailedTasks_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListRecentFailedTasks'
+type MockTasks_ListRecentFailedTasks_Call struct {
+	*mock.Call
+}
+
+// ListRecentFailedTasks is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int32
+func (_e *MockTasks_Expecter) ListRecentFailedTasks(ctx interface{}, limit interface{}) *MockTasks_ListRecentFailedTasks_Call {
+	return &MockTasks_ListRecentFailedTasks_Call{Call: _e.mock.On("ListRecentFailedTasks", ctx, limit)}
+}
+
+func (_c *MockTasks_ListRecentFailedTasks_Call) Run(run func(ctx context.Context, limit int32)) *MockTasks_ListRecentFailedTasks_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int32
+		if args[1] != nil {
+			arg1 = args[1].(int32)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTasks_ListRecentFailedTasks_Call) Return(failedTaskSummarys []repo.FailedTaskSummary, err error) *MockTasks_ListRecentFailedTasks_Call {
+	_c.Call.Return(failedTaskSummarys, err)
+	return _c
+}
+
+func (_c *MockTasks_ListRecentFailedTasks_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.FailedTaskSummary, error)) *MockTasks_ListRecentFailedTasks_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListTaskStatusSummary provides a mock function for the type MockTasks
+func (_mock *MockTasks) ListTaskStatusSummary(ctx context.Context) ([]repo.TaskStatusSummary, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListTaskStatusSummary")
+	}
+
+	var r0 []repo.TaskStatusSummary
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]repo.TaskStatusSummary, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []repo.TaskStatusSummary); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.TaskStatusSummary)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTasks_ListTaskStatusSummary_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListTaskStatusSummary'
+type MockTasks_ListTaskStatusSummary_Call struct {
+	*mock.Call
+}
+
+// ListTaskStatusSummary is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockTasks_Expecter) ListTaskStatusSummary(ctx interface{}) *MockTasks_ListTaskStatusSummary_Call {
+	return &MockTasks_ListTaskStatusSummary_Call{Call: _e.mock.On("ListTaskStatusSummary", ctx)}
+}
+
+func (_c *MockTasks_ListTaskStatusSummary_Call) Run(run func(ctx context.Context)) *MockTasks_ListTaskStatusSummary_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTasks_ListTaskStatusSummary_Call) Return(taskStatusSummarys []repo.TaskStatusSummary, err error) *MockTasks_ListTaskStatusSummary_Call {
+	_c.Call.Return(taskStatusSummarys, err)
+	return _c
+}
+
+func (_c *MockTasks_ListTaskStatusSummary_Call) RunAndReturn(run func(ctx context.Context) ([]repo.TaskStatusSummary, error)) *MockTasks_ListTaskStatusSummary_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListTasksByBatchID provides a mock function for the type MockTasks
 func (_mock *MockTasks) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]repo.Task, error) {
 	ret := _mock.Called(ctx, batchID)

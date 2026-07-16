@@ -119,4 +119,4 @@ tasks:
   start:
     desc: start full containerized stack
     cmds:
-      - task: compose:start
+      - task: compose:up

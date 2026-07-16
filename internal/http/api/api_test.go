@@ -14,10 +14,12 @@ import (
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/http/api"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
+	"github.com/ChiaYuChang/prism/internal/infra/natsdiag"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/mocks"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -47,6 +49,15 @@ func (f *fakeProgressCache) Set(_ context.Context, _ uuid.UUID, resp api.FetchPr
 type denyAllLimiter struct{}
 
 func (denyAllLimiter) Allow(string) bool { return false }
+
+type fakeNATSInspector struct {
+	snapshot natsdiag.Snapshot
+	err      error
+}
+
+func (f fakeNATSInspector) Snapshot(context.Context) (natsdiag.Snapshot, error) {
+	return f.snapshot, f.err
+}
 
 type testServerMocks struct {
 	scout       *mocks.MockScout
@@ -104,6 +115,69 @@ func TestListCandidates_HappyPath(t *testing.T) {
 	require.Equal(t, id, body.Items[0].ID)
 	require.EqualValues(t, 25, body.Limit)
 	require.EqualValues(t, 10, body.Offset)
+}
+
+func TestGetAdminNATS_ReturnsReadOnlySnapshot(t *testing.T) {
+	m := &testServerMocks{
+		scout:       mocks.NewMockScout(t),
+		tasks:       mocks.NewMockTasks(t),
+		pipeline:    mocks.NewMockPipeline(t),
+		userFetches: mocks.NewMockUserFetches(t),
+		operator:    mocks.NewMockOperator(t),
+	}
+	srv, err := api.NewServer(
+		slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		m.scout, m.tasks, m.pipeline, m.userFetches,
+		api.WithNATSInspector(fakeNATSInspector{snapshot: natsdiag.Snapshot{Streams: []natsdiag.StreamInfo{{Name: "prism_task", Messages: 3}}}}),
+	)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/nats", nil)
+	rec := httptest.NewRecorder()
+	srv.GetAdminNATS(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got natsdiag.Snapshot
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&got))
+	require.Len(t, got.Streams, 1)
+	require.Equal(t, uint64(3), got.Streams[0].Messages)
+}
+
+func TestCreateAdminTask_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+	batchID := uuid.Must(uuid.NewV7())
+	taskID := uuid.Must(uuid.NewV7())
+	body := []byte(`{"query":"fixture"}`)
+
+	m.tasks.EXPECT().CreateTask(mock.Anything, mock.MatchedBy(func(p repo.CreateTaskParams) bool {
+		return p.BatchID == batchID &&
+			p.Kind == repo.TaskKindDirectoryFetch &&
+			p.SourceType == repo.SourceTypeParty &&
+			p.SourceAbbr == "dpp" &&
+			p.URL == "https://www.dpp.org.tw/media/00" &&
+			string(p.Payload) == string(body) &&
+			p.TraceID == "prismctl-test"
+	})).Return(repo.Task{ID: taskID, BatchID: batchID, Kind: repo.TaskKindDirectoryFetch}, nil).Once()
+
+	requestBody := map[string]any{
+		"batch_id":    batchID,
+		"kind":        repo.TaskKindDirectoryFetch,
+		"source_type": repo.SourceTypeParty,
+		"source_abbr": "dpp",
+		"url":         "https://www.dpp.org.tw/media/00",
+		"payload":     json.RawMessage(body),
+		"trace_id":    "prismctl-test",
+	}
+	encoded, err := json.Marshal(requestBody)
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/tasks", bytes.NewReader(encoded))
+	rec := httptest.NewRecorder()
+	srv.CreateAdminTask(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var out api.AdminTask
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+	require.Equal(t, taskID, out.ID)
 }
 
 func TestListCandidates_InvalidSince(t *testing.T) {
@@ -324,6 +398,27 @@ func TestListAdminModels_HappyPath(t *testing.T) {
 	require.EqualValues(t, 11, body.Next)
 	require.Equal(t, 1, body.Count)
 	require.Equal(t, "gemma-2025", body.Items[0].Name)
+}
+
+func TestCreateAdminModel(t *testing.T) {
+	srv, m := newTestServer(t)
+	now := time.Now().UTC()
+	m.operator.EXPECT().CreateModel(mock.Anything, repo.CreateModelParams{
+		Name:     "gemma4:31b-cloud",
+		Provider: "ollama",
+		Type:     "EXTRACTOR",
+	}).Return(repo.Model{ID: 2, Name: "gemma4:31b-cloud", Provider: "ollama", Type: "EXTRACTOR", CreatedAt: now}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodPost, "/models", bytes.NewBufferString(`{"name":"gemma4:31b-cloud","provider":"ollama","type":"extractor"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.CreateAdminModel(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var body api.AdminModel
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, int16(2), body.ID)
+	assert.Equal(t, "EXTRACTOR", body.Type)
 }
 
 func TestListAdminEmbeddings_Gemma2025(t *testing.T) {

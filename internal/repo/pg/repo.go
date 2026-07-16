@@ -188,8 +188,8 @@ func (r *PGScheduler) CompleteTask(ctx context.Context, id uuid.UUID) error {
 	return r.q.CompleteTask(ctx, id)
 }
 
-func (r *PGScheduler) FailTask(ctx context.Context, id uuid.UUID, retryMax int) error {
-	return r.q.FailTask(ctx, FailTaskParams{ID: id, RetryMax: int32(retryMax)})
+func (r *PGScheduler) FailTask(ctx context.Context, id uuid.UUID, retryMax int, failureMessage string) error {
+	return r.q.FailTask(ctx, FailTaskParams{ID: id, RetryMax: int32(retryMax), FailureMessage: failureMessage})
 }
 
 func (r *PGScheduler) ListRunnableTasks(ctx context.Context, limit int32) ([]repo.Task, error) {
@@ -335,6 +335,38 @@ func (r *PGTasks) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 	out := make([]repo.Task, len(rows))
 	for i, row := range rows {
 		out[i] = dbTaskToRepoTask(row)
+	}
+	return out, nil
+}
+
+func (r *PGTasks) ListTaskStatusSummary(ctx context.Context) ([]repo.TaskStatusSummary, error) {
+	rows, err := r.q.ListTaskStatusSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.TaskStatusSummary, len(rows))
+	for i, row := range rows {
+		out[i] = repo.TaskStatusSummary{Kind: string(row.Kind), Status: repo.TaskStatus(row.Status), Count: row.Count}
+	}
+	return out, nil
+}
+
+func (r *PGTasks) ListRecentFailedTasks(ctx context.Context, limit int32) ([]repo.FailedTaskSummary, error) {
+	rows, err := r.q.ListRecentFailedTasks(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.FailedTaskSummary, len(rows))
+	for i, row := range rows {
+		var failure *string
+		if row.FailureMessage.Valid {
+			value := row.FailureMessage.String
+			failure = &value
+		}
+		out[i] = repo.FailedTaskSummary{
+			ID: row.ID, Kind: string(row.Kind), SourceAbbr: row.SourceAbbr,
+			URL: row.Url, FailureMessage: failure, UpdatedAt: row.UpdatedAt.Time,
+		}
 	}
 	return out, nil
 }
@@ -607,16 +639,15 @@ func (r *PGOperator) ListContentEmbeddingsGemma2025(ctx context.Context, params 
 
 // Prompts repository.
 func (r *PGPrompts) CreatePromptVersion(ctx context.Context, arg repo.CreatePromptVersionParams) (repo.PromptVersion, error) {
-	row, err := r.q.UpsertPromptVersion(ctx, UpsertPromptVersionParams{
-		Key:       arg.Key,
+	row, err := r.q.CreatePromptVersion(ctx, CreatePromptVersionParams{
+		Name:      arg.Name,
 		Hash:      arg.Hash,
-		Path:      arg.Path,
 		SizeBytes: arg.SizeBytes,
 	})
 	if err != nil {
 		return repo.PromptVersion{}, err
 	}
-	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.KeyID, row.Key, row.Version, row.Hash, row.Path, row.SizeBytes, row.CreatedAt), nil
+	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.Key, row.Version, row.Hash, row.SizeBytes, row.CreatedAt), nil
 }
 
 func (r *PGPrompts) GetPromptVersionByID(ctx context.Context, id uuid.UUID) (repo.PromptVersion, error) {
@@ -624,7 +655,15 @@ func (r *PGPrompts) GetPromptVersionByID(ctx context.Context, id uuid.UUID) (rep
 	if err != nil {
 		return repo.PromptVersion{}, err
 	}
-	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.KeyID, row.Key, row.Version, row.Hash, row.Path, row.SizeBytes, row.CreatedAt), nil
+	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.Key, row.Version, row.Hash, row.SizeBytes, row.CreatedAt), nil
+}
+
+func (r *PGPrompts) GetLatestPromptVersionByName(ctx context.Context, name string) (repo.PromptVersion, error) {
+	row, err := r.q.GetLatestPromptVersionByName(ctx, name)
+	if err != nil {
+		return repo.PromptVersion{}, err
+	}
+	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.Key, row.Version, row.Hash, row.SizeBytes, row.CreatedAt), nil
 }
 
 func (r *PGPrompts) ListPromptVersions(ctx context.Context, params repo.ListOperatorParams) ([]repo.PromptVersion, error) {
@@ -634,7 +673,7 @@ func (r *PGPrompts) ListPromptVersions(ctx context.Context, params repo.ListOper
 	}
 	out := make([]repo.PromptVersion, len(rows))
 	for i, row := range rows {
-		out[i] = dbPromptVersionRowToRepoPromptVersion(row.ID, row.KeyID, row.Key, row.Version, row.Hash, row.Path, row.SizeBytes, row.CreatedAt)
+		out[i] = dbPromptVersionRowToRepoPromptVersion(row.ID, row.Key, row.Version, row.Hash, row.SizeBytes, row.CreatedAt)
 	}
 	return out, nil
 }
@@ -646,7 +685,7 @@ func (r *PGPrompts) ListPromptVersionsByKey(ctx context.Context, key string, par
 	}
 	out := make([]repo.PromptVersion, len(rows))
 	for i, row := range rows {
-		out[i] = dbPromptVersionRowToRepoPromptVersion(row.ID, row.KeyID, row.Key, row.Version, row.Hash, row.Path, row.SizeBytes, row.CreatedAt)
+		out[i] = dbPromptVersionRowToRepoPromptVersion(row.ID, row.Key, row.Version, row.Hash, row.SizeBytes, row.CreatedAt)
 	}
 	return out, nil
 }
@@ -992,6 +1031,25 @@ func (r *PGEmbeddings) GetModelByNameAndType(ctx context.Context, name string, m
 	return dbModelToRepoModel(row), nil
 }
 
+func (r *PGOperator) CreateModel(ctx context.Context, arg repo.CreateModelParams) (repo.Model, error) {
+	publishDate := pgtype.Date{}
+	if arg.PublishDate != nil {
+		publishDate = pgtype.Date{Time: *arg.PublishDate, Valid: true}
+	}
+	row, err := r.q.CreateModel(ctx, CreateModelParams{
+		Name:        arg.Name,
+		Provider:    arg.Provider,
+		Type:        ModelType(arg.Type),
+		PublishDate: publishDate,
+		Url:         pgconv.StringPtrToPgText(arg.URL),
+		Tag:         pgconv.StringPtrToPgText(arg.Tag),
+	})
+	if err != nil {
+		return repo.Model{}, err
+	}
+	return dbModelToRepoModel(row), nil
+}
+
 func (r *PGEmbeddings) CreateCandidateEmbedding(ctx context.Context, arg repo.CreateCandidateEmbeddingParams) (repo.CandidateEmbedding, error) {
 	row, err := r.q.CreateCandidateEmbeddingGemma2025(ctx, CreateCandidateEmbeddingGemma2025Params{
 		CandidateID: arg.CandidateID,
@@ -1018,31 +1076,6 @@ func (r *PGEmbeddings) CreateContentEmbedding(ctx context.Context, arg repo.Crea
 		return repo.ContentEmbedding{}, err
 	}
 	return dbContentEmbeddingToRepoContentEmbedding(row), nil
-}
-
-// Analysis repository.
-func (r *PGAnalysis) GetPromptByID(ctx context.Context, id uuid.UUID) (repo.Prompt, error) {
-	row, err := r.q.GetPromptByID(ctx, id)
-	if err != nil {
-		return repo.Prompt{}, err
-	}
-	return dbPromptToRepoPrompt(row), nil
-}
-
-func (r *PGAnalysis) GetPromptByHash(ctx context.Context, hash string) (repo.Prompt, error) {
-	row, err := r.q.GetPromptByHash(ctx, hash)
-	if err != nil {
-		return repo.Prompt{}, err
-	}
-	return dbPromptToRepoPrompt(row), nil
-}
-
-func (r *PGAnalysis) UpsertPrompt(ctx context.Context, arg repo.UpsertPromptParams) (repo.Prompt, error) {
-	row, err := r.q.UpsertPrompt(ctx, UpsertPromptParams{Hash: arg.Hash, Path: arg.Path})
-	if err != nil {
-		return repo.Prompt{}, err
-	}
-	return dbPromptToRepoPrompt(row), nil
 }
 
 func (r *PGAnalysis) CreateContentExtraction(ctx context.Context, arg repo.CreateContentExtractionParams) (repo.ContentExtraction, error) {

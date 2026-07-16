@@ -21,6 +21,10 @@ valkey:
   client-name: api-shared
   tracing-enabled: true
   metrics-enabled: true
+nats:
+  nats-host: '{{ env "PRISM_API_NATS_HOST" "nats" }}'
+  nats-port: {{ env "PRISM_API_NATS_PORT" "4222" }}
+  nats-token: '{{ env "PRISM_API_NATS_TOKEN" "" }}'
 cache:
   enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
   live-ttl: 2s

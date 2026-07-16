@@ -89,7 +89,7 @@ func TestDispatchTasksMarksTaskFailedWhenPublishFails(t *testing.T) {
 		URL:        "https://example.com/listing",
 		TraceID:    "trace-123",
 	}}
-	scheduler.EXPECT().FailTask(mock.Anything, taskID, repo.DefaultTaskRetryMax).Return(nil)
+	scheduler.EXPECT().FailTask(mock.Anything, taskID, repo.DefaultTaskRetryMax, mock.Anything).Return(nil)
 
 	publisher := stubTaskPublisher{
 		publish: func(topic string, messages ...*wm.Message) error {
@@ -155,7 +155,7 @@ func TestDispatchTasksRecordsFailureMetrics(t *testing.T) {
 
 	scheduler := repomocks.NewMockScheduler(t)
 	taskID := uuid.Must(uuid.NewV7())
-	scheduler.EXPECT().FailTask(mock.Anything, taskID, repo.DefaultTaskRetryMax).Return(nil)
+	scheduler.EXPECT().FailTask(mock.Anything, taskID, repo.DefaultTaskRetryMax, mock.Anything).Return(nil)
 	tasks := []repo.Task{{
 		ID:         taskID,
 		BatchID:    uuid.Must(uuid.NewV7()),

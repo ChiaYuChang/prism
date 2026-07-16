@@ -96,16 +96,16 @@ func (_c *MockTaskReporter_CompleteTask_Call) RunAndReturn(run func(ctx context.
 }
 
 // FailTask provides a mock function for the type MockTaskReporter
-func (_mock *MockTaskReporter) FailTask(ctx context.Context, id uuid.UUID, retryMax int) error {
-	ret := _mock.Called(ctx, id, retryMax)
+func (_mock *MockTaskReporter) FailTask(ctx context.Context, id uuid.UUID, retryMax int, failureMessage string) error {
+	ret := _mock.Called(ctx, id, retryMax, failureMessage)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FailTask")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, int) error); ok {
-		r0 = returnFunc(ctx, id, retryMax)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, int, string) error); ok {
+		r0 = returnFunc(ctx, id, retryMax, failureMessage)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -121,11 +121,12 @@ type MockTaskReporter_FailTask_Call struct {
 //   - ctx context.Context
 //   - id uuid.UUID
 //   - retryMax int
-func (_e *MockTaskReporter_Expecter) FailTask(ctx interface{}, id interface{}, retryMax interface{}) *MockTaskReporter_FailTask_Call {
-	return &MockTaskReporter_FailTask_Call{Call: _e.mock.On("FailTask", ctx, id, retryMax)}
+//   - failureMessage string
+func (_e *MockTaskReporter_Expecter) FailTask(ctx interface{}, id interface{}, retryMax interface{}, failureMessage interface{}) *MockTaskReporter_FailTask_Call {
+	return &MockTaskReporter_FailTask_Call{Call: _e.mock.On("FailTask", ctx, id, retryMax, failureMessage)}
 }
 
-func (_c *MockTaskReporter_FailTask_Call) Run(run func(ctx context.Context, id uuid.UUID, retryMax int)) *MockTaskReporter_FailTask_Call {
+func (_c *MockTaskReporter_FailTask_Call) Run(run func(ctx context.Context, id uuid.UUID, retryMax int, failureMessage string)) *MockTaskReporter_FailTask_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -139,10 +140,15 @@ func (_c *MockTaskReporter_FailTask_Call) Run(run func(ctx context.Context, id u
 		if args[2] != nil {
 			arg2 = args[2].(int)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -153,7 +159,7 @@ func (_c *MockTaskReporter_FailTask_Call) Return(err error) *MockTaskReporter_Fa
 	return _c
 }
 
-func (_c *MockTaskReporter_FailTask_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID, retryMax int) error) *MockTaskReporter_FailTask_Call {
+func (_c *MockTaskReporter_FailTask_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID, retryMax int, failureMessage string) error) *MockTaskReporter_FailTask_Call {
 	_c.Call.Return(run)
 	return _c
 }

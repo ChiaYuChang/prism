@@ -120,6 +120,10 @@ func (e *Extractor) Extract(ctx context.Context, in *model.ExtractionInput) (*mo
 	if err := resp.DecodeJSONSchema(&out); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrFailedToDecodeOutput, err)
 	}
+	out.RawResult, err = json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode extraction output: %w", err)
+	}
 
 	l.DebugContext(ctx, "extractor completed",
 		slog.String("model", e.model),

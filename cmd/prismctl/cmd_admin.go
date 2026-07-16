@@ -16,9 +16,25 @@ func newAdminCommand(ctx *cliContext) *cobra.Command {
 	tokens.AddCommand(adminTokensCreateCommand(ctx), adminTokensListCommand(ctx), adminTokensGetCommand(ctx), adminTokensRevokeCommand(ctx))
 	sources := &cobra.Command{Use: "sources", Short: "Source registry commands"}
 	sources.AddCommand(adminSourcesCreateCommand(ctx), adminSourcesListCommand(ctx), adminSourcesSyncCommand(ctx), adminSourcesDeleteCommand(ctx), adminSourcesRestoreCommand(ctx))
+	models := &cobra.Command{Use: "models", Short: "Model registry commands"}
+	models.AddCommand(adminModelsCreateCommand(ctx), adminModelsListCommand(ctx))
+	prompts := &cobra.Command{Use: "prompts", Short: "Prompt version commands"}
+	prompts.AddCommand(adminPromptsUploadCommand(ctx), adminPromptsListCommand(ctx))
+	tasks := &cobra.Command{Use: "tasks", Short: "Task inspection commands"}
+	tasks.AddCommand(adminTasksListCommand(ctx), adminTasksGetCommand(ctx), adminTasksRetryCommand(ctx), adminTasksCreateCommand(ctx))
+	candidates := &cobra.Command{Use: "candidates", Short: "Candidate inspection commands"}
+	candidates.AddCommand(adminCandidatesListCommand(ctx), adminCandidatesGetCommand(ctx))
+	batches := &cobra.Command{Use: "batches", Short: "Batch inspection commands"}
+	batches.AddCommand(adminBatchesListCommand(ctx))
+	contents := &cobra.Command{Use: "contents", Short: "Content inspection commands"}
+	contents.AddCommand(adminContentsGetCommand(ctx))
+	fetches := &cobra.Command{Use: "fetches", Short: "Fetch progress commands"}
+	fetches.AddCommand(adminFetchesGetCommand(ctx))
+	nats := &cobra.Command{Use: "nats", Short: "NATS JetStream administration"}
+	nats.AddCommand(adminNATSStatusCommand(ctx), adminNATSStreamsCommand(ctx), adminNATSConsumersCommand(ctx), adminNATSApplyCommand(ctx), adminNATSTestMessageCommand(ctx))
 	schedulers := &cobra.Command{Use: "schedulers", Short: "Scheduler runtime controls"}
 	schedulers.AddCommand(adminSchedulerPauseCommand(ctx), adminSchedulerStartCommand(ctx), adminSchedulerStatusCommand(ctx))
-	cmd.AddCommand(tokens, sources, schedulers)
+	cmd.AddCommand(tokens, sources, models, prompts, tasks, candidates, batches, contents, fetches, nats, schedulers, adminStatusCommand(ctx), adminDiagnosticsCommand(ctx))
 	return cmd
 }
 

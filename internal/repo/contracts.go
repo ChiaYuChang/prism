@@ -7,24 +7,40 @@ import (
 )
 
 type Task struct {
-	ID          uuid.UUID
-	BatchID     uuid.UUID
-	TraceID     string
-	Kind        string
-	SourceType  string
-	SourceAbbr  string
-	URL         string
-	Payload     []byte
-	PayloadHash *string
-	Meta        []byte
-	Frequency   *time.Duration
-	NextRunAt   time.Time
-	ExpiresAt   *time.Time
-	Status      TaskStatus
-	RetryCount  int
-	LastRunAt   *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID             uuid.UUID
+	BatchID        uuid.UUID
+	TraceID        string
+	Kind           string
+	SourceType     string
+	SourceAbbr     string
+	URL            string
+	Payload        []byte
+	PayloadHash    *string
+	Meta           []byte
+	Frequency      *time.Duration
+	NextRunAt      time.Time
+	ExpiresAt      *time.Time
+	Status         TaskStatus
+	RetryCount     int
+	FailureMessage *string
+	LastRunAt      *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type TaskStatusSummary struct {
+	Kind   string
+	Status TaskStatus
+	Count  int64
+}
+
+type FailedTaskSummary struct {
+	ID             uuid.UUID
+	Kind           string
+	SourceAbbr     string
+	URL            string
+	FailureMessage *string
+	UpdatedAt      time.Time
 }
 
 type Batch struct {
@@ -62,20 +78,11 @@ type Model struct {
 	DeletedAt   *time.Time
 }
 
-type Prompt struct {
-	ID        uuid.UUID
-	Hash      string
-	Path      string
-	CreatedAt time.Time
-}
-
 type PromptVersion struct {
 	ID        uuid.UUID
-	KeyID     uuid.UUID
-	Key       string
+	Name      string
 	Version   int32
 	Hash      string
-	Path      string
 	SizeBytes int64
 	CreatedAt time.Time
 }
@@ -167,6 +174,11 @@ type ContentExtraction struct {
 	RawResult     []byte
 	TraceID       string
 	CreatedAt     time.Time
+}
+
+type PlannerResult struct {
+	Extractions  int
+	TasksCreated int
 }
 
 type Entity struct {

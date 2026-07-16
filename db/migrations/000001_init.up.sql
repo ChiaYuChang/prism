@@ -151,12 +151,16 @@ CREATE INDEX IF NOT EXISTS idx_contents_deleted_at ON contents(deleted_at);
 
 CREATE TABLE IF NOT EXISTS prompts (
     id          UUID PRIMARY KEY DEFAULT uuidv7(),
-    hash        CHAR(64) UNIQUE NOT NULL,
-    path        TEXT NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    name        TEXT NOT NULL,
+    version     INT NOT NULL,
+    hash        VARCHAR(71) NOT NULL,
+    size_bytes  BIGINT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (name, version)
 );
 
-CREATE INDEX IF NOT EXISTS idx_prompts_path ON prompts(path);
+CREATE INDEX IF NOT EXISTS idx_prompts_name_version ON prompts(name, version DESC);
+CREATE INDEX IF NOT EXISTS idx_prompts_hash ON prompts(hash);
 
 CREATE TABLE IF NOT EXISTS content_extractions (
     id             UUID PRIMARY KEY DEFAULT uuidv7(),

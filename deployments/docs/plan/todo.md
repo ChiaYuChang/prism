@@ -2,6 +2,26 @@
 
 Current sprint and pending checklist. Items move to `done.md` as they complete. Long-lived design lives in `spec.md`; deferred refactors in `future.md`.
 
+## Bootstrap Initialization
+
+The initial server setup order is:
+
+* [ ] Initialize root authentication and create the first admin token.
+* [x] Register sources with the admin API (`prismctl admin sources sync`).
+* [ ] Register models with the admin API; names must match worker configuration.
+* [x] Upload versioned prompts with the admin API (`prismctl admin prompts upload`).
+* [ ] Start the pipeline and verify discovery, collection, extraction, and archiving.
+
+Run `task test:bootstrap` after `task deploy:test` to perform the credential,
+source, model, and planner-prompt setup without calling an LLM or search provider.
+
+Pipeline validation should use `prismctl admin` inspection commands first; use
+MCP/Postgres queries only as an independent audit when CLI coverage is missing.
+The CLI now covers status, models, prompts, tasks, candidates, batches, contents,
+fetch progress, and controlled task creation.
+
+Prompt persistence is implemented; prompt upload and planner resolution still need live deployment verification.
+
 ## Phase 1 — Discovery Loop Execution & Pipeline Validation (Core)
 
 * [ ] 1.1 Start Scheduler and Workers to process PENDING tasks.
@@ -34,7 +54,7 @@ Phase A (`ArticleParser` removal + tests for kept components), the 2026-05 layer
 ## Phase 3 — Analysis Assets
 
 * [ ] 3.1 Structured Extraction Persistence:
-  * [ ] Persist `prompts`.
+  * [x] Persist `prompts` and uploaded prompt objects through the configured storage backend.
   * [ ] Persist `content_extractions`.
   * [ ] Persist extracted entities, topics, and phrases.
 * [ ] 3.2 Vectorization (remaining):

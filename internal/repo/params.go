@@ -108,15 +108,18 @@ type UpdateContentMetadataParams struct {
 	Metadata    []byte     `validate:"omitempty"`
 }
 
-type UpsertPromptParams struct {
-	Hash string `validate:"required"`
-	Path string `validate:"required"`
+type CreateModelParams struct {
+	Name        string     `validate:"required,max=64"`
+	Provider    string     `validate:"required,max=32"`
+	Type        string     `validate:"required,oneof=EXTRACTOR EMBEDDER ANALYZER"`
+	PublishDate *time.Time `validate:"omitempty"`
+	URL         *string    `validate:"omitempty,url"`
+	Tag         *string    `validate:"omitempty,max=32"`
 }
 
 type CreatePromptVersionParams struct {
-	Key       string `validate:"required"`
+	Name      string `validate:"required"`
 	Hash      string `validate:"required"`
-	Path      string `validate:"required"`
 	SizeBytes int64  `validate:"required,min=0"`
 }
 
@@ -162,6 +165,34 @@ type CreateContentExtractionParams struct {
 	Summary       string    `validate:"required"`
 	RawResult     []byte    `validate:"required"`
 	TraceID       string    `validate:"required"`
+}
+
+type PlannerExtractionParams struct {
+	ContentID uuid.UUID
+	Title     string
+	Summary   string
+	RawResult []byte
+	Topics    []string
+	Phrases   []string
+	Entities  []PlannerEntityParams
+}
+
+type PlannerEntityParams struct {
+	Canonical string
+	Type      string
+	Surface   string
+	Ordinal   *int16
+}
+
+type PersistPlannerResultParams struct {
+	BatchID       uuid.UUID
+	TraceID       string
+	ModelID       int16
+	PromptID      uuid.UUID
+	SchemaName    string
+	SchemaVersion int32
+	Extractions   []PlannerExtractionParams
+	Tasks         []CreateTaskParams
 }
 
 type GetContentExtractionSnapshotParams struct {

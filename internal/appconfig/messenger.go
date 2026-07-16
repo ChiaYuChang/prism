@@ -22,6 +22,9 @@ type NatsConfig struct {
 	QueueGroup       string        `mapstructure:"queue-group"       validate:"omitempty"`
 	SubscribersCount int           `mapstructure:"subscribers-count" validate:"omitempty,min=1,max=64"`
 	AckWaitTimeout   time.Duration `mapstructure:"ack-wait-timeout"  validate:"omitempty,min=1s"`
+	Stream           string        `mapstructure:"nats-stream"`
+	Consumer         string        `mapstructure:"nats-consumer"`
+	AutoProvision    *bool         `mapstructure:"nats-auto-provision"`
 
 	// File-based overrides for prod secret mounts. See PostgresConfig.PasswordFile.
 	PasswordFile string `mapstructure:"nats-password-file"`
@@ -48,11 +51,11 @@ func (n *NatsConfig) ResolveSecrets() error {
 // not leak the token or password.
 func (n NatsConfig) String() string {
 	return fmt.Sprintf(
-		"host=%s port=%d username=%s password=%s token=%s queue_group=%s subscribers=%d ack_wait=%s",
+		"host=%s port=%d username=%s password=%s token=%s queue_group=%s subscribers=%d ack_wait=%s stream=%s consumer=%s auto_provision=%t",
 		n.Host, n.Port, n.Username,
 		prismlogger.SecretMask(n.Password),
 		prismlogger.SecretMask(n.Token),
-		n.QueueGroup, n.SubscribersCount, n.AckWaitTimeout,
+		n.QueueGroup, n.SubscribersCount, n.AckWaitTimeout, n.Stream, n.Consumer, n.autoProvision(),
 	)
 }
 
@@ -67,10 +70,16 @@ func (n NatsConfig) LogValue() slog.Value {
 		slog.String("queue_group", n.QueueGroup),
 		slog.Int("subscribers", n.SubscribersCount),
 		slog.Duration("ack_wait", n.AckWaitTimeout),
+		slog.String("stream", n.Stream),
+		slog.String("consumer", n.Consumer),
+		slog.Bool("auto_provision", n.autoProvision()),
 	)
 }
 
 func (n *NatsConfig) NewMessenger(logger *slog.Logger) (*infra.Messenger, error) {
+	if (n.Stream == "") != (n.Consumer == "") {
+		return nil, fmt.Errorf("nats stream and consumer must be configured together")
+	}
 	url := fmt.Sprintf("nats://%s:%d", n.Host, n.Port)
 
 	if n.Token != "" {
@@ -84,13 +93,24 @@ func (n *NatsConfig) NewMessenger(logger *slog.Logger) (*infra.Messenger, error)
 		logger.Warn("connecting to NATS server without authentication")
 	}
 
-	return infra.NewNatsMessenger(
-		url,
-		logger,
+	opts := []infra.Option[infra.NatsConfig]{
 		infra.WithQueueGroup(n.QueueGroup),
 		infra.WithSubscribersCount(n.SubscribersCount),
 		infra.WithAckWaitTimeout(n.AckWaitTimeout),
+		infra.WithJetStreamAutoProvision(n.autoProvision()),
+	}
+	if n.Stream != "" {
+		opts = append(opts, infra.WithConsumerBinding(n.Stream, n.Consumer))
+	}
+	return infra.NewNatsMessenger(
+		url,
+		logger,
+		opts...,
 	)
+}
+
+func (n NatsConfig) autoProvision() bool {
+	return n.AutoProvision == nil || *n.AutoProvision
 }
 
 type GoChannelConfig struct {

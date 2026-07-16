@@ -23,6 +23,8 @@ type Querier interface {
 	CreateContentEmbeddingGemma2025(ctx context.Context, arg CreateContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
+	CreateModel(ctx context.Context, arg CreateModelParams) (Model, error)
+	CreatePromptVersion(ctx context.Context, arg CreatePromptVersionParams) (CreatePromptVersionRow, error)
 	CreateSource(ctx context.Context, arg CreateSourceParams) (Source, error)
 	// Single-round-trip insert-or-recover. On unique-violation against either
 	// uq_tasks_active_payload or uq_tasks_active_page_fetch, returns the
@@ -54,10 +56,9 @@ type Querier interface {
 	GetContentExtractionByID(ctx context.Context, id uuid.UUID) (ContentExtraction, error)
 	GetContentExtractionSnapshot(ctx context.Context, arg GetContentExtractionSnapshotParams) (ContentExtraction, error)
 	GetEntityByCanonicalAndType(ctx context.Context, arg GetEntityByCanonicalAndTypeParams) (Entity, error)
+	GetLatestPromptVersionByName(ctx context.Context, name string) (GetLatestPromptVersionByNameRow, error)
 	GetModelByID(ctx context.Context, id int16) (Model, error)
 	GetModelByNameAndType(ctx context.Context, arg GetModelByNameAndTypeParams) (Model, error)
-	GetPromptByHash(ctx context.Context, hash string) (Prompt, error)
-	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
 	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPromptVersionByIDRow, error)
 	GetRootToken(ctx context.Context) (Token, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
@@ -83,11 +84,13 @@ type Querier interface {
 	ListPromptVersions(ctx context.Context, arg ListPromptVersionsParams) ([]ListPromptVersionsRow, error)
 	ListPromptVersionsByKey(ctx context.Context, arg ListPromptVersionsByKeyParams) ([]ListPromptVersionsByKeyRow, error)
 	ListReadyToPublishBatches(ctx context.Context, arg ListReadyToPublishBatchesParams) ([]Batch, error)
+	ListRecentFailedTasks(ctx context.Context, limit int32) ([]ListRecentFailedTasksRow, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
 	ListSchedules(ctx context.Context, arg ListSchedulesParams) ([]Schedule, error)
 	ListSources(ctx context.Context, arg ListSourcesParams) ([]Source, error)
 	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
+	ListTaskStatusSummary(ctx context.Context) ([]ListTaskStatusSummaryRow, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
 	ListTokens(ctx context.Context, arg ListTokensParams) ([]Token, error)
 	ListUserFetchItems(ctx context.Context, fetchID uuid.UUID) ([]ListUserFetchItemsRow, error)
@@ -125,8 +128,6 @@ type Querier interface {
 	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 	UpsertEntity(ctx context.Context, arg UpsertEntityParams) (Entity, error)
-	UpsertPrompt(ctx context.Context, arg UpsertPromptParams) (Prompt, error)
-	UpsertPromptVersion(ctx context.Context, arg UpsertPromptVersionParams) (UpsertPromptVersionRow, error)
 	UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) (Schedule, error)
 }
 

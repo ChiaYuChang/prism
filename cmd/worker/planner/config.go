@@ -6,6 +6,7 @@ import (
 	"time"
 
 	app "github.com/ChiaYuChang/prism/internal/appconfig"
+	"github.com/ChiaYuChang/prism/internal/discovery/planner"
 	searchconfig "github.com/ChiaYuChang/prism/internal/discovery/search/config"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/prompt"
@@ -32,6 +33,7 @@ type Config struct {
 	PromptStorageURI string              `mapstructure:"prompt-storage" validate:"required"`
 	PromptPath       string              `mapstructure:"prompt-path"    validate:"required"`
 	Search           searchconfig.Config `mapstructure:"search"`
+	MaxSearchTasks   int                 `mapstructure:"max-search-tasks" validate:"required,min=1,max=1000"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -44,6 +46,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Int("health-port", 8094, "The port for the health check server")
 	fs.Duration("shutdown-timeout", 3*time.Minute, "Graceful shutdown drain timeout")
+	fs.Int("max-search-tasks", planner.DefaultMaxSearchTasks, "Maximum keyword-search tasks created per completed batch")
 
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.planner"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.planner"))

@@ -198,7 +198,7 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 
 	if err := h.process(ctx, logger, sig); err != nil {
 		logger.ErrorContext(ctx, "collector task failed", "error", err)
-		if failErr := h.reporter.FailTask(ctx, sig.TaskID, h.retryMax); failErr != nil {
+		if failErr := h.reporter.FailTask(ctx, sig.TaskID, retryMaxForError(err, h.retryMax), err.Error()); failErr != nil {
 			h.metrics.recordTask(ctx, sig, "nacked", started)
 			return false, fmt.Errorf("process task %s: %w; mark failed: %w", sig.TaskID, err, failErr)
 		}
@@ -215,6 +215,13 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	h.metrics.recordTask(ctx, sig, "ok", started)
 	logger.InfoContext(ctx, "collector task completed")
 	return true, nil
+}
+
+func retryMaxForError(err error, defaultRetryMax int) int {
+	if errors.Is(err, &collector.StageError{Stage: collector.PipelineStageParse}) {
+		return 1
+	}
+	return defaultRetryMax
 }
 
 func collectorResult(err error) string {

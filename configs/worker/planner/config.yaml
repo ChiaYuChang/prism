@@ -16,6 +16,10 @@ nats-port: 4222
 queue-group: planner-worker
 subscribers-count: 1
 ack-wait-timeout: 3m15s
+max-search-tasks: 20
+nats-stream: prism_batch_completed
+nats-consumer: planner-worker
+nats-auto-provision: false
 postgres:
   host: '{{ env "POSTGRES_HOST" "postgres" }}'
   port: {{ env "POSTGRES_PORT" "5432" }}

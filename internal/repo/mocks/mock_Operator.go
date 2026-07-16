@@ -38,6 +38,72 @@ func (_m *MockOperator) EXPECT() *MockOperator_Expecter {
 	return &MockOperator_Expecter{mock: &_m.Mock}
 }
 
+// CreateModel provides a mock function for the type MockOperator
+func (_mock *MockOperator) CreateModel(ctx context.Context, arg repo.CreateModelParams) (repo.Model, error) {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateModel")
+	}
+
+	var r0 repo.Model
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateModelParams) (repo.Model, error)); ok {
+		return returnFunc(ctx, arg)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateModelParams) repo.Model); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repo.Model)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateModelParams) error); ok {
+		r1 = returnFunc(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockOperator_CreateModel_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateModel'
+type MockOperator_CreateModel_Call struct {
+	*mock.Call
+}
+
+// CreateModel is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.CreateModelParams
+func (_e *MockOperator_Expecter) CreateModel(ctx interface{}, arg interface{}) *MockOperator_CreateModel_Call {
+	return &MockOperator_CreateModel_Call{Call: _e.mock.On("CreateModel", ctx, arg)}
+}
+
+func (_c *MockOperator_CreateModel_Call) Run(run func(ctx context.Context, arg repo.CreateModelParams)) *MockOperator_CreateModel_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.CreateModelParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.CreateModelParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockOperator_CreateModel_Call) Return(model repo.Model, err error) *MockOperator_CreateModel_Call {
+	_c.Call.Return(model, err)
+	return _c
+}
+
+func (_c *MockOperator_CreateModel_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateModelParams) (repo.Model, error)) *MockOperator_CreateModel_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListBatches provides a mock function for the type MockOperator
 func (_mock *MockOperator) ListBatches(ctx context.Context, params repo.ListOperatorParams) ([]repo.Batch, error) {
 	ret := _mock.Called(ctx, params)

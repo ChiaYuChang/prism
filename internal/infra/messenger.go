@@ -45,6 +45,22 @@ func WithSubscribersCount(n int) Option[NatsConfig] {
 func WithAckWaitTimeout(d time.Duration) Option[NatsConfig] {
 	return func(c *NatsConfig) {
 		c.Sub.AckWaitTimeout = d
+		c.Sub.JetStream.SubscribeOptions = append(c.Sub.JetStream.SubscribeOptions, nc.AckWait(d))
+	}
+}
+
+func WithJetStreamAutoProvision(enabled bool) Option[NatsConfig] {
+	return func(c *NatsConfig) {
+		c.Pub.JetStream.AutoProvision = enabled
+		c.Sub.JetStream.AutoProvision = enabled
+	}
+}
+
+func WithConsumerBinding(stream, consumer string) Option[NatsConfig] {
+	return func(c *NatsConfig) {
+		c.Sub.JetStream.AutoProvision = false
+		c.Sub.JetStream.DurablePrefix = consumer
+		c.Sub.JetStream.SubscribeOptions = append(c.Sub.JetStream.SubscribeOptions, nc.Bind(stream, consumer))
 	}
 }
 

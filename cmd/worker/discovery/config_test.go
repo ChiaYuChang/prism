@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	app "github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,6 +34,13 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 	assert.Equal(t, "/app/configs/worker/discovery/scouts.yaml", cfg.ScoutConfigPath)
 	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
+	natsCfg, ok := cfg.Messenger.(*app.NatsConfig)
+	require.True(t, ok)
+	require.Equal(t, "prism_task", natsCfg.Stream)
+	require.Equal(t, "discovery-worker", natsCfg.Consumer)
+	require.NotNil(t, natsCfg.AutoProvision)
+	require.False(t, *natsCfg.AutoProvision)
+	assert.Equal(t, "zh-hant", cfg.Search.Provider.Brave.SearchLang)
 	assert.Equal(t, "prism.discovery", cfg.Telemetry.ServiceName)
 	assert.Equal(t, "/logs/app.log", cfg.Logger.File.File)
 }

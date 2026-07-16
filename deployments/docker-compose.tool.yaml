@@ -2,7 +2,7 @@
 # Activate via COMPOSE_PROFILES (comma-separated): e.g.
 #   COMPOSE_PROFILES=dev,obs   docker compose ... up
 #   COMPOSE_PROFILES=dev,obs,ai docker compose ... up
-# `task compose:up` defaults to `dev,obs`. `ai` is opt-in because the
+# `task compose:infra` defaults to `dev,obs`. `ai` is opt-in because the
 # Ollama image + model pull is heavyweight and only relevant for LLM
 # work.
 
