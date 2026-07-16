@@ -36,6 +36,9 @@ type Config struct {
 	// without editing the baked parsers.yaml.
 	Prompt string `mapstructure:"prompt"`
 
+	// PromptStorage is the URI for DB-managed fallback prompt objects.
+	PromptStorage string `mapstructure:"prompt-storage" validate:"required"`
+
 	// CaptureDir, when non-empty, tees successful HTTP response bodies into
 	// <dir>/<host>/<path>. Dev-only; used to build local fixtures during
 	// the integration test plan Phase 1 real-site run.
@@ -72,6 +75,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("archive", "", "Archive URI for error payloads (file:///path or s3://bucket/prefix); empty disables archiving")
 	fs.String("parsers-config", "configs/worker/collector/parsers.yaml", "Path to the parsers configuration file (YAML)")
 	fs.String("prompt", "", "Override path to the LLM fallback system-instruction file (defaults to fallback.prompt_file in parsers.yaml)")
+	fs.String("prompt-storage", "file://runtime/prompts", "Storage URI for DB-managed fallback prompt objects")
 	fs.String("capture-dir", "", "Dev-only: tee successful response bodies to <dir>/<host>/<path> for fixture capture")
 	fs.String("fixture-base", "", "Dev-only: rewrite outbound requests to this fixture-server URL (mutually exclusive with --capture-dir)")
 	fs.Bool("force-minify-error", false, "Dev-only: replace minifier with always-failing shim to exercise errorSaver / cmd/recover (Phase 3)")

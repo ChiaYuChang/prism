@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -27,7 +26,6 @@ import (
 	"github.com/ChiaYuChang/prism/internal/prompt"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
-	"github.com/ChiaYuChang/prism/internal/storage/filesystem"
 )
 
 const (
@@ -168,7 +166,7 @@ func main() {
 		if config.Prompt != "" {
 			pCfg.Fallback.PromptFile = config.Prompt
 		}
-		promptText, promptAttrs, perr := loadCollectorFallbackPrompt(ctx, dbRepo.Prompts(), pCfg.Fallback)
+		promptText, promptAttrs, perr := loadCollectorFallbackPrompt(ctx, dbRepo.Prompts(), pCfg.Fallback, config.PromptStorage, config.S3)
 		if perr != nil {
 			logger.Error(
 				"failed to load fallback prompt",
@@ -316,9 +314,9 @@ func minDuration(a, b time.Duration) time.Duration {
 	return b
 }
 
-func loadCollectorFallbackPrompt(ctx context.Context, prompts repo.Prompts, cfg parserconfig.FallbackConfig) (string, []any, error) {
+func loadCollectorFallbackPrompt(ctx context.Context, prompts repo.Prompts, cfg parserconfig.FallbackConfig, storageURI string, s3cfg appconfig.S3Config) (string, []any, error) {
 	if cfg.Prompt.Enabled() {
-		store, err := filesystem.NewLocalStore(filepath.Dir(cfg.PromptFile))
+		store, err := appconfig.NewStorage(ctx, storageURI, s3cfg)
 		if err != nil {
 			return "", nil, err
 		}
@@ -331,7 +329,7 @@ func loadCollectorFallbackPrompt(ctx context.Context, prompts repo.Prompts, cfg 
 			"prompt_name", version.Name,
 			"prompt_version", version.Version,
 			"prompt_hash", version.Hash,
-			"prompt_root", filepath.Dir(cfg.PromptFile),
+			"prompt_storage", storageURI,
 		}, nil
 	}
 	body, err := parserconfig.LoadFallbackPrompt(cfg)

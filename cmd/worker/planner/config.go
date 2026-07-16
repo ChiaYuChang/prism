@@ -19,17 +19,19 @@ const (
 )
 
 type Config struct {
-	HealthPort      int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
-	Logger          obs.LoggingConfig   `mapstructure:"logger"`
-	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
-	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
-	MessengerType   string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
-	Messenger       app.MessengerConfig `mapstructure:"-"`
-	LLM             app.LLMConfig       `mapstructure:"llm"`
-	Prompt          prompt.Ref          `mapstructure:"prompt"`
-	PromptPath      string              `mapstructure:"prompt-path"    validate:"required"`
-	Search          searchconfig.Config `mapstructure:"search"`
+	HealthPort       int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
+	ShutdownTimeout  time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
+	Logger           obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry        obs.TelemetryConfig `mapstructure:"telemetry"`
+	Postgres         app.PostgresConfig  `mapstructure:"postgres"`
+	S3               app.S3Config        `mapstructure:"s3"`
+	MessengerType    string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
+	Messenger        app.MessengerConfig `mapstructure:"-"`
+	LLM              app.LLMConfig       `mapstructure:"llm"`
+	Prompt           prompt.Ref          `mapstructure:"prompt"`
+	PromptStorageURI string              `mapstructure:"prompt-storage" validate:"required"`
+	PromptPath       string              `mapstructure:"prompt-path"    validate:"required"`
+	Search           searchconfig.Config `mapstructure:"search"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -69,6 +71,13 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Duration("llm-timeout", 2*time.Minute, "LLM request timeout")
 
 	fs.String("prompt-path", DefaultPromptPath, "Path to the extractor prompt file")
+	fs.String("prompt-storage", "file://runtime/prompts", "Storage URI containing hash-addressed prompt objects")
+	fs.String("s3-endpoint", "", "S3 endpoint URL")
+	fs.String("s3-region", "us-east-1", "S3 region")
+	fs.String("s3-access-key", "", "S3 access key")
+	fs.String("s3-secret-key", "", "S3 secret key")
+	fs.String("s3-secret-key-file", "", "Path to file containing the S3 secret key")
+	fs.Bool("s3-use-path-style", true, "Use path style addressing")
 	fs.Bool("search-target-yahoo-enable", false, "Enable Yahoo News keyword-search target")
 	fs.String("search-target-yahoo-source-abbr", "yahoo", "Yahoo News source abbreviation for search candidates")
 	fs.String("search-target-yahoo-url", "https://tw.news.yahoo.com", "Yahoo News target URL")
@@ -105,6 +114,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := config.LLM.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := config.S3.BindFlags(v, fs); err != nil {
+		return nil, err
+	}
 
 	if err := v.Unmarshal(&config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
@@ -121,6 +133,9 @@ func LoadConfig(args []string) (*Config, error) {
 	config.Telemetry = telemetryCfg
 	if err := config.LLM.ResolveSecrets(); err != nil {
 		return nil, fmt.Errorf("resolve LLM secrets: %w", err)
+	}
+	if err := config.S3.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("resolve S3 secrets: %w", err)
 	}
 
 	switch config.MessengerType {
