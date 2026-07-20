@@ -35,6 +35,7 @@ const (
 type Actor struct {
 	TokenID uuid.UUID
 	Type    authtoken.Type
+	Name    string
 }
 
 type TokenTypeConfig struct {
@@ -214,14 +215,22 @@ func (s *Service) GetToken(ctx context.Context, actor Actor, id uuid.UUID) (repo
 }
 
 func (s *Service) createToken(ctx context.Context, req CreateTokenRequest) (TokenSecretResult, error) {
-	if strings.TrimSpace(req.Name) == "" {
-		return TokenSecretResult{}, fmt.Errorf("%w: token name is required", ErrInvalidToken)
-	}
 	expiresAt, err := s.resolveExpiry(req.Type, req.ExpiresAt)
 	if err != nil {
 		return TokenSecretResult{}, err
 	}
 	id := uuid.Must(uuid.NewV7())
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		switch req.Type {
+		case authtoken.TypeAdmin, authtoken.TypeUser:
+			return TokenSecretResult{}, fmt.Errorf("%w: token name is required for %s tokens", ErrInvalidToken, req.Type)
+		case authtoken.TypeWorker:
+			name = id.String()
+		default:
+			return TokenSecretResult{}, fmt.Errorf("%w: token name is required", ErrInvalidToken)
+		}
+	}
 	raw, secret, err := authtoken.Generate(req.Type, id)
 	if err != nil {
 		return TokenSecretResult{}, err
@@ -229,7 +238,7 @@ func (s *Service) createToken(ctx context.Context, req CreateTokenRequest) (Toke
 	created, err := s.tokens.CreateToken(ctx, repo.CreateTokenParams{
 		ID:            id,
 		Type:          string(req.Type),
-		Name:          strings.TrimSpace(req.Name),
+		Name:          name,
 		HashAlgorithm: s.hasher.Algorithm(),
 		TokenHash:     s.hasher.Hash(secret),
 		ExpiresAt:     expiresAt,

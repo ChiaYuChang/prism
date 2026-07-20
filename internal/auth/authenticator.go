@@ -18,6 +18,7 @@ type TokenStore interface {
 type Principal struct {
 	TokenID uuid.UUID
 	Type    authtoken.Type
+	Name    string
 }
 
 type Authenticator struct {
@@ -70,7 +71,7 @@ func (a *Authenticator) AuthenticateToken(ctx context.Context, raw string) (Prin
 	if !hasher.Verify(parsed.Secret, row.TokenHash) {
 		return Principal{}, ErrUnauthorized
 	}
-	return Principal{TokenID: row.ID, Type: parsed.Type}, nil
+	return Principal{TokenID: row.ID, Type: parsed.Type, Name: row.Name}, nil
 }
 
 func (a *Authenticator) AuthenticateRoot(ctx context.Context, raw string) (Principal, error) {
@@ -98,7 +99,7 @@ func (a *Authenticator) AuthenticateRoot(ctx context.Context, raw string) (Princ
 	if !hasher.Verify([]byte(secret), row.TokenHash) {
 		return Principal{}, ErrUnauthorized
 	}
-	return Principal{TokenID: row.ID, Type: authtoken.TypeRoot}, nil
+	return Principal{TokenID: row.ID, Type: authtoken.TypeRoot, Name: row.Name}, nil
 }
 
 func (a *Authenticator) allows(typ authtoken.Type) bool {
