@@ -10,6 +10,8 @@ import (
 	prismauth "github.com/ChiaYuChang/prism/internal/auth"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // TokenAuthHeader is the HTTP header used by operator clients to authenticate
@@ -21,6 +23,7 @@ type principalContextKey struct{}
 type Principal struct {
 	TokenID uuid.UUID
 	Type    authtoken.Type
+	Name    string
 	Source  string
 }
 
@@ -54,6 +57,7 @@ func TokenAuthMiddleware(auth TokenAuthenticator) Middleware {
 				auth.writeError(w, err)
 				return
 			}
+			setPrincipalSpanAttributes(r.Context(), principal)
 			next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), principal)))
 		})
 	}
@@ -67,7 +71,19 @@ func (a TokenAuthenticator) authenticate(ctx context.Context, raw string) (Princ
 	if err != nil {
 		return Principal{}, err
 	}
-	return Principal{TokenID: principal.TokenID, Type: principal.Type, Source: "db"}, nil
+	return Principal{TokenID: principal.TokenID, Type: principal.Type, Name: principal.Name, Source: "db"}, nil
+}
+
+func setPrincipalSpanAttributes(ctx context.Context, principal Principal) {
+	name := strings.TrimSpace(principal.Name)
+	if name == "" {
+		name = principal.TokenID.String()
+	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("prism.actor.name", name),
+		attribute.String("prism.actor.token_id", principal.TokenID.String()),
+		attribute.String("prism.actor.type", string(principal.Type)),
+	)
 }
 
 func (a TokenAuthenticator) writeError(w http.ResponseWriter, err error) {

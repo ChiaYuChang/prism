@@ -67,7 +67,7 @@ func adminTokensCreateCommand(ctx *cliContext) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&typ, "type", string(authtoken.TypeUser), "Token type: admin, user, worker")
-	cmd.Flags().StringVar(&name, "name", "", "Token name")
+	cmd.Flags().StringVar(&name, "name", "", "Human token name; required for admin/user tokens, optional for worker tokens")
 	cmd.Flags().StringVar(&expiresAt, "expires-at", "", "Token expiry RFC3339 timestamp")
 	return cmd
 }

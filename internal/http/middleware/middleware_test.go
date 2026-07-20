@@ -8,13 +8,20 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	prismauth "github.com/ChiaYuChang/prism/internal/auth"
+	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
+	"github.com/ChiaYuChang/prism/internal/repo"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func discardLogger() *slog.Logger {
@@ -127,6 +134,67 @@ func TestTokenListAuth_AllowsKnownToken(t *testing.T) {
 
 	assert.True(t, called)
 	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+type middlewareTokenStore struct {
+	token repo.Token
+}
+
+func (s middlewareTokenStore) GetTokenByID(context.Context, uuid.UUID) (repo.Token, error) {
+	return s.token, nil
+}
+
+func (s middlewareTokenStore) GetRootToken(context.Context) (repo.Token, error) {
+	return repo.Token{}, nil
+}
+
+func TestTokenAuthMiddlewarePropagatesIdentityToSpan(t *testing.T) {
+	id := uuid.Must(uuid.NewV7())
+	hasher, err := authtoken.NewHasher("sha256")
+	require.NoError(t, err)
+	raw, secret, err := authtoken.Generate(authtoken.TypeAdmin, id)
+	require.NoError(t, err)
+	authenticator, err := prismauth.NewAuthenticator(prismauth.AuthenticatorParams{
+		Store: middlewareTokenStore{token: repo.Token{
+			ID:            id,
+			Type:          string(authtoken.TypeAdmin),
+			Name:          "alice-cli",
+			HashAlgorithm: hasher.Algorithm(),
+			TokenHash:     hasher.Hash(secret),
+			ExpiresAt:     time.Now().Add(time.Hour),
+		}},
+		AllowedTypes: []authtoken.Type{authtoken.TypeAdmin},
+	})
+	require.NoError(t, err)
+
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sdktrace.NewSimpleSpanProcessor(exporter)))
+	ctx, span := provider.Tracer("middleware-test").Start(context.Background(), "admin request")
+	req := httptest.NewRequest(http.MethodGet, "/admin/status", nil).WithContext(ctx)
+	req.Header.Set(middleware.TokenAuthHeader, raw)
+	rec := httptest.NewRecorder()
+	h := middleware.TokenAuthMiddleware(middleware.TokenAuthenticator{Authenticator: authenticator})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := middleware.PrincipalFromContext(r.Context())
+		require.True(t, ok)
+		require.Equal(t, "alice-cli", principal.Name)
+		w.WriteHeader(http.StatusOK)
+	}))
+	h.ServeHTTP(rec, req)
+	span.End()
+	require.NoError(t, provider.ForceFlush(context.Background()))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	attrs := spans[0].Attributes
+	values := make(map[attribute.Key]string, len(attrs))
+	for _, attr := range attrs {
+		values[attr.Key] = attr.Value.AsString()
+	}
+	require.Equal(t, "alice-cli", values[attribute.Key("prism.actor.name")])
+	require.Equal(t, id.String(), values[attribute.Key("prism.actor.token_id")])
+	require.Equal(t, "admin", values[attribute.Key("prism.actor.type")])
+	require.NoError(t, provider.Shutdown(context.Background()))
 }
 
 func TestTokenListAuth_RejectsMissingToken(t *testing.T) {
