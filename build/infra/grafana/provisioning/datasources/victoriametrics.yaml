@@ -6,6 +6,6 @@ datasources:
     access: proxy
     url: http://victoria-metrics:8428
     isDefault: false
-    editable: true
+    editable: false
     jsonData:
       httpMethod: POST

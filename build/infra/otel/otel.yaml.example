@@ -49,10 +49,15 @@ service:
   extensions: [health_check]
 
   pipelines:
-    logs:
+    logs/file:
       receivers: [filelog/app]
       processors: [batch]
       exporters: [file/local_backup, otlphttp/victorialogs]
+
+    logs/otlp:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/victorialogs]
 
     metrics:
       receivers: [otlp]

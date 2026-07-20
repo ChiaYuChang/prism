@@ -88,7 +88,33 @@ This is commonly described as `F-T-(S||P)`.
 | Database | PostgreSQL 18 + pgvector | Structured data, tasks, and embeddings |
 | Cache / Lock | Valkey | Future short-term rate limiting and deduplication |
 | Object Storage | SeaweedFS / S3 | Canonical archive storage |
-| Telemetry | OpenTelemetry + VictoriaLogs | Trace-linked logging and auditability |
+| Telemetry | OpenTelemetry + VictoriaMetrics, VictoriaLogs, VictoriaTraces | Metrics, logs, traces, and auditability |
+
+### Grafana Observability
+
+The `obs` Compose profile runs Grafana with provisioned VictoriaMetrics,
+VictoriaLogs, and VictoriaTraces data sources. A starter dashboard is loaded
+automatically, and logs/traces can be correlated through the shared `trace_id`.
+
+Start the local stack with:
+
+```bash
+task compose:infra
+```
+
+Open <http://localhost:3100> and sign in with username `grafana` and the
+password stored in `.secrets/grafana`. Select **Dashboards > Prism > Prism
+Observability** for the overview.
+
+For ad-hoc investigation, use **Explore**:
+
+- **VictoriaMetrics**: Prometheus-compatible metrics queries.
+- **VictoriaLogs**: LogsQL queries such as `*` or `trace_id:="..."`.
+- **VictoriaTraces**: distributed traces searched by service or trace ID. Use the same `trace_id` in VictoriaLogs to correlate them.
+
+The dashboard and data sources are provisioned from
+`build/infra/grafana/provisioning`, so restarting the `obs` profile does not
+require manual Grafana setup.
 
 ## Repository Layout
 

@@ -6,4 +6,9 @@ datasources:
     access: proxy
     url: http://victoria-traces:10428/select/jaeger
     isDefault: false
-    editable: true
+    editable: false
+    jsonData:
+      nodeGraph:
+        enabled: true
+      traceIdTimeParams:
+        enabled: true
