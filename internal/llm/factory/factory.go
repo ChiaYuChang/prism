@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/appconfig"
+	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/infra"
 	"github.com/ChiaYuChang/prism/internal/llm"
 	"github.com/ChiaYuChang/prism/internal/llm/gemini"
@@ -86,10 +87,17 @@ func newProvider(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logg
 		Tracer:      infra.Tracer(),
 		Validator:   validator.New(),
 		Transformer: mold.New(),
-		HTTPClient:  &http.Client{Timeout: timeout},
+		HTTPClient:  newHTTPClient(timeout),
 	}, llm.BuildConfig{
 		Model:   cfg.Model,
 		Key:     cfg.Key,
 		Timeout: timeout,
 	})
+}
+
+func newHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: httpclient.NewTracingTransport(nil),
+	}
 }
