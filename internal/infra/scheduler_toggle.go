@@ -6,14 +6,24 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ChiaYuChang/prism/internal/tree"
 	"github.com/redis/go-redis/v9"
 )
 
+const SchedulerToggleGlobalName = "global"
 const SchedulerToggleGlobalKey = "scheduler.toggle"
 
 // SchedulerToggleStore persists global and per-scheduler enable switches.
 type SchedulerToggleStore struct {
 	client *redis.Client
+}
+
+// SchedulerToggleState describes a scheduler node and its effective state.
+type SchedulerToggleState struct {
+	Name             string
+	Enabled          bool
+	EffectiveEnabled bool
+	Parent           string
 }
 
 func NewSchedulerToggleStore(client *redis.Client) (*SchedulerToggleStore, error) {
@@ -47,19 +57,11 @@ func (s *SchedulerToggleStore) Initialize(ctx context.Context, name string, enab
 
 // Enabled returns the effective state: global AND per-scheduler.
 func (s *SchedulerToggleStore) Enabled(ctx context.Context, name string) (bool, error) {
-	values, err := s.client.MGet(ctx, SchedulerToggleGlobalKey, SchedulerToggleKey(name)).Result()
+	state, err := s.State(ctx, name)
 	if err != nil {
-		return false, fmt.Errorf("read scheduler toggles: %w", err)
+		return false, err
 	}
-	global, err := toggleValue(values[0], true)
-	if err != nil {
-		return false, fmt.Errorf("parse global scheduler toggle: %w", err)
-	}
-	local, err := toggleValue(values[1], true)
-	if err != nil {
-		return false, fmt.Errorf("parse scheduler toggle %s: %w", name, err)
-	}
-	return global && local, nil
+	return state.EffectiveEnabled, nil
 }
 
 func (s *SchedulerToggleStore) GlobalEnabled(ctx context.Context) (bool, error) {
@@ -79,6 +81,44 @@ func (s *SchedulerToggleStore) SetGlobal(ctx context.Context, enabled bool) erro
 
 func (s *SchedulerToggleStore) SetScheduler(ctx context.Context, name string, enabled bool) error {
 	return s.set(ctx, SchedulerToggleKey(name), enabled)
+}
+
+// State returns a scheduler node's local and effective enablement.
+func (s *SchedulerToggleStore) State(ctx context.Context, name string) (SchedulerToggleState, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return SchedulerToggleState{}, fmt.Errorf("scheduler name is required")
+	}
+	values, err := s.client.MGet(ctx, SchedulerToggleGlobalKey, SchedulerToggleKey(name)).Result()
+	if err != nil {
+		return SchedulerToggleState{}, fmt.Errorf("read scheduler toggles: %w", err)
+	}
+	global, err := toggleValue(values[0], true)
+	if err != nil {
+		return SchedulerToggleState{}, fmt.Errorf("parse global scheduler toggle: %w", err)
+	}
+	local, err := toggleValue(values[1], true)
+	if err != nil {
+		return SchedulerToggleState{}, fmt.Errorf("parse scheduler toggle %s: %w", name, err)
+	}
+
+	toggles := tree.New[bool]()
+	if err := toggles.Add(SchedulerToggleGlobalName, "", global); err != nil {
+		return SchedulerToggleState{}, fmt.Errorf("build scheduler toggle tree: %w", err)
+	}
+	if err := toggles.Add(name, SchedulerToggleGlobalName, local); err != nil {
+		return SchedulerToggleState{}, fmt.Errorf("build scheduler toggle tree: %w", err)
+	}
+	effective, err := toggles.Effective(name, func(enabled bool) bool { return enabled })
+	if err != nil {
+		return SchedulerToggleState{}, fmt.Errorf("evaluate scheduler toggle tree: %w", err)
+	}
+	return SchedulerToggleState{
+		Name:             name,
+		Enabled:          local,
+		EffectiveEnabled: effective,
+		Parent:           SchedulerToggleGlobalName,
+	}, nil
 }
 
 func (s *SchedulerToggleStore) set(ctx context.Context, key string, enabled bool) error {

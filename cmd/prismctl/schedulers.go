@@ -9,8 +9,10 @@ import (
 )
 
 type schedulerView struct {
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
+	Name             string `json:"name"`
+	Enabled          bool   `json:"enabled"`
+	EffectiveEnabled bool   `json:"effective_enabled"`
+	Parent           string `json:"parent,omitempty"`
 }
 
 func adminSchedulerPauseCommand(ctx *cliContext) *cobra.Command {
