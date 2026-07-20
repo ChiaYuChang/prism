@@ -456,6 +456,284 @@
     },
     {
       "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (database, db_operation) (rate(pgx_conn_requests_total[$__rate_interval]))",
+          "legendFormat": "{{database}} / {{db_operation}}",
+          "refId": "A"
+        }
+      ],
+      "title": "PostgreSQL query rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, database) (rate(pgx_conn_request_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "{{database}} p95",
+          "refId": "A"
+        }
+      ],
+      "title": "PostgreSQL query latency p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 48
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (database, db_operation) (rate(pgx_conn_request_errors_total[$__rate_interval]))",
+          "legendFormat": "{{database}} / {{db_operation}}",
+          "refId": "A"
+        }
+      ],
+      "title": "PostgreSQL query errors",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 48
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (database) (pgx_pool_total_connections) / sum by (database) (pgx_pool_max_connections)",
+          "legendFormat": "{{database}}",
+          "refId": "A"
+        }
+      ],
+      "title": "PostgreSQL pool utilization",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 56
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (addr, client) (valkey_client_pool_conn_total_current)",
+          "legendFormat": "{{client}} / {{addr}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (addr, client) (valkey_client_pool_conn_idle_current)",
+          "legendFormat": "{{client}} / {{addr}} idle",
+          "refId": "B"
+        }
+      ],
+      "title": "Valkey pool connections",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 56
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (addr, client) (rate(valkey_client_pool_hit_total[$__rate_interval]))",
+          "legendFormat": "{{client}} / {{addr}} hits",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (addr, client) (rate(valkey_client_pool_miss_total[$__rate_interval]))",
+          "legendFormat": "{{client}} / {{addr}} misses",
+          "refId": "B"
+        }
+      ],
+      "title": "Valkey pool hit/miss rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "P4169E866C3094E38"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 64
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (addr, client) (rate(valkey_client_pool_timeout_total[$__rate_interval]))",
+          "legendFormat": "{{client}} / {{addr}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Valkey pool timeouts",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
         "type": "victoriametrics-logs-datasource",
         "uid": "PD775F2863313E6C7"
       },
@@ -463,7 +741,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 72
       },
       "id": 4,
       "options": {
@@ -492,7 +770,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 50
+        "y": 82
       },
       "id": 5,
       "options": {
