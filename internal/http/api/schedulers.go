@@ -3,11 +3,15 @@ package api
 import (
 	"net/http"
 	"strings"
+
+	"github.com/ChiaYuChang/prism/internal/infra"
 )
 
 type schedulerToggleResponse struct {
-	Name    string `json:"name"`
-	Enabled bool   `json:"enabled"`
+	Name             string `json:"name"`
+	Enabled          bool   `json:"enabled"`
+	EffectiveEnabled bool   `json:"effective_enabled"`
+	Parent           string `json:"parent,omitempty"`
 }
 
 // GetAdminGlobalSchedulerToggle handles GET /api/v1/admin/schedulers.
@@ -39,19 +43,26 @@ func (s *Server) getAdminSchedulerToggle(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusServiceUnavailable, "scheduler controls are disabled")
 		return
 	}
-	var enabled bool
+	var state infra.SchedulerToggleState
 	var err error
 	if name == "global" {
-		enabled, err = s.SchedulerToggles.GlobalEnabled(r.Context())
+		enabled, stateErr := s.SchedulerToggles.GlobalEnabled(r.Context())
+		state = infra.SchedulerToggleState{Name: name, Enabled: enabled, EffectiveEnabled: enabled}
+		err = stateErr
 	} else {
-		enabled, err = s.SchedulerToggles.Enabled(r.Context(), name)
+		state, err = s.SchedulerToggles.State(r.Context(), name)
 	}
 	if err != nil {
 		s.Logger.ErrorContext(r.Context(), "read scheduler toggle failed", "scheduler", name, "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to read scheduler toggle")
 		return
 	}
-	writeJSON(w, http.StatusOK, schedulerToggleResponse{Name: name, Enabled: enabled})
+	writeJSON(w, http.StatusOK, schedulerToggleResponse{
+		Name:             state.Name,
+		Enabled:          state.Enabled,
+		EffectiveEnabled: state.EffectiveEnabled,
+		Parent:           state.Parent,
+	})
 }
 
 // PauseAdminScheduler handles POST /api/v1/admin/schedulers/{name}/pause.
@@ -79,7 +90,18 @@ func (s *Server) setAdminSchedulerToggle(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusInternalServerError, "failed to update scheduler toggle")
 		return
 	}
-	writeJSON(w, http.StatusOK, schedulerToggleResponse{Name: name, Enabled: enabled})
+	state, err := s.SchedulerToggles.State(r.Context(), name)
+	if err != nil {
+		s.Logger.ErrorContext(r.Context(), "read scheduler toggle after update failed", "scheduler", name, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to read updated scheduler toggle")
+		return
+	}
+	writeJSON(w, http.StatusOK, schedulerToggleResponse{
+		Name:             state.Name,
+		Enabled:          state.Enabled,
+		EffectiveEnabled: state.EffectiveEnabled,
+		Parent:           state.Parent,
+	})
 }
 
 func (s *Server) setAdminGlobalSchedulerToggle(w http.ResponseWriter, r *http.Request, enabled bool) {
@@ -92,5 +114,9 @@ func (s *Server) setAdminGlobalSchedulerToggle(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "failed to update global scheduler toggle")
 		return
 	}
-	writeJSON(w, http.StatusOK, schedulerToggleResponse{Name: "global", Enabled: enabled})
+	writeJSON(w, http.StatusOK, schedulerToggleResponse{
+		Name:             infra.SchedulerToggleGlobalName,
+		Enabled:          enabled,
+		EffectiveEnabled: enabled,
+	})
 }
