@@ -33,8 +33,8 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 6,
+        "h": 8,
+        "w": 12,
         "x": 0,
         "y": 0
       },
@@ -76,7 +76,7 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 6,
+        "x": 12,
         "y": 0
       },
       "id": 2,
@@ -117,7 +117,7 @@
         "x": 0,
         "y": 8
       },
-      "id": 3,
+      "id": 20,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -130,366 +130,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (provider, operation) (rate(prism.llm.requests[$__rate_interval]))",
-          "legendFormat": "{{provider}} / {{operation}}",
+          "expr": "sum by (\"service.name\", result) (rate(prism.http.server.requests{result=~\"client_error|server_error\"}[$__rate_interval]))",
+          "legendFormat": "{{service.name}} / {{result}}",
           "refId": "A"
         }
       ],
-      "title": "LLM request rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 8
-      },
-      "id": 6,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (\"service.name\", \"server.address\") (rate(http.client.request.duration_count[$__rate_interval]))",
-          "legendFormat": "{{service.name}} -> {{server.address}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Outbound HTTP request rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 90
-              },
-              {
-                "color": "green",
-                "value": 99
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 16
-      },
-      "id": 7,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "100 * sum by (provider, config) (rate(prism.search.requests{result=\"ok\"}[$__rate_interval])) / sum by (provider, config) (rate(prism.search.requests[$__rate_interval]))",
-          "legendFormat": "{{provider}} / {{config}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Search-provider success rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 16
-      },
-      "id": 8,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "sum by (provider, config) (increase(prism.search.requests[$__range]))",
-          "legendFormat": "{{provider}} / {{config}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Search requests (selected range)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 24
-      },
-      "id": 9,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "sum by (provider) (increase(prism.llm.tokens{\"token.type\"=\"total\"}[$__range]))",
-          "legendFormat": "{{provider}}",
-          "refId": "A"
-        }
-      ],
-      "title": "LLM total token usage (selected range)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 24
-      },
-      "id": 10,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (provider, \"token.type\") (rate(prism.llm.tokens[$__rate_interval]))",
-          "legendFormat": "{{provider}} / {{token.type}}",
-          "refId": "A"
-        }
-      ],
-      "title": "LLM token usage breakdown",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 90
-              },
-              {
-                "color": "green",
-                "value": 99
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 32
-      },
-      "id": 11,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "100 * sum by (provider, operation) (rate(prism.llm.requests{result=\"ok\"}[$__rate_interval])) / sum by (provider, operation) (rate(prism.llm.requests[$__rate_interval]))",
-          "legendFormat": "{{provider}} / {{operation}}",
-          "refId": "A"
-        }
-      ],
-      "title": "LLM success rate",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 32
-      },
-      "id": 12,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "sum by (provider, operation) (increase(prism.llm.requests[$__range]))",
-          "legendFormat": "{{provider}} / {{operation}}",
-          "refId": "A"
-        }
-      ],
-      "title": "LLM requests (selected range)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 40
-      },
-      "id": 13,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (database, db_operation) (rate(pgx_conn_requests_total[$__rate_interval]))",
-          "legendFormat": "{{database}} / {{db_operation}}",
-          "refId": "A"
-        }
-      ],
-      "title": "PostgreSQL query rate",
+      "title": "Inbound HTTP error rate",
       "type": "timeseries"
     },
     {
@@ -507,9 +153,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 40
+        "y": 8
       },
-      "id": 14,
+      "id": 21,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -522,12 +168,12 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, database) (rate(pgx_conn_request_duration_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "{{database}} p95",
+          "expr": "histogram_quantile(0.95, sum by (le, \"service.name\") (rate(prism.http.server.request.duration_bucket[$__rate_interval])))",
+          "legendFormat": "{{service.name}}",
           "refId": "A"
         }
       ],
-      "title": "PostgreSQL query latency p95",
+      "title": "Inbound HTTP latency p95",
       "type": "timeseries"
     },
     {
@@ -537,7 +183,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps"
+          "unit": "bytes"
         },
         "overrides": []
       },
@@ -545,9 +191,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 48
+        "y": 16
       },
-      "id": 15,
+      "id": 22,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -560,12 +206,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (database, db_operation) (rate(pgx_conn_request_errors_total[$__rate_interval]))",
-          "legendFormat": "{{database}} / {{db_operation}}",
+          "expr": "histogram_quantile(0.95, sum by (le, \"service.name\") (rate(prism.http.server.response.size_bucket[$__rate_interval])))",
+          "legendFormat": "{{service.name}}",
           "refId": "A"
         }
       ],
-      "title": "PostgreSQL query errors",
+      "title": "Inbound response size p95",
       "type": "timeseries"
     },
     {
@@ -575,90 +221,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "max": 100,
-          "min": 0,
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 48
-      },
-      "id": 16,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "100 * sum by (database) (pgx_pool_total_connections) / sum by (database) (pgx_pool_max_connections)",
-          "legendFormat": "{{database}}",
-          "refId": "A"
-        }
-      ],
-      "title": "PostgreSQL pool utilization",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 56
-      },
-      "id": 17,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "expr": "sum by (addr, client) (valkey_client_pool_conn_total_current)",
-          "legendFormat": "{{client}} / {{addr}}",
-          "refId": "A"
-        },
-        {
-          "expr": "sum by (addr, client) (valkey_client_pool_conn_idle_current)",
-          "legendFormat": "{{client}} / {{addr}} idle",
-          "refId": "B"
-        }
-      ],
-      "title": "Valkey pool connections",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "P4169E866C3094E38"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops"
+          "unit": "bytes"
         },
         "overrides": []
       },
@@ -666,9 +229,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 56
+        "y": 16
       },
-      "id": 18,
+      "id": 23,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -681,17 +244,17 @@
       },
       "targets": [
         {
-          "expr": "sum by (addr, client) (rate(valkey_client_pool_hit_total[$__rate_interval]))",
-          "legendFormat": "{{client}} / {{addr}} hits",
+          "expr": "histogram_quantile(0.95, sum by (le, \"service.name\") (rate(http.server.request.body.size_bucket[$__rate_interval])))",
+          "legendFormat": "{{service.name}} request",
           "refId": "A"
         },
         {
-          "expr": "sum by (addr, client) (rate(valkey_client_pool_miss_total[$__rate_interval]))",
-          "legendFormat": "{{client}} / {{addr}} misses",
+          "expr": "histogram_quantile(0.95, sum by (le, \"service.name\") (rate(http.server.response.body.size_bucket[$__rate_interval])))",
+          "legendFormat": "{{service.name}} response",
           "refId": "B"
         }
       ],
-      "title": "Valkey pool hit/miss rate",
+      "title": "HTTP server payload size p95",
       "type": "timeseries"
     },
     {
@@ -701,7 +264,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -709,9 +272,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 64
+        "y": 24
       },
-      "id": 19,
+      "id": 24,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -724,61 +287,13 @@
       },
       "targets": [
         {
-          "expr": "sum by (addr, client) (rate(valkey_client_pool_timeout_total[$__rate_interval]))",
-          "legendFormat": "{{client}} / {{addr}}",
+          "expr": "histogram_quantile(0.95, sum by (le, \"service.name\") (rate(http.server.request.duration_bucket[$__rate_interval])))",
+          "legendFormat": "{{service.name}}",
           "refId": "A"
         }
       ],
-      "title": "Valkey pool timeouts",
+      "title": "HTTP server request latency p95",
       "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "victoriametrics-logs-datasource",
-        "uid": "PD775F2863313E6C7"
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 72
-      },
-      "id": 4,
-      "options": {
-        "deduplication": true,
-        "prettifyLogMessage": true,
-        "showCommonLabels": false,
-        "showLabels": true,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLines": false
-      },
-      "targets": [
-        {
-          "direction": "desc",
-          "expr": "*",
-          "maxLines": 100,
-          "queryType": "instant",
-          "refId": "A"
-        }
-      ],
-      "title": "Recent application logs",
-      "type": "logs"
-    },
-    {
-      "gridPos": {
-        "h": 7,
-        "w": 24,
-        "x": 0,
-        "y": 82
-      },
-      "id": 5,
-      "options": {
-        "content": "## Explore traces\n\nOpen **Explore** and select **VictoriaTraces** to search distributed traces. Use the same `trace_id` in **VictoriaLogs** to correlate an application request across both data sources.\n\nUseful starter LogsQL queries:\n\n- `*` shows recent logs\n- `trace_id:=\"your-trace-id\"` finds one end-to-end request\n- `level:=\"ERROR\"` finds errors when the field is present",
-        "mode": "markdown"
-      },
-      "title": "Metrics, logs, and traces",
-      "type": "text"
     }
   ],
   "schemaVersion": 39,
@@ -794,7 +309,7 @@
     "to": "now"
   },
   "timezone": "browser",
-  "title": "Prism Observability",
+  "title": "Prism Overview",
   "uid": "prism-observability",
   "version": 1
 }
