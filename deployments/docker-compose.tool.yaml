@@ -245,7 +245,7 @@ services:
     secrets:
       - grafana
     environment:
-      - GF_PLUGINS_PREINSTALL=victoriametrics-logs-datasource
+      - GF_PLUGINS_PREINSTALL_SYNC=victoriametrics-logs-datasource
     healthcheck:
       test: [ "CMD", "wget", "-q", "--spider", "http://localhost:3000" ]
       start_period: 10s
