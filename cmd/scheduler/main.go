@@ -468,7 +468,10 @@ func main() {
 	}
 
 	// 6. Messenger
-	msgr, err := config.Messenger.NewMessenger(logger)
+	msgr, err := config.Messenger.NewMessenger(logger, &infra.MessagingTelemetry{
+		Tracer: telemetry.Tracer("prism.messaging"),
+		Meter:  telemetry.Meter("prism.messaging"),
+	})
 	if err != nil {
 		slog.Error("failed to initialize messenger", "type", config.MessengerType, "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize messenger")
