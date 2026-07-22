@@ -10,7 +10,7 @@ import (
 )
 
 type MessengerConfig interface {
-	NewMessenger(logger *slog.Logger) (*infra.Messenger, error)
+	NewMessenger(logger *slog.Logger, telemetry *infra.MessagingTelemetry) (*infra.Messenger, error)
 }
 
 type NatsConfig struct {
@@ -76,7 +76,7 @@ func (n NatsConfig) LogValue() slog.Value {
 	)
 }
 
-func (n *NatsConfig) NewMessenger(logger *slog.Logger) (*infra.Messenger, error) {
+func (n *NatsConfig) NewMessenger(logger *slog.Logger, telemetry *infra.MessagingTelemetry) (*infra.Messenger, error) {
 	if (n.Stream == "") != (n.Consumer == "") {
 		return nil, fmt.Errorf("nats stream and consumer must be configured together")
 	}
@@ -102,9 +102,23 @@ func (n *NatsConfig) NewMessenger(logger *slog.Logger) (*infra.Messenger, error)
 	if n.Stream != "" {
 		opts = append(opts, infra.WithConsumerBinding(n.Stream, n.Consumer))
 	}
+	if telemetry != nil {
+		telemetryCopy := *telemetry
+		if telemetryCopy.System == "" {
+			telemetryCopy.System = "nats"
+		}
+		if telemetryCopy.Consumer == "" {
+			telemetryCopy.Consumer = n.Consumer
+		}
+		if telemetryCopy.AckWaitTimeout <= 0 {
+			telemetryCopy.AckWaitTimeout = n.AckWaitTimeout
+		}
+		telemetry = &telemetryCopy
+	}
 	return infra.NewNatsMessenger(
 		url,
 		logger,
+		telemetry,
 		opts...,
 	)
 }
@@ -118,10 +132,18 @@ type GoChannelConfig struct {
 	Persistent    bool  `mapstructure:"persistent"`
 }
 
-func (g *GoChannelConfig) NewMessenger(logger *slog.Logger) (*infra.Messenger, error) {
+func (g *GoChannelConfig) NewMessenger(logger *slog.Logger, telemetry *infra.MessagingTelemetry) (*infra.Messenger, error) {
+	if telemetry != nil {
+		telemetryCopy := *telemetry
+		if telemetryCopy.System == "" {
+			telemetryCopy.System = "gochannel"
+		}
+		telemetry = &telemetryCopy
+	}
 	return infra.NewGoChannelMessenger(
 		logger,
 		g.ChannelBuffer,
 		g.Persistent,
+		telemetry,
 	)
 }

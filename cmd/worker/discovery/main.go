@@ -87,7 +87,10 @@ func main() {
 		monitor.SetStatus(obs.LevelWarn, "shutting down")
 	}()
 
-	msgr, err := config.Messenger.NewMessenger(logger)
+	msgr, err := config.Messenger.NewMessenger(logger, &infra.MessagingTelemetry{
+		Tracer: telemetry.Tracer("prism.messaging"),
+		Meter:  telemetry.Meter("prism.messaging"),
+	})
 	if err != nil {
 		logger.Error("failed to initialize messenger", "type", config.MessengerType, "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize messenger")

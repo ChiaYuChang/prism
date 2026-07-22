@@ -29,6 +29,12 @@ func NewHandler(saver collector.Saver) (*Handler, error) {
 }
 
 func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, error) {
+	var err error
+	ctx, err = message.ExtractTraceContext(ctx, msg)
+	if err != nil {
+		return true, fmt.Errorf("extract trace context: %w", err)
+	}
+
 	var sig message.ArchiveSignal
 	if err := json.Unmarshal(msg.Payload, &sig); err != nil {
 		return true, fmt.Errorf("%w: decode: %w", ErrInvalidArchiveSignal, err)

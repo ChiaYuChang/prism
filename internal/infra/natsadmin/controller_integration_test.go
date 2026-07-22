@@ -53,7 +53,7 @@ func TestControllerLifecycleIntegration(t *testing.T) {
 	messenger, err := (&appconfig.NatsConfig{
 		Host: "localhost", Port: 4222, Token: os.Getenv("NATS_AUTH_TOKEN"), QueueGroup: consumer,
 		SubscribersCount: 1, AckWaitTimeout: 30 * time.Second, Stream: stream, Consumer: consumer, AutoProvision: &disabled,
-	}).NewMessenger(slog.Default())
+	}).NewMessenger(slog.Default(), nil)
 	require.NoError(t, err)
 	messages, err := messenger.Subscribe(ctx, subject)
 	require.NoError(t, err)
