@@ -22,3 +22,17 @@ services:
 
   valkey:
     restart: unless-stopped
+
+  prismctl-web:
+    ports:
+      - "127.0.0.1:${PRISMCTL_WEB_PORT:-8088}:8080"
+
+  prismctl-user-gateway:
+    environment:
+      PRISM_PUBLIC_SITE_ADDRESS: ${PRISM_PUBLIC_SITE_ADDRESS}
+      PRISM_ACME_EMAIL: ${PRISM_ACME_EMAIL}
+      PRISM_ACME_CA: ${PRISM_ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+    ports:
+      - "80:8080"
+      - "443:8443"
+      - "443:8443/udp"
