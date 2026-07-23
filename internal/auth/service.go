@@ -118,7 +118,7 @@ func NewService(params ServiceParams) (*Service, error) {
 
 func (s *Service) AuthenticateToken(ctx context.Context, raw string) (Actor, error) {
 	principal, err := s.auth.AuthenticateToken(ctx, raw)
-	return Actor{TokenID: principal.TokenID, Type: principal.Type, Name: principal.Name}, err
+	return Actor{TokenID: principal.TokenID, Type: principal.Type, Name: principal.Name, Permissions: principal.Permissions}, err
 }
 
 func (s *Service) AuthenticateRoot(ctx context.Context, raw string) error {

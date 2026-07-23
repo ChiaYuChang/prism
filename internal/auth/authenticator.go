@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
@@ -16,9 +17,10 @@ type TokenStore interface {
 }
 
 type Principal struct {
-	TokenID uuid.UUID
-	Type    authtoken.Type
-	Name    string
+	TokenID     uuid.UUID
+	Type        authtoken.Type
+	Name        string
+	Permissions permission.Permission
 }
 
 type Authenticator struct {
@@ -58,6 +60,10 @@ func (a *Authenticator) AuthenticateToken(ctx context.Context, raw string) (Prin
 	if row.Type != string(parsed.Type) {
 		return Principal{}, ErrInvalidToken
 	}
+	permissions, err := permission.FromInt(int16(row.Permissions))
+	if err != nil || permissions.ValidateForType(row.Type) != nil {
+		return Principal{}, ErrInvalidToken
+	}
 	if row.RevokedAt != nil {
 		return Principal{}, ErrTokenRevoked
 	}
@@ -71,7 +77,7 @@ func (a *Authenticator) AuthenticateToken(ctx context.Context, raw string) (Prin
 	if !hasher.Verify(parsed.Secret, row.TokenHash) {
 		return Principal{}, ErrUnauthorized
 	}
-	return Principal{TokenID: row.ID, Type: parsed.Type, Name: row.Name}, nil
+	return Principal{TokenID: row.ID, Type: parsed.Type, Name: row.Name, Permissions: permissions}, nil
 }
 
 func (a *Authenticator) AuthenticateRoot(ctx context.Context, raw string) (Principal, error) {
@@ -89,6 +95,10 @@ func (a *Authenticator) AuthenticateRoot(ctx context.Context, raw string) (Princ
 	if row.Type != string(authtoken.TypeRoot) {
 		return Principal{}, ErrInvalidToken
 	}
+	permissions, err := permission.FromInt(int16(row.Permissions))
+	if err != nil || permissions.ValidateForType(row.Type) != nil {
+		return Principal{}, ErrInvalidToken
+	}
 	if row.RevokedAt != nil {
 		return Principal{}, ErrTokenRevoked
 	}
@@ -99,7 +109,7 @@ func (a *Authenticator) AuthenticateRoot(ctx context.Context, raw string) (Princ
 	if !hasher.Verify([]byte(secret), row.TokenHash) {
 		return Principal{}, ErrUnauthorized
 	}
-	return Principal{TokenID: row.ID, Type: authtoken.TypeRoot, Name: row.Name}, nil
+	return Principal{TokenID: row.ID, Type: authtoken.TypeRoot, Name: row.Name, Permissions: permissions}, nil
 }
 
 func (a *Authenticator) allows(typ authtoken.Type) bool {

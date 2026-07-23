@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/http/api"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
@@ -286,8 +287,9 @@ func TestRegisterV1Admin_RetryTaskRequiresAdmin(t *testing.T) {
 		UpdatedAt: now,
 	}, nil).Once()
 	adminReq := req.WithContext(middleware.WithPrincipal(req.Context(), middleware.Principal{
-		TokenID: uuid.Must(uuid.NewV7()),
-		Type:    authtoken.TypeAdmin,
+		TokenID:     uuid.Must(uuid.NewV7()),
+		Type:        authtoken.TypeAdmin,
+		Permissions: permission.DefaultAdmin,
 	}))
 	adminRec := httptest.NewRecorder()
 	mux.ServeHTTP(adminRec, adminReq)
