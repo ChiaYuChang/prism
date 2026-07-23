@@ -266,7 +266,7 @@ func canRenew(principal middleware.Principal, token repo.Token) bool {
 	if token.RevokedAt != nil || !time.Now().Before(token.ExpiresAt) {
 		return false
 	}
-	return principal.TokenID == token.ID && string(principal.Type) == token.Type && (principal.Type == authtoken.TypeUser || principal.Type == authtoken.TypeWorker)
+	return principal.TokenID == token.ID && string(principal.Type) == token.Type && principal.Type == authtoken.TypeUser
 }
 
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
