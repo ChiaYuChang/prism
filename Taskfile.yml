@@ -105,6 +105,9 @@ includes:
   deploy:
     taskfile: ./taskfile/deploy.yml
     dir: .
+  prismctl:
+    taskfile: ./taskfile/prismctl.yml
+    dir: .
   testtasks:
     taskfile: ./taskfile/test.yml
     dir: .

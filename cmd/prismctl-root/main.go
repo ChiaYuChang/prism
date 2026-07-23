@@ -30,7 +30,6 @@ type rootCLI struct {
 	configPath string
 	output     string
 	rootFile   string
-	rootToken  string
 	control    repo.RootControl
 	hasher     token.Hasher
 	adminTTL   prismauth.TokenTypeConfig
@@ -96,7 +95,7 @@ func newRootCommand() *cobra.Command {
 	c.v.SetDefault("postgres.host", "localhost")
 	c.v.SetDefault("postgres.port", 5432)
 	c.v.SetDefault("postgres.username", "postgres")
-	c.v.SetDefault("postgres.password", "postgres")
+	c.v.SetDefault("postgres.password", "")
 	c.v.SetDefault("postgres.db", "prism")
 	c.v.SetDefault("postgres.sslmode", "disable")
 	c.v.SetDefault("auth.hash-algorithm", "sha256")
@@ -118,12 +117,10 @@ func (c *rootCLI) bindFlags(fs *pflag.FlagSet) {
 	fs.StringVarP(&c.configPath, "config", "c", "", "Path to config file")
 	fs.StringVar(&c.output, "output", "text", "Output format: text or json")
 	fs.StringVar(&c.rootFile, "root-token-file", "", "Path to root token file")
-	fs.StringVar(&c.rootToken, "root-token", "", "Raw root token; prefer --root-token-file")
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
 	fs.String("pg-username", "postgres", "Postgres username")
 	fs.String("pg-role", "prism_rootctl", "Postgres role for restricted root functions")
-	fs.String("pg-password", "postgres", "Postgres password")
 	fs.String("pg-password-file", "", "Path to Postgres password file")
 	fs.String("pg-db", "prism", "Postgres database name")
 	fs.String("pg-sslmode", "disable", "Postgres SSL mode")
@@ -133,7 +130,6 @@ func (c *rootCLI) bindFlags(fs *pflag.FlagSet) {
 	_ = c.v.BindPFlag("postgres.port", fs.Lookup("pg-port"))
 	_ = c.v.BindPFlag("postgres.username", fs.Lookup("pg-username"))
 	_ = c.v.BindPFlag("postgres.role", fs.Lookup("pg-role"))
-	_ = c.v.BindPFlag("postgres.password", fs.Lookup("pg-password"))
 	_ = c.v.BindPFlag("postgres.password-file", fs.Lookup("pg-password-file"))
 	_ = c.v.BindPFlag("postgres.db", fs.Lookup("pg-db"))
 	_ = c.v.BindPFlag("postgres.sslmode", fs.Lookup("pg-sslmode"))
@@ -277,6 +273,9 @@ func (c *rootCLI) dependencies(ctx context.Context) (repo.RootControl, error) {
 	if err := c.v.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
+	if cfg.Postgres.Password != "" {
+		return nil, errors.New("raw PostgreSQL passwords are not accepted; use --pg-password-file")
+	}
 	if err := cfg.Postgres.ResolveSecrets(); err != nil {
 		return nil, err
 	}
@@ -344,15 +343,9 @@ func (c *rootCLI) credential() (credential, error) {
 	if path != "" {
 		if secret, err := readAll(path); err == nil {
 			return credential{Secret: secret}, nil
-		} else if c.rootToken == "" && os.Getenv("PRISM_ROOT_TOKEN") == "" {
+		} else {
 			return credential{}, fmt.Errorf("read root token file %q: %w", path, err)
 		}
-	}
-	if strings.TrimSpace(c.rootToken) != "" {
-		return credential{Secret: strings.TrimSpace(c.rootToken), Warnings: []string{"reading root token from raw flag is less safe than token file"}}, nil
-	}
-	if raw := strings.TrimSpace(os.Getenv("PRISM_ROOT_TOKEN")); raw != "" {
-		return credential{Secret: raw, Warnings: []string{"reading root token from PRISM_ROOT_TOKEN is less safe than token file"}}, nil
 	}
 	return credential{}, errors.New("root token not provided")
 }

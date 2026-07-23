@@ -63,6 +63,7 @@ services:
       PRISM_BATCH_DETECTOR_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
+      - prism-admin-net
     volumes:
       - ../runtime/logs/batch-detector:/logs
     stop_grace_period: 45s

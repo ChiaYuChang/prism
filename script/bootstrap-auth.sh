@@ -2,15 +2,15 @@
 set -euo pipefail
 umask 077
 
+if [[ "${PRISM_BREAK_GLASS:-0}" != "1" ]]; then
+    printf '%s\n' 'refuse root bootstrap: set PRISM_BREAK_GLASS=1' >&2
+    exit 1
+fi
+
 ROOT_FILE="${PRISM_ROOT_TOKEN_FILE:-.secrets/prism_root_token}"
 ADMIN_FILE="${PRISM_ADMIN_TOKEN_FILE:-.secrets/prism_admin_token}"
-PG_HOST="${PRISMCTL_PG_HOST:-localhost}"
-PG_PORT="${PRISMCTL_PG_PORT:-5432}"
-PG_USER="${PRISMCTL_PG_USERNAME:-prism}"
-PG_ROLE="${PRISMCTL_PG_ROLE:-prism_rootctl}"
-PG_DB="${PRISMCTL_PG_DB:-prism}"
-PG_PASSWORD_FILE="${PRISMCTL_PG_PASSWORD_FILE:-.secrets/pg-prism}"
-API_URL="${PRISM_API_URL:-http://localhost:8091/api/v1}"
+export PRISM_ROOT_TOKEN_FILE="$ROOT_FILE"
+export PRISM_ADMIN_TOKEN_FILE="$ADMIN_FILE"
 
 if [[ ! -d .secrets ]]; then
     printf '%s\n' '.secrets is missing; run from the repository root' >&2
@@ -25,16 +25,8 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
-root_cli=(
-    go run ./cmd/prismctl-root
-    --pg-host "$PG_HOST"
-    --pg-port "$PG_PORT"
-    --pg-username "$PG_USER"
-    --pg-role "$PG_ROLE"
-    --pg-password-file "$PG_PASSWORD_FILE"
-    --pg-db "$PG_DB"
-)
-api_cli=(go run ./cmd/prismctl --api-url "$API_URL")
+root_cli=(env PRISM_BREAK_GLASS=1 task prismctl:root --)
+api_cli=(task prismctl:cli --)
 
 if [[ ! -f "$ROOT_FILE" ]]; then
     mkdir -p "$(dirname "$ROOT_FILE")"
@@ -42,20 +34,20 @@ if [[ ! -f "$ROOT_FILE" ]]; then
     chmod 0600 "$ROOT_FILE"
 fi
 
-if ! "${root_cli[@]}" --root-token-file "$ROOT_FILE" check >/dev/null 2>&1; then
-    "${root_cli[@]}" --root-token-file "$ROOT_FILE" init >/dev/null
+if ! "${root_cli[@]}" check >/dev/null 2>&1; then
+    "${root_cli[@]}" init >/dev/null
 fi
 
 admin_valid=false
 if [[ -f "$ADMIN_FILE" ]]; then
-    if "${api_cli[@]}" --admin-token-file "$ADMIN_FILE" --output json admin tokens list >/dev/null 2>&1; then
+    if "${api_cli[@]}" --output json admin tokens list >/dev/null 2>&1; then
         admin_valid=true
     fi
 fi
 
 if [[ "$admin_valid" != true ]]; then
     mkdir -p "$(dirname "$ADMIN_FILE")"
-    response="$("${root_cli[@]}" --root-token-file "$ROOT_FILE" --output json admin-create --name local-admin)"
+    response="$("${root_cli[@]}" --output json admin-create --name local-admin)"
     token="$(printf '%s' "$response" | jq -er '.result.token')"
     tmp="$(mktemp "${ADMIN_FILE}.XXXXXX")"
     printf '%s\n' "$token" >"$tmp"

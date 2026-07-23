@@ -15,4 +15,6 @@ func TestRootCommandProvidesBreakGlassOperations(t *testing.T) {
 	}
 	require.NotNil(t, cmd.PersistentFlags().Lookup("pg-host"))
 	require.NotNil(t, cmd.PersistentFlags().Lookup("root-token-file"))
+	require.Nil(t, cmd.PersistentFlags().Lookup("pg-password"))
+	require.Nil(t, cmd.PersistentFlags().Lookup("root-token"))
 }
