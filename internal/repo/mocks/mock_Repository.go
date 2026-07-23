@@ -358,6 +358,52 @@ func (_c *MockRepository_Prompts_Call) RunAndReturn(run func() repo.Prompts) *Mo
 	return _c
 }
 
+// RootControl provides a mock function for the type MockRepository
+func (_mock *MockRepository) RootControl() repo.RootControl {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for RootControl")
+	}
+
+	var r0 repo.RootControl
+	if returnFunc, ok := ret.Get(0).(func() repo.RootControl); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.RootControl)
+		}
+	}
+	return r0
+}
+
+// MockRepository_RootControl_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RootControl'
+type MockRepository_RootControl_Call struct {
+	*mock.Call
+}
+
+// RootControl is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) RootControl() *MockRepository_RootControl_Call {
+	return &MockRepository_RootControl_Call{Call: _e.mock.On("RootControl")}
+}
+
+func (_c *MockRepository_RootControl_Call) Run(run func()) *MockRepository_RootControl_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_RootControl_Call) Return(rootControl repo.RootControl) *MockRepository_RootControl_Call {
+	_c.Call.Return(rootControl)
+	return _c
+}
+
+func (_c *MockRepository_RootControl_Call) RunAndReturn(run func() repo.RootControl) *MockRepository_RootControl_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Scheduler provides a mock function for the type MockRepository
 func (_mock *MockRepository) Scheduler() repo.Scheduler {
 	ret := _mock.Called()
