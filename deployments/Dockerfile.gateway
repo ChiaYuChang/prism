@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1.7
+
+FROM caddy:2.9.1-alpine
+
+RUN mkdir -p /data /config /etc/caddy \
+    && chown -R 65532:65532 /data /config /etc/caddy
+
+COPY deployments/caddy/Caddyfile /etc/caddy/Caddyfile
+
+USER 65532:65532
+EXPOSE 8080 8443 8443/udp
+ENTRYPOINT ["caddy"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

@@ -128,6 +128,8 @@ networks:
     driver: bridge
   prism-root-db:
     driver: bridge
+  prism-user-edge:
+    driver: bridge
 
 secrets:
   postgres_admin:

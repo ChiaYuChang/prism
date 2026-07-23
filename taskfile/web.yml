@@ -47,3 +47,13 @@ tasks:
     desc: refresh the committed web lockfile in the pinned Node container
     cmds:
       - docker build --target deps -t prism/prismctl-web-deps:local {{.WEB_DIR}}
+
+  nginx:test:
+    desc: validate nginx configuration through the built runtime image
+    cmds:
+      - docker run --rm --add-host prism-api:127.0.0.1 prism/prismctl-web:local nginx -t
+
+  gateway:caddy:validate:
+    desc: validate the pinned Caddy gateway configuration
+    cmds:
+      - docker run --rm -e PRISM_PUBLIC_SITE_ADDRESS=http://:8080 -e PRISM_ACME_EMAIL=operator@example.com -e PRISM_ACME_CA=https://acme-staging-v02.api.letsencrypt.org/directory -v "$PWD/deployments/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.9.1-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
