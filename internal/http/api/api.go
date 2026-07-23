@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
+	prismauth "github.com/ChiaYuChang/prism/internal/auth"
 	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/infra"
@@ -186,12 +186,8 @@ func WithPrompts(prompts repo.Prompts, store storage.Store) ServerOption {
 	}
 }
 
-func WithTokens(tokens repo.Tokens, hasher authtoken.Hasher, tokenTypes map[string]TokenTypeConfig) ServerOption {
-	return func(s *Server) {
-		s.Tokens = tokens
-		s.TokenHasher = hasher
-		s.TokenTypes = tokenTypes
-	}
+func WithTokenService(service *prismauth.Service) ServerOption {
+	return func(s *Server) { s.TokenService = service }
 }
 
 func WithSchedulerToggles(toggles *infra.SchedulerToggleStore) ServerOption {
@@ -236,9 +232,7 @@ type Server struct {
 	Sources          repo.Sources
 	Operator         repo.Operator
 	Prompts          repo.Prompts
-	Tokens           repo.Tokens
-	TokenHasher      authtoken.Hasher
-	TokenTypes       map[string]TokenTypeConfig
+	TokenService     *prismauth.Service
 	Cache            ProgressCache
 	GetFetchLimiter  middleware.IPLimiter
 	Monitor          StatusMonitor
@@ -246,12 +240,6 @@ type Server struct {
 	SchedulerToggles *infra.SchedulerToggleStore
 	NATSInspector    NATSInspector
 	NATSAdmin        NATSAdmin
-}
-
-type TokenTypeConfig struct {
-	Prefix     string
-	DefaultTTL time.Duration
-	MaxTTL     time.Duration
 }
 
 // NewServer validates dependencies and returns a ready-to-register Server.
@@ -303,6 +291,7 @@ func (s *Server) RegisterV1(r RouteRegistrar) {
 	r.Handle("GET /contents/{candidate_id}", http.HandlerFunc(s.GetContent))
 	r.Handle("GET /fetches/{id}", middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch)))
 	r.Handle("GET /status", http.HandlerFunc(s.GetStatus))
+	r.Handle("POST /tokens/{id}/renew", http.HandlerFunc(s.RenewToken))
 }
 
 // RegisterV1Admin wires authenticated v1 operator routes onto the supplied router.
@@ -342,8 +331,12 @@ func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("GET /prompts", s.requireAdmin(http.HandlerFunc(s.ListPromptVersions)))
 	r.Handle("POST /prompts", s.requireAdmin(http.HandlerFunc(s.CreatePromptVersion)))
 	r.Handle("GET /prompts/{id}", s.requireAdmin(http.HandlerFunc(s.GetPromptVersion)))
+	r.Handle("POST /tokens", s.requireAdmin(http.HandlerFunc(s.CreateToken)))
 	r.Handle("GET /tokens", s.requireAdmin(http.HandlerFunc(s.ListTokens)))
 	r.Handle("GET /tokens/{id}", s.requireAdmin(http.HandlerFunc(s.GetToken)))
+	r.Handle("POST /tokens/{id}/renew", s.requireAdmin(http.HandlerFunc(s.RenewToken)))
+	r.Handle("POST /tokens/{id}/rotate", s.requireAdmin(http.HandlerFunc(s.RotateToken)))
+	r.Handle("POST /tokens/{id}/revoke", s.requireAdmin(http.HandlerFunc(s.RevokeToken)))
 }
 
 // RegisterInternal wires private routes for internal administration/push telemetry.

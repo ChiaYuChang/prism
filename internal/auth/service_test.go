@@ -94,3 +94,80 @@ func TestCreateWorkerIsRejected(t *testing.T) {
 	_, err = service.CreateToken(context.Background(), Actor{Type: authtoken.TypeAdmin, Permissions: permission.DefaultAdmin}, CreateTokenRequest{Type: authtoken.Type("worker")})
 	require.ErrorIs(t, err, ErrForbidden)
 }
+
+func TestCreateTokenRequiresTokenAdmin(t *testing.T) {
+	tokens := repomocks.NewMockTokens(t)
+	hasher, err := authtoken.NewHasher("sha256")
+	require.NoError(t, err)
+	service, err := NewService(ServiceParams{
+		Tokens: tokens,
+		Hasher: hasher,
+		TokenTypes: map[authtoken.Type]TokenTypeConfig{
+			authtoken.TypeUser: {DefaultTTL: time.Hour, MaxTTL: 24 * time.Hour},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = service.CreateToken(context.Background(), Actor{
+		Type:        authtoken.TypeAdmin,
+		Permissions: permission.AdminAPI,
+	}, CreateTokenRequest{Type: authtoken.TypeUser, Name: "reader"})
+	require.ErrorIs(t, err, ErrForbidden)
+}
+
+func TestRenewTokenAllowsOwnerOnly(t *testing.T) {
+	tokens := repomocks.NewMockTokens(t)
+	hasher, err := authtoken.NewHasher("sha256")
+	require.NoError(t, err)
+	id := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC()
+	tokens.EXPECT().GetTokenByID(mock.Anything, id).Return(repo.Token{
+		ID:        id,
+		Type:      string(authtoken.TypeUser),
+		ExpiresAt: now.Add(time.Hour),
+	}, nil)
+	tokens.EXPECT().RenewToken(mock.Anything, id, mock.AnythingOfType("time.Time")).Return(repo.Token{ID: id}, nil)
+	service, err := NewService(ServiceParams{
+		Tokens: tokens,
+		Hasher: hasher,
+		TokenTypes: map[authtoken.Type]TokenTypeConfig{
+			authtoken.TypeUser: {DefaultTTL: time.Hour, MaxTTL: 24 * time.Hour},
+		},
+	})
+	require.NoError(t, err)
+
+	service.now = func() time.Time { return now }
+	_, err = service.RenewToken(context.Background(), Actor{
+		TokenID:     id,
+		Type:        authtoken.TypeUser,
+		Permissions: permission.UserAPI,
+	}, id, nil)
+	require.NoError(t, err)
+}
+
+func TestRenewTokenRejectsDifferentUser(t *testing.T) {
+	tokens := repomocks.NewMockTokens(t)
+	hasher, err := authtoken.NewHasher("sha256")
+	require.NoError(t, err)
+	targetID := uuid.Must(uuid.NewV7())
+	tokens.EXPECT().GetTokenByID(mock.Anything, targetID).Return(repo.Token{
+		ID:        targetID,
+		Type:      string(authtoken.TypeUser),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}, nil)
+	service, err := NewService(ServiceParams{
+		Tokens: tokens,
+		Hasher: hasher,
+		TokenTypes: map[authtoken.Type]TokenTypeConfig{
+			authtoken.TypeUser: {DefaultTTL: time.Hour, MaxTTL: 24 * time.Hour},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = service.RenewToken(context.Background(), Actor{
+		TokenID:     uuid.Must(uuid.NewV7()),
+		Type:        authtoken.TypeUser,
+		Permissions: permission.UserAPI,
+	}, targetID, nil)
+	require.ErrorIs(t, err, ErrForbidden)
+}

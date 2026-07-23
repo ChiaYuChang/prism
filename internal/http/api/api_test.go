@@ -7,10 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	prismauth "github.com/ChiaYuChang/prism/internal/auth"
 	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/http/api"
@@ -337,6 +339,36 @@ func TestRegisterV1Admin_RetryTaskRequiresAdmin(t *testing.T) {
 	adminRec := httptest.NewRecorder()
 	mux.ServeHTTP(adminRec, adminReq)
 	require.Equal(t, http.StatusOK, adminRec.Code)
+}
+
+func TestRegisterV1Admin_CreateTokenRequiresTokenAdmin(t *testing.T) {
+	tokens := mocks.NewMockTokens(t)
+	hasher, err := authtoken.NewHasher("sha256")
+	require.NoError(t, err)
+	service, err := prismauth.NewService(prismauth.ServiceParams{
+		Tokens: tokens,
+		Hasher: hasher,
+		TokenTypes: map[authtoken.Type]prismauth.TokenTypeConfig{
+			authtoken.TypeUser: {DefaultTTL: time.Hour, MaxTTL: 24 * time.Hour},
+		},
+	})
+	require.NoError(t, err)
+
+	srv, _ := newTestServer(t)
+	// Rebuild the server with the token service while retaining the test dependencies.
+	srv, err = api.NewServer(srv.Logger, srv.Scout, srv.Tasks, srv.Pipeline, srv.UserFetches, api.WithTokenService(service))
+	require.NoError(t, err)
+	mux := http.NewServeMux()
+	srv.RegisterV1Admin(mux)
+	req := httptest.NewRequest(http.MethodPost, "/tokens", strings.NewReader(`{"type":"user","name":"reader"}`))
+	req = req.WithContext(middleware.WithPrincipal(req.Context(), middleware.Principal{
+		Type:        authtoken.TypeAdmin,
+		Permissions: permission.AdminAPI,
+	}))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
 }
 
 func TestListAdminTasks_ByBatchID(t *testing.T) {

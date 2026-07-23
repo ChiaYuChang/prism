@@ -1,13 +1,13 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
+	prismauth "github.com/ChiaYuChang/prism/internal/auth"
 	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
@@ -20,6 +20,7 @@ type AdminToken struct {
 	ID            uuid.UUID  `json:"id"`
 	Type          string     `json:"type"`
 	Name          string     `json:"name"`
+	Permissions   uint8      `json:"permissions"`
 	HashAlgorithm string     `json:"hash_algorithm"`
 	CreatedAt     time.Time  `json:"created_at"`
 	ExpiresAt     time.Time  `json:"expires_at"`
@@ -42,9 +43,10 @@ type AdminListTokensResponse struct {
 }
 
 type CreateTokenRequest struct {
-	Type      string     `json:"type"`
-	Name      string     `json:"name"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	Type        string                 `json:"type"`
+	Name        string                 `json:"name"`
+	Permissions *permission.Permission `json:"permissions,omitempty"`
+	ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
 }
 
 type TokenExpiryRequest struct {
@@ -53,17 +55,31 @@ type TokenExpiryRequest struct {
 
 // CreateToken handles token creation for CLI/shared admin flows.
 func (s *Server) CreateToken(w http.ResponseWriter, r *http.Request) {
+	actor, ok := tokenActor(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	var req CreateTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid payload")
 		return
 	}
-	token, raw, err := s.createToken(r.Context(), req.Type, req.Name, req.ExpiresAt)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if s.TokenService == nil {
+		writeError(w, http.StatusInternalServerError, "token service unavailable")
 		return
 	}
-	writeJSON(w, http.StatusOK, toAdminTokenSecret(token, raw))
+	result, err := s.TokenService.CreateToken(r.Context(), actor, prismauth.CreateTokenRequest{
+		Type:        authtoken.Type(req.Type),
+		Name:        req.Name,
+		Permissions: req.Permissions,
+		ExpiresAt:   req.ExpiresAt,
+	})
+	if err != nil {
+		s.writeTokenError(w, r, "create token", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toAdminTokenSecret(result.Token, result.Raw))
 }
 
 // ListTokens handles GET /api/v1/admin/tokens.
@@ -78,14 +94,22 @@ func (s *Server) CreateToken(w http.ResponseWriter, r *http.Request) {
 // @Failure   500 {object} ErrorResponse
 // @Router    /admin/tokens [get]
 func (s *Server) ListTokens(w http.ResponseWriter, r *http.Request) {
+	actor, ok := tokenActor(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	params, ok := parseAdminListParams(w, r)
 	if !ok {
 		return
 	}
-	rows, err := s.Tokens.ListTokens(r.Context(), params)
+	if s.TokenService == nil {
+		writeError(w, http.StatusInternalServerError, "token service unavailable")
+		return
+	}
+	rows, err := s.TokenService.ListTokens(r.Context(), actor, params)
 	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "list tokens failed", slog.Any("error", err))
-		writeError(w, http.StatusInternalServerError, "failed to list tokens")
+		s.writeTokenError(w, r, "list tokens", err)
 		return
 	}
 	items := make([]AdminToken, 0, len(rows))
@@ -107,21 +131,34 @@ func (s *Server) ListTokens(w http.ResponseWriter, r *http.Request) {
 // @Failure   500 {object} ErrorResponse
 // @Router    /admin/tokens/{id} [get]
 func (s *Server) GetToken(w http.ResponseWriter, r *http.Request) {
-	token, ok := s.tokenByPathID(w, r)
+	actor, ok := tokenActor(r)
 	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, ok := tokenIDFromPath(w, r)
+	if !ok || s.TokenService == nil {
+		if s.TokenService == nil && ok {
+			writeError(w, http.StatusInternalServerError, "token service unavailable")
+		}
+		return
+	}
+	token, err := s.TokenService.GetToken(r.Context(), actor, id)
+	if err != nil {
+		s.writeTokenError(w, r, "get token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toAdminToken(token))
 }
 
 func (s *Server) RenewToken(w http.ResponseWriter, r *http.Request) {
-	token, ok := s.tokenByPathID(w, r)
+	actor, ok := tokenActor(r)
 	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	principal, authenticated := middleware.PrincipalFromContext(r.Context())
-	if !authenticated || !canRenew(principal, token) {
-		writeError(w, http.StatusForbidden, "forbidden")
+	id, ok := tokenIDFromPath(w, r)
+	if !ok {
 		return
 	}
 	var req TokenExpiryRequest
@@ -129,21 +166,25 @@ func (s *Server) RenewToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid payload")
 		return
 	}
-	expiresAt, err := s.resolveTokenExpiry(token.Type, req.ExpiresAt)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if s.TokenService == nil {
+		writeError(w, http.StatusInternalServerError, "token service unavailable")
 		return
 	}
-	renewed, err := s.Tokens.RenewToken(r.Context(), token.ID, expiresAt)
+	renewed, err := s.TokenService.RenewToken(r.Context(), actor, id, req.ExpiresAt)
 	if err != nil {
-		s.writeTokenRepoError(w, r, "renew token", err)
+		s.writeTokenError(w, r, "renew token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toAdminToken(renewed))
 }
 
 func (s *Server) RotateToken(w http.ResponseWriter, r *http.Request) {
-	token, ok := s.tokenByPathID(w, r)
+	actor, ok := tokenActor(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, ok := tokenIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -152,122 +193,76 @@ func (s *Server) RotateToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid payload")
 		return
 	}
-	expiresAt, err := s.resolveTokenExpiry(token.Type, req.ExpiresAt)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if s.TokenService == nil {
+		writeError(w, http.StatusInternalServerError, "token service unavailable")
 		return
 	}
-	raw, secret, err := authtoken.Generate(authtoken.Type(token.Type), token.ID)
+	rotated, err := s.TokenService.RotateToken(r.Context(), actor, id, req.ExpiresAt)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		s.writeTokenError(w, r, "rotate token", err)
 		return
 	}
-	rotated, err := s.Tokens.RotateToken(r.Context(), repo.RotateTokenParams{
-		ID:            token.ID,
-		HashAlgorithm: s.TokenHasher.Algorithm(),
-		TokenHash:     s.TokenHasher.Hash(secret),
-		ExpiresAt:     expiresAt,
-	})
-	if err != nil {
-		s.writeTokenRepoError(w, r, "rotate token", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, toAdminTokenSecret(rotated, raw))
+	writeJSON(w, http.StatusOK, toAdminTokenSecret(rotated.Token, rotated.Raw))
 }
 
 func (s *Server) RevokeToken(w http.ResponseWriter, r *http.Request) {
-	token, ok := s.tokenByPathID(w, r)
+	actor, ok := tokenActor(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, ok := tokenIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	revoked, err := s.Tokens.RevokeToken(r.Context(), token.ID)
+	if s.TokenService == nil {
+		writeError(w, http.StatusInternalServerError, "token service unavailable")
+		return
+	}
+	revoked, err := s.TokenService.RevokeToken(r.Context(), actor, id)
 	if err != nil {
-		s.writeTokenRepoError(w, r, "revoke token", err)
+		s.writeTokenError(w, r, "revoke token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toAdminToken(revoked))
 }
-
-func (s *Server) createToken(ctx context.Context, tokenType, name string, rawExpiresAt *time.Time) (repo.Token, string, error) {
-	if s.Tokens == nil || s.TokenHasher == nil {
-		return repo.Token{}, "", errors.New("token repository unavailable")
-	}
-	if name == "" {
-		return repo.Token{}, "", errors.New("token name is required")
-	}
-	expiresAt, err := s.resolveTokenExpiry(tokenType, rawExpiresAt)
-	if err != nil {
-		return repo.Token{}, "", err
-	}
-	id := uuid.Must(uuid.NewV7())
-	raw, secret, err := authtoken.Generate(authtoken.Type(tokenType), id)
-	if err != nil {
-		return repo.Token{}, "", err
-	}
-	created, err := s.Tokens.CreateToken(ctx, repo.CreateTokenParams{
-		ID:            id,
-		Type:          tokenType,
-		Name:          name,
-		HashAlgorithm: s.TokenHasher.Algorithm(),
-		TokenHash:     s.TokenHasher.Hash(secret),
-		ExpiresAt:     expiresAt,
-	})
-	if err != nil {
-		return repo.Token{}, "", err
-	}
-	return created, raw, nil
-}
-
-func (s *Server) resolveTokenExpiry(tokenType string, raw *time.Time) (time.Time, error) {
-	cfg, ok := s.TokenTypes[tokenType]
+func tokenActor(r *http.Request) (prismauth.Actor, bool) {
+	principal, ok := middleware.PrincipalFromContext(r.Context())
 	if !ok {
-		return time.Time{}, errors.New("unsupported token type")
+		return prismauth.Actor{}, false
 	}
-	now := time.Now()
-	expiresAt := now.Add(cfg.DefaultTTL)
-	if raw != nil {
-		expiresAt = *raw
-	}
-	if !expiresAt.After(now) {
-		return time.Time{}, errors.New("expires_at must be in the future")
-	}
-	if expiresAt.After(now.Add(cfg.MaxTTL)) {
-		return time.Time{}, errors.New("expires_at exceeds max ttl")
-	}
-	return expiresAt, nil
+	return prismauth.Actor{
+		TokenID:     principal.TokenID,
+		Type:        principal.Type,
+		Name:        principal.Name,
+		Permissions: principal.Permissions,
+	}, true
 }
 
-func (s *Server) tokenByPathID(w http.ResponseWriter, r *http.Request) (repo.Token, bool) {
+func tokenIDFromPath(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid token id")
-		return repo.Token{}, false
+		return uuid.Nil, false
 	}
-	token, err := s.Tokens.GetTokenByID(r.Context(), id)
-	if err != nil {
-		s.writeTokenRepoError(w, r, "get token", err)
-		return repo.Token{}, false
-	}
-	return token, true
+	return id, true
 }
 
-func (s *Server) writeTokenRepoError(w http.ResponseWriter, r *http.Request, msg string, err error) {
+func (s *Server) writeTokenError(w http.ResponseWriter, r *http.Request, msg string, err error) {
+	if errors.Is(err, prismauth.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "token not found")
 		return
 	}
+	if errors.Is(err, prismauth.ErrInvalidToken) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	s.Logger.ErrorContext(r.Context(), msg+" failed", slog.Any("error", err))
 	writeError(w, http.StatusInternalServerError, "failed to "+msg)
-}
-
-func canRenew(principal middleware.Principal, token repo.Token) bool {
-	if principal.Type == authtoken.TypeAdmin {
-		return true
-	}
-	if token.RevokedAt != nil || !time.Now().Before(token.ExpiresAt) {
-		return false
-	}
-	return principal.TokenID == token.ID && string(principal.Type) == token.Type && principal.Type == authtoken.TypeUser
 }
 
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
@@ -286,6 +281,7 @@ func toAdminToken(token repo.Token) AdminToken {
 		ID:            token.ID,
 		Type:          token.Type,
 		Name:          token.Name,
+		Permissions:   token.Permissions,
 		HashAlgorithm: token.HashAlgorithm,
 		CreatedAt:     token.CreatedAt,
 		ExpiresAt:     token.ExpiresAt,
