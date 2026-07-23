@@ -188,9 +188,18 @@ func main() {
 		logger.Error("failed to initialize token hasher", "error", herr)
 		os.Exit(1)
 	}
-	tokenTypes := make(map[string]api.TokenTypeConfig, len(config.Auth.TokenTypes))
+	tokenTypes := make(map[authtoken.Type]prismauth.TokenTypeConfig, len(config.Auth.TokenTypes))
 	for name, cfg := range config.Auth.TokenTypes {
-		tokenTypes[name] = api.TokenTypeConfig{Prefix: cfg.Prefix, DefaultTTL: cfg.DefaultTTL, MaxTTL: cfg.MaxTTL}
+		tokenTypes[authtoken.Type(name)] = prismauth.TokenTypeConfig{DefaultTTL: cfg.DefaultTTL, MaxTTL: cfg.MaxTTL}
+	}
+	authService, serr := prismauth.NewService(prismauth.ServiceParams{
+		Tokens:     repository.Tokens(),
+		Hasher:     hasher,
+		TokenTypes: tokenTypes,
+	})
+	if serr != nil {
+		logger.Error("failed to initialize auth service", "error", serr)
+		os.Exit(1)
 	}
 	authenticator, aerr := prismauth.NewAuthenticator(prismauth.AuthenticatorParams{
 		Store:        repository.Tokens(),
@@ -203,7 +212,7 @@ func main() {
 	tokenAuth := middleware.TokenAuthMiddleware(middleware.TokenAuthenticator{Authenticator: authenticator})
 	publicAuthMiddleware := []middleware.Middleware{tokenAuth, middleware.RequirePermissions(permission.UserAPI)}
 	adminAuthMiddleware := []middleware.Middleware{tokenAuth, middleware.RequirePermissions(permission.AdminAPI)}
-	serverOpts = append(serverOpts, api.WithTokens(repository.Tokens(), hasher, tokenTypes))
+	serverOpts = append(serverOpts, api.WithTokenService(authService))
 	promptStore, err := appconfig.NewStorage(ctx, config.Prompts.StorageURI, config.S3)
 	if err != nil {
 		logger.Error("failed to initialize prompt storage", "error", err)

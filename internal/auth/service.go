@@ -118,7 +118,7 @@ func NewService(params ServiceParams) (*Service, error) {
 
 func (s *Service) AuthenticateToken(ctx context.Context, raw string) (Actor, error) {
 	principal, err := s.auth.AuthenticateToken(ctx, raw)
-	return Actor{TokenID: principal.TokenID, Type: principal.Type, Name: principal.Name, Permissions: principal.Permissions}, err
+	return Actor(principal), err
 }
 
 func (s *Service) AuthenticateRoot(ctx context.Context, raw string) error {
@@ -221,6 +221,59 @@ func (s *Service) RevokeToken(ctx context.Context, actor Actor, id uuid.UUID) (r
 		}
 	}
 	return s.tokens.RevokeToken(ctx, id)
+}
+
+func (s *Service) RenewToken(ctx context.Context, actor Actor, id uuid.UUID, requested *time.Time) (repo.Token, error) {
+	tok, err := s.tokens.GetTokenByID(ctx, id)
+	if err != nil {
+		return repo.Token{}, err
+	}
+	if tok.Type != string(authtoken.TypeAdmin) && tok.Type != string(authtoken.TypeUser) {
+		return repo.Token{}, ErrForbidden
+	}
+	if actor.Type == authtoken.TypeAdmin {
+		if !actor.Permissions.Has(permission.TokenAdmin) {
+			return repo.Token{}, ErrForbidden
+		}
+	} else if tok.RevokedAt != nil || !s.now().Before(tok.ExpiresAt) || actor.TokenID != tok.ID || actor.Type != authtoken.TypeUser {
+		return repo.Token{}, ErrForbidden
+	}
+	expiresAt, err := s.resolveExpiry(authtoken.Type(tok.Type), requested)
+	if err != nil {
+		return repo.Token{}, err
+	}
+	return s.tokens.RenewToken(ctx, id, expiresAt)
+}
+
+func (s *Service) RotateToken(ctx context.Context, actor Actor, id uuid.UUID, requested *time.Time) (TokenSecretResult, error) {
+	if !actor.Permissions.Has(permission.TokenAdmin) {
+		return TokenSecretResult{}, ErrForbidden
+	}
+	tok, err := s.tokens.GetTokenByID(ctx, id)
+	if err != nil {
+		return TokenSecretResult{}, err
+	}
+	if tok.Type != string(authtoken.TypeAdmin) && tok.Type != string(authtoken.TypeUser) {
+		return TokenSecretResult{}, ErrForbidden
+	}
+	expiresAt, err := s.resolveExpiry(authtoken.Type(tok.Type), requested)
+	if err != nil {
+		return TokenSecretResult{}, err
+	}
+	raw, secret, err := authtoken.Generate(authtoken.Type(tok.Type), tok.ID)
+	if err != nil {
+		return TokenSecretResult{}, err
+	}
+	rotated, err := s.tokens.RotateToken(ctx, repo.RotateTokenParams{
+		ID:            tok.ID,
+		HashAlgorithm: s.hasher.Algorithm(),
+		TokenHash:     s.hasher.Hash(secret),
+		ExpiresAt:     expiresAt,
+	})
+	if err != nil {
+		return TokenSecretResult{}, err
+	}
+	return TokenSecretResult{Token: rotated, Raw: raw}, nil
 }
 
 func (s *Service) ListTokens(ctx context.Context, actor Actor, params repo.ListOperatorParams) ([]repo.Token, error) {
