@@ -8,14 +8,6 @@ BEGIN
 END
 $$;
 
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'prism') THEN
-        GRANT prism_rootctl TO prism;
-    END IF;
-END
-$$;
-
 CREATE OR REPLACE FUNCTION prism_root_init(
     p_id UUID,
     p_name TEXT,
