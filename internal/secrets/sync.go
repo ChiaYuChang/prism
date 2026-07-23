@@ -25,6 +25,7 @@ func DefaultMappings() []Mapping {
 		{Item: "opencode", Path: "opencode"},
 		{Item: "pg-admin", Path: "pg-admin"},
 		{Item: "pg-prism", Path: "pg-prism"},
+		{Item: "pg-rootctl", Path: "pg-rootctl"},
 		{Item: "seaweedfs", Path: "seaweedfs"},
 		{Item: "serpapi", Path: "serpapi"},
 		{Item: "valkey-admin", Path: "valkey-admin"},
