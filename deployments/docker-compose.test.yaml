@@ -26,3 +26,11 @@ services:
     restart: "no"
     ports:
       - "127.0.0.1:${VALKEY_PORT:-6379}:6379"
+
+  prismctl-web:
+    ports:
+      - "127.0.0.1:${PRISMCTL_WEB_PORT:-8088}:8080"
+
+  prismctl-web-dev:
+    ports:
+      - "127.0.0.1:${PRISMCTL_WEB_DEV_PORT:-5173}:5173"

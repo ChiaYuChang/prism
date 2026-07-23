@@ -1,0 +1,49 @@
+version: "3"
+
+vars:
+  WEB_DIR: web/prismctl-web
+
+tasks:
+  build:
+    desc: build the Prism control room container
+    cmds:
+      - docker build --target runtime -t prism/prismctl-web:local {{.WEB_DIR}}
+
+  test:
+    desc: run web unit tests in the pinned Node container
+    cmds:
+      - docker build --target test -t prism/prismctl-web-test:local {{.WEB_DIR}}
+      - docker run --rm prism/prismctl-web-test:local
+
+  test:e2e:
+    desc: run web browser tests in the pinned Playwright container
+    cmds:
+      - docker build --target e2e -t prism/prismctl-web-e2e:local {{.WEB_DIR}}
+      - docker run --rm prism/prismctl-web-e2e:local
+
+  dev:
+    desc: start the containerized Vite development server
+    cmds:
+      - ENV={{.ENV}} PROFILES=web-dev ./script/compose-bake.sh
+      - docker compose -f .{{.ENV}}-web-dev.docker-compose.merged.yaml up -d prismctl-web-dev
+
+  dev:down:
+    desc: stop the containerized Vite development server
+    cmds:
+      - docker compose -f .{{.ENV}}-web-dev.docker-compose.merged.yaml down
+
+  logs:
+    desc: follow control room logs
+    cmds:
+      - docker compose -f .{{.ENV}}-web.docker-compose.merged.yaml logs -f prismctl-web
+
+  npm:
+    desc: run an npm command in the pinned dependency container
+    cmds:
+      - docker build --target dev -t prism/prismctl-web-dev:local {{.WEB_DIR}}
+      - docker run --rm -it -v "$PWD/{{.WEB_DIR}}:/app" -v prismctl_web_node_modules:/app/node_modules prism/prismctl-web-dev:local npm {{.CLI_ARGS}}
+
+  lock:
+    desc: refresh the committed web lockfile in the pinned Node container
+    cmds:
+      - docker build --target deps -t prism/prismctl-web-deps:local {{.WEB_DIR}}
