@@ -15,6 +15,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -30,7 +31,9 @@ type rootCLI struct {
 	output     string
 	rootFile   string
 	rootToken  string
-	service    *prismauth.Service
+	control    repo.RootControl
+	hasher     token.Hasher
+	adminTTL   prismauth.TokenTypeConfig
 	closer     repo.Closer
 }
 
@@ -119,6 +122,7 @@ func (c *rootCLI) bindFlags(fs *pflag.FlagSet) {
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
 	fs.String("pg-username", "postgres", "Postgres username")
+	fs.String("pg-role", "prism_rootctl", "Postgres role for restricted root functions")
 	fs.String("pg-password", "postgres", "Postgres password")
 	fs.String("pg-password-file", "", "Path to Postgres password file")
 	fs.String("pg-db", "prism", "Postgres database name")
@@ -128,6 +132,7 @@ func (c *rootCLI) bindFlags(fs *pflag.FlagSet) {
 	_ = c.v.BindPFlag("postgres.host", fs.Lookup("pg-host"))
 	_ = c.v.BindPFlag("postgres.port", fs.Lookup("pg-port"))
 	_ = c.v.BindPFlag("postgres.username", fs.Lookup("pg-username"))
+	_ = c.v.BindPFlag("postgres.role", fs.Lookup("pg-role"))
 	_ = c.v.BindPFlag("postgres.password", fs.Lookup("pg-password"))
 	_ = c.v.BindPFlag("postgres.password-file", fs.Lookup("pg-password-file"))
 	_ = c.v.BindPFlag("postgres.db", fs.Lookup("pg-db"))
@@ -140,12 +145,22 @@ func (c *rootCLI) initCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		service, err := c.authService(cmd.Context())
+		control, err := c.dependencies(cmd.Context())
 		if err != nil {
 			return err
 		}
 		defer c.close()
-		tok, err := service.InitRoot(cmd.Context(), cred.Secret)
+		auth, err := c.rootAuthParams(cred.Secret)
+		if err != nil {
+			return c.renderError("init", err, cred.Warnings)
+		}
+		tok, err := control.InitRoot(cmd.Context(), repo.CreateRootControlParams{
+			ID:            uuid.Must(uuid.NewV7()),
+			Name:          prismauth.RootTokenName,
+			HashAlgorithm: auth.HashAlgorithm,
+			TokenHash:     auth.TokenHash,
+			ExpiresAt:     rootExpiry(),
+		})
 		if err != nil {
 			return c.renderError("init", err, cred.Warnings)
 		}
@@ -159,13 +174,21 @@ func (c *rootCLI) checkCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		service, err := c.authService(cmd.Context())
+		control, err := c.dependencies(cmd.Context())
 		if err != nil {
 			return err
 		}
 		defer c.close()
-		if err := service.CheckRoot(cmd.Context(), cred.Secret); err != nil {
+		auth, err := c.rootAuthParams(cred.Secret)
+		if err != nil {
 			return c.renderError("check", err, cred.Warnings)
+		}
+		valid, err := control.CheckRoot(cmd.Context(), auth)
+		if err != nil {
+			return c.renderError("check", err, cred.Warnings)
+		}
+		if !valid {
+			return c.renderError("check", prismauth.ErrUnauthorized, cred.Warnings)
 		}
 		return c.render("check", map[string]bool{"valid": true}, cred.Warnings)
 	}}
@@ -182,16 +205,36 @@ func (c *rootCLI) adminCreateCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		service, err := c.authService(cmd.Context())
+		control, err := c.dependencies(cmd.Context())
 		if err != nil {
 			return err
 		}
 		defer c.close()
-		res, err := service.CreateAdminWithRoot(cmd.Context(), cred.Secret, name, expires)
+		auth, err := c.rootAuthParams(cred.Secret)
 		if err != nil {
 			return c.renderError("admin_create", err, cred.Warnings)
 		}
-		return c.render("admin_create", tokenSecretView{tokenView: tokenView{ID: res.Token.ID.String(), Type: res.Token.Type, Name: res.Token.Name, Permissions: res.Token.Permissions, HashAlgorithm: res.Token.HashAlgorithm, CreatedAt: res.Token.CreatedAt, ExpiresAt: res.Token.ExpiresAt}, Token: res.Raw}, cred.Warnings)
+		expiresAt, err := c.resolveAdminExpiry(expires)
+		if err != nil {
+			return c.renderError("admin_create", err, cred.Warnings)
+		}
+		id := uuid.Must(uuid.NewV7())
+		raw, secret, err := token.Generate(token.TypeAdmin, id)
+		if err != nil {
+			return c.renderError("admin_create", err, cred.Warnings)
+		}
+		created, err := control.CreateAdmin(cmd.Context(), repo.CreateRootAdminParams{
+			RootAuthParams: auth,
+			ID:             id,
+			Name:           name,
+			HashAlgorithm:  c.hasher.Algorithm(),
+			TokenHash:      c.hasher.Hash(secret),
+			ExpiresAt:      expiresAt,
+		})
+		if err != nil {
+			return c.renderError("admin_create", err, cred.Warnings)
+		}
+		return c.render("admin_create", tokenSecretView{tokenView: tokenView{ID: created.ID.String(), Type: created.Type, Name: created.Name, Permissions: created.Permissions, HashAlgorithm: created.HashAlgorithm, CreatedAt: created.CreatedAt, ExpiresAt: created.ExpiresAt}, Token: raw}, cred.Warnings)
 	}}
 	cmd.Flags().StringVar(&name, "name", "initial-admin", "Admin token name")
 	cmd.Flags().StringVar(&expiresAt, "expires-at", "", "Token expiry RFC3339 timestamp")
@@ -204,12 +247,16 @@ func (c *rootCLI) revokeAllCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		service, err := c.authService(cmd.Context())
+		control, err := c.dependencies(cmd.Context())
 		if err != nil {
 			return err
 		}
 		defer c.close()
-		count, err := service.RevokeAllWithRoot(cmd.Context(), cred.Secret)
+		auth, err := c.rootAuthParams(cred.Secret)
+		if err != nil {
+			return c.renderError("tokens_revoke_all", err, cred.Warnings)
+		}
+		count, err := control.RevokeAll(cmd.Context(), auth)
 		if err != nil {
 			return c.renderError("tokens_revoke_all", err, cred.Warnings)
 		}
@@ -217,9 +264,9 @@ func (c *rootCLI) revokeAllCommand() *cobra.Command {
 	}}
 }
 
-func (c *rootCLI) authService(ctx context.Context) (*prismauth.Service, error) {
-	if c.service != nil {
-		return c.service, nil
+func (c *rootCLI) dependencies(ctx context.Context) (repo.RootControl, error) {
+	if c.control != nil {
+		return c.control, nil
 	}
 	var cfg rootConfig
 	if c.configPath != "" {
@@ -245,20 +292,38 @@ func (c *rootCLI) authService(ctx context.Context) (*prismauth.Service, error) {
 		_ = closer.Close()
 		return nil, err
 	}
-	service, err := prismauth.NewService(prismauth.ServiceParams{
-		Tokens: repository.Tokens(),
-		Hasher: hasher,
-		TokenTypes: map[token.Type]prismauth.TokenTypeConfig{
-			token.TypeAdmin: {DefaultTTL: 720 * time.Hour, MaxTTL: 2160 * time.Hour},
-		},
-	})
-	if err != nil {
-		_ = closer.Close()
-		return nil, err
-	}
+	c.hasher = hasher
+	c.adminTTL = prismauth.TokenTypeConfig{DefaultTTL: 720 * time.Hour, MaxTTL: 2160 * time.Hour}
 	c.closer = closer
-	c.service = service
-	return service, nil
+	c.control = repository.RootControl()
+	return c.control, nil
+}
+
+func (c *rootCLI) rootAuthParams(raw string) (repo.RootAuthParams, error) {
+	secret, err := prismauth.NormalizeRootSecret(raw)
+	if err != nil {
+		return repo.RootAuthParams{}, err
+	}
+	return repo.RootAuthParams{HashAlgorithm: c.hasher.Algorithm(), TokenHash: c.hasher.Hash([]byte(secret))}, nil
+}
+
+func (c *rootCLI) resolveAdminExpiry(requested *time.Time) (time.Time, error) {
+	now := time.Now()
+	expiresAt := now.Add(c.adminTTL.DefaultTTL)
+	if requested != nil {
+		expiresAt = *requested
+	}
+	if !expiresAt.After(now) {
+		return time.Time{}, fmt.Errorf("expires_at must be in the future")
+	}
+	if expiresAt.After(now.Add(c.adminTTL.MaxTTL)) {
+		return time.Time{}, fmt.Errorf("expires_at exceeds max ttl")
+	}
+	return expiresAt, nil
+}
+
+func rootExpiry() time.Time {
+	return time.Date(2099, time.December, 31, 23, 59, 59, 0, time.UTC)
 }
 
 func (c *rootCLI) close() {

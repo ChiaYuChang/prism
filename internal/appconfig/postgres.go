@@ -11,6 +11,7 @@ type PostgresConfig struct {
 	Host     string `mapstructure:"host"     validate:"required"`
 	Port     int    `mapstructure:"port"     validate:"required,min=1,max=65535"`
 	Username string `mapstructure:"username" validate:"required"`
+	Role     string `mapstructure:"role"`
 	Password string `mapstructure:"password" validate:"required"`
 	DB       string `mapstructure:"db"       validate:"required"`
 	SSLMode  string `mapstructure:"sslmode"  validate:"oneof=disable require verify-ca verify-full"`
