@@ -23,7 +23,11 @@ type cliContext struct {
 }
 
 func newCLIContext() *cliContext {
-	return &cliContext{}
+	apiURL := strings.TrimSpace(os.Getenv("PRISMCTL_API_URL"))
+	if apiURL == "" {
+		apiURL = "http://localhost:8091/api/v1"
+	}
+	return &cliContext{apiURL: apiURL}
 }
 
 func (c *cliContext) bindPersistentFlags(cmd *cobra.Command) {
@@ -33,7 +37,7 @@ func (c *cliContext) bindPersistentFlags(cmd *cobra.Command) {
 	flags.StringVar(&c.inputFile, "input-file", "", "Read JSON command envelope from file")
 	flags.StringVar(&c.adminFile, "admin-token-file", "", "Path to admin token file inside the container")
 	flags.StringVar(&c.adminToken, "admin-token", "", "Raw admin token; prefer --admin-token-file")
-	flags.StringVar(&c.apiURL, "api-url", "http://localhost:8091/api/v1", "Prism admin API base URL")
+	flags.StringVar(&c.apiURL, "api-url", c.apiURL, "Prism admin API base URL")
 }
 
 func readAll(path string) (string, error) {
