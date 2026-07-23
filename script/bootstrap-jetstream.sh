@@ -17,6 +17,6 @@ while ! curl -fsS "$HEALTH_URL" >/dev/null 2>&1; do
 done
 
 if [ -f "$ADMIN_TOKEN_FILE" ]; then
-  exec go run ./cmd/prismctl --api-url "$API_URL" --admin-token-file "$ADMIN_TOKEN_FILE" admin nats apply --manifest "$MANIFEST"
+  exec task prismctl:cli -- admin nats apply --manifest "$MANIFEST"
 fi
-exec go run ./cmd/prismctl --api-url "$API_URL" admin nats apply --manifest "$MANIFEST"
+exec task prismctl:cli -- admin nats apply --manifest "$MANIFEST"

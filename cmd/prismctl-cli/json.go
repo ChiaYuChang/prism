@@ -209,8 +209,11 @@ func (c *cliContext) runJSONAdminSources(ctx context.Context, env commandEnvelop
 }
 
 func (c *cliContext) adminCredentialFromJSON(auth jsonAuth) (credential, error) {
-	if auth.AdminTokenFile != "" || auth.AdminToken != "" {
-		return loadCredential(credentialRequest{File: auth.AdminTokenFile, Raw: auth.AdminToken, Name: "admin"})
+	if strings.TrimSpace(auth.AdminToken) != "" {
+		return credential{}, fmt.Errorf("raw admin tokens are not accepted; use admin_token_file")
+	}
+	if auth.AdminTokenFile != "" {
+		return loadCredential(credentialRequest{File: auth.AdminTokenFile, Name: "admin"})
 	}
 	return c.adminCredential()
 }

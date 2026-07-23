@@ -62,7 +62,7 @@ if [[ -z "$admin_token" ]]; then
     exit 1
 fi
 
-prismctl=(go run ./cmd/prismctl --api-url "$API_URL" --admin-token-file "$ADMIN_TOKEN_FILE" --output json)
+prismctl=(task prismctl:cli -- --output json)
 
 ensure_model() {
     local models
@@ -75,9 +75,7 @@ ensure_model() {
     fi
 
     printf 'registering model: %s (%s/%s)\n' "$MODEL_NAME" "$MODEL_PROVIDER" "$MODEL_TYPE"
-    go run ./cmd/prismctl \
-        --api-url "$API_URL" \
-        --admin-token-file "$ADMIN_TOKEN_FILE" \
+    "${prismctl[@]}" \
         admin models create \
         --name "$MODEL_NAME" \
         --provider "$MODEL_PROVIDER" \
@@ -94,9 +92,7 @@ ensure_prompt() {
     fi
 
     printf 'uploading prompt version: %s (%s)\n' "$PROMPT_NAME" "$hash"
-    go run ./cmd/prismctl \
-        --api-url "$API_URL" \
-        --admin-token-file "$ADMIN_TOKEN_FILE" \
+    "${prismctl[@]}" \
         admin prompts upload \
         --name "$PROMPT_NAME" \
         --file "$PROMPT_FILE" \
