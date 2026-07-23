@@ -3,6 +3,7 @@ INSERT INTO tokens (
     id,
     type,
     name,
+    permissions,
     hash_algorithm,
     token_hash,
     expires_at
@@ -10,6 +11,7 @@ INSERT INTO tokens (
     sqlc.arg(id),
     sqlc.arg(type),
     sqlc.arg(name),
+    sqlc.arg(permissions),
     sqlc.arg(hash_algorithm),
     sqlc.arg(token_hash),
     sqlc.arg(expires_at)
@@ -31,6 +33,7 @@ LIMIT 1;
 -- name: ListTokens :many
 SELECT *
 FROM tokens
+WHERE type IN ('admin', 'user')
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(lim)
 OFFSET sqlc.arg(off);
@@ -73,7 +76,7 @@ SELECT COUNT(*)::BIGINT FROM revoked;
 -- name: CountActiveAdminTokensExcluding :one
 SELECT COUNT(*)::BIGINT
 FROM tokens
-WHERE type = 'admin'
+WHERE (permissions & 64) = 64
   AND revoked_at IS NULL
   AND expires_at > NOW()
   AND id <> sqlc.arg(id);

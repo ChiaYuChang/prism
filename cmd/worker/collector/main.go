@@ -249,6 +249,7 @@ func main() {
 		os.Exit(1)
 	}
 	handler.taskReader = dbRepo.Tasks()
+	handler.tasks = dbRepo.Tasks()
 
 	messages, err := msgr.Subscribe(ctx, message.TaskTopic)
 	if err != nil {

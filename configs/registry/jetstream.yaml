@@ -49,6 +49,16 @@ consumers:
     max_ack_pending: 16
     max_deliver: 8
 
+  - stream: prism_task
+    name: embedder-worker
+    filter_subject: prism_task
+    queue_group: embedder-worker
+    deliver_policy: all
+    ack_policy: explicit
+    ack_wait: 2m
+    max_ack_pending: 16
+    max_deliver: 8
+
   - stream: prism_batch_completed
     name: planner-worker
     filter_subject: prism_batch_completed

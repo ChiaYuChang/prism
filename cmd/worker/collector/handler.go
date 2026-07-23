@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,12 +50,17 @@ type Handler struct {
 	pipeline         repo.Pipeline
 	reporter         repo.TaskReporter
 	taskReader       taskReader
+	tasks            taskCreator
 	metrics          *metrics
 	retryMax         int
 }
 
 type taskReader interface {
 	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
+}
+
+type taskCreator interface {
+	CreateTask(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error)
 }
 
 type metrics struct {
@@ -243,7 +249,10 @@ func (h *Handler) process(ctx context.Context, logger *slog.Logger, sig message.
 
 	// Skip if content already exists for this candidate ID.
 	if candidateID != uuid.Nil {
-		if _, err := h.pipeline.GetContentByCandidateID(ctx, candidateID); err == nil {
+		if content, err := h.pipeline.GetContentByCandidateID(ctx, candidateID); err == nil {
+			if err := h.ensureContentEmbeddingTask(ctx, content, sig); err != nil {
+				return err
+			}
 			logger.InfoContext(
 				ctx,
 				"content already exists by candidate ID, skipping",
@@ -255,7 +264,10 @@ func (h *Handler) process(ctx context.Context, logger *slog.Logger, sig message.
 	}
 
 	// Skip if content already exists for this URL.
-	if _, err := h.pipeline.GetContentByURL(ctx, sig.URL); err == nil {
+	if content, err := h.pipeline.GetContentByURL(ctx, sig.URL); err == nil {
+		if err := h.ensureContentEmbeddingTask(ctx, content, sig); err != nil {
+			return err
+		}
 		logger.InfoContext(
 			ctx,
 			"content already exists by url, skipping",
@@ -317,6 +329,9 @@ func (h *Handler) process(ctx context.Context, logger *slog.Logger, sig message.
 	if err != nil {
 		return fmt.Errorf("create content for %s: %w", sig.URL, err)
 	}
+	if err := h.ensureContentEmbeddingTask(ctx, content, sig); err != nil {
+		return err
+	}
 
 	logger.InfoContext(ctx, "content persisted",
 		slog.String("url", sig.URL),
@@ -333,6 +348,32 @@ func (h *Handler) process(ctx context.Context, logger *slog.Logger, sig message.
 		}
 	}
 
+	return nil
+}
+
+func (h *Handler) ensureContentEmbeddingTask(ctx context.Context, content repo.Content, sig message.TaskSignal) error {
+	if h.tasks == nil || content.ID == uuid.Nil {
+		return nil
+	}
+	meta, err := json.Marshal(map[string]string{"content_id": content.ID.String()})
+	if err != nil {
+		return fmt.Errorf("marshal content embedding meta: %w", err)
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(content.ID.String())))
+	_, err = h.tasks.CreateTask(ctx, repo.CreateTaskParams{
+		BatchID:     content.BatchID,
+		Kind:        repo.TaskKindEmbedContent,
+		SourceType:  sig.SourceType,
+		SourceAbbr:  content.SourceAbbr,
+		URL:         content.URL,
+		Payload:     meta,
+		PayloadHash: &hash,
+		Meta:        meta,
+		TraceID:     content.TraceID,
+	})
+	if err != nil && !errors.Is(err, repo.ErrTaskAlreadyActive) {
+		return fmt.Errorf("create content embedding task for %s: %w", content.ID, err)
+	}
 	return nil
 }
 

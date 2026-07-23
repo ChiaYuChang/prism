@@ -217,7 +217,7 @@ func (p *Provider) Embed(ctx context.Context, req *llm.EmbedRequest) (*llm.Embed
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfArrayOfStrings: req.Input,
 		},
-		Dimensions:     openai.Int(int64(req.Dimentions)),
+		Dimensions:     openai.Int(int64(req.Dimensions)),
 		EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 	}
 

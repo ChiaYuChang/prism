@@ -54,6 +54,20 @@ SET author = COALESCE(sqlc.narg(author), author),
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
+-- name: SoftDeleteContent :one
+UPDATE contents
+SET deleted_at = NOW()
+WHERE id = $1
+  AND deleted_at IS NULL
+RETURNING *;
+
+-- name: RestoreContent :one
+UPDATE contents
+SET deleted_at = NULL
+WHERE id = $1
+  AND deleted_at IS NOT NULL
+RETURNING *;
+
 -- name: ListRecentSeedContents :many
 SELECT *
 FROM contents

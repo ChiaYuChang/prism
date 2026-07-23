@@ -40,7 +40,8 @@ type PGTasks struct {
 }
 
 type PGPipeline struct {
-	q *Queries
+	db DBTX
+	q  *Queries
 }
 
 type PGEmbeddings struct {
@@ -113,7 +114,7 @@ func (r *PGRepository) Tasks() repo.Tasks {
 }
 
 func (r *PGRepository) Pipeline() repo.Pipeline {
-	return &PGPipeline{q: r.q}
+	return &PGPipeline{db: r.db, q: r.q}
 }
 
 func (r *PGRepository) Embedding() repo.Embeddings {
@@ -696,6 +697,7 @@ func (r *PGTokens) CreateToken(ctx context.Context, arg repo.CreateTokenParams) 
 		ID:            arg.ID,
 		Type:          arg.Type,
 		Name:          arg.Name,
+		Permissions:   int16(arg.Permissions),
 		HashAlgorithm: arg.HashAlgorithm,
 		TokenHash:     arg.TokenHash,
 		ExpiresAt:     pgtype.Timestamptz{Time: arg.ExpiresAt, Valid: true},
@@ -703,7 +705,7 @@ func (r *PGTokens) CreateToken(ctx context.Context, arg repo.CreateTokenParams) 
 	if err != nil {
 		return repo.Token{}, err
 	}
-	return dbTokenToRepoToken(row), nil
+	return dbTokenToRepoToken(row)
 }
 
 func (r *PGTokens) GetTokenByID(ctx context.Context, id uuid.UUID) (repo.Token, error) {
@@ -711,7 +713,7 @@ func (r *PGTokens) GetTokenByID(ctx context.Context, id uuid.UUID) (repo.Token, 
 	if err != nil {
 		return repo.Token{}, err
 	}
-	return dbTokenToRepoToken(row), nil
+	return dbTokenToRepoToken(row)
 }
 
 func (r *PGTokens) GetRootToken(ctx context.Context) (repo.Token, error) {
@@ -719,7 +721,7 @@ func (r *PGTokens) GetRootToken(ctx context.Context) (repo.Token, error) {
 	if err != nil {
 		return repo.Token{}, err
 	}
-	return dbTokenToRepoToken(row), nil
+	return dbTokenToRepoToken(row)
 }
 
 func (r *PGTokens) ListTokens(ctx context.Context, params repo.ListOperatorParams) ([]repo.Token, error) {
@@ -729,7 +731,10 @@ func (r *PGTokens) ListTokens(ctx context.Context, params repo.ListOperatorParam
 	}
 	out := make([]repo.Token, len(rows))
 	for i, row := range rows {
-		out[i] = dbTokenToRepoToken(row)
+		out[i], err = dbTokenToRepoToken(row)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -739,7 +744,7 @@ func (r *PGTokens) RenewToken(ctx context.Context, id uuid.UUID, expiresAt time.
 	if err != nil {
 		return repo.Token{}, err
 	}
-	return dbTokenToRepoToken(row), nil
+	return dbTokenToRepoToken(row)
 }
 
 func (r *PGTokens) RotateToken(ctx context.Context, arg repo.RotateTokenParams) (repo.Token, error) {
@@ -752,7 +757,7 @@ func (r *PGTokens) RotateToken(ctx context.Context, arg repo.RotateTokenParams) 
 	if err != nil {
 		return repo.Token{}, err
 	}
-	return dbTokenToRepoToken(row), nil
+	return dbTokenToRepoToken(row)
 }
 
 func (r *PGTokens) RevokeToken(ctx context.Context, id uuid.UUID) (repo.Token, error) {
@@ -760,7 +765,7 @@ func (r *PGTokens) RevokeToken(ctx context.Context, id uuid.UUID) (repo.Token, e
 	if err != nil {
 		return repo.Token{}, err
 	}
-	return dbTokenToRepoToken(row), nil
+	return dbTokenToRepoToken(row)
 }
 
 func (r *PGTokens) RevokeAllTokens(ctx context.Context) (int64, error) {
@@ -886,6 +891,56 @@ func (r *PGPipeline) ListRecentSeedContents(ctx context.Context, limit int32) ([
 		out[i] = dbContentToRepoContent(row)
 	}
 	return out, nil
+}
+
+func (r *PGPipeline) DeleteContent(ctx context.Context, id uuid.UUID) (repo.Content, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return repo.Content{}, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return repo.Content{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := r.q.WithTx(tx)
+	row, err := qtx.SoftDeleteContent(ctx, id)
+	if err != nil {
+		return repo.Content{}, err
+	}
+	if err := qtx.SoftDeleteContentEmbeddings(ctx, id); err != nil {
+		return repo.Content{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return repo.Content{}, err
+	}
+	return dbContentToRepoContent(row), nil
+}
+
+func (r *PGPipeline) RestoreContent(ctx context.Context, id uuid.UUID) (repo.Content, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return repo.Content{}, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return repo.Content{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	qtx := r.q.WithTx(tx)
+	row, err := qtx.RestoreContent(ctx, id)
+	if err != nil {
+		return repo.Content{}, err
+	}
+	if err := qtx.RestoreContentEmbeddings(ctx, id); err != nil {
+		return repo.Content{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return repo.Content{}, err
+	}
+	return dbContentToRepoContent(row), nil
 }
 
 // Batch Trigger repository.
@@ -1031,6 +1086,21 @@ func (r *PGEmbeddings) GetModelByNameAndType(ctx context.Context, name string, m
 	return dbModelToRepoModel(row), nil
 }
 
+func (r *PGEmbeddings) GetCandidateEmbeddingInputHash(ctx context.Context, candidateID uuid.UUID, modelID int16, category string) (string, error) {
+	return r.q.GetCandidateEmbeddingInputHash(ctx, GetCandidateEmbeddingInputHashParams{
+		CandidateID: candidateID,
+		ModelID:     modelID,
+		Category:    EmbeddingCategory(category),
+	})
+}
+
+func (r *PGEmbeddings) GetContentEmbeddingInputHash(ctx context.Context, contentID uuid.UUID, modelID int16) (string, error) {
+	return r.q.GetContentEmbeddingInputHash(ctx, GetContentEmbeddingInputHashParams{
+		ContentID: contentID,
+		ModelID:   modelID,
+	})
+}
+
 func (r *PGOperator) CreateModel(ctx context.Context, arg repo.CreateModelParams) (repo.Model, error) {
 	publishDate := pgtype.Date{}
 	if arg.PublishDate != nil {
@@ -1050,12 +1120,13 @@ func (r *PGOperator) CreateModel(ctx context.Context, arg repo.CreateModelParams
 	return dbModelToRepoModel(row), nil
 }
 
-func (r *PGEmbeddings) CreateCandidateEmbedding(ctx context.Context, arg repo.CreateCandidateEmbeddingParams) (repo.CandidateEmbedding, error) {
-	row, err := r.q.CreateCandidateEmbeddingGemma2025(ctx, CreateCandidateEmbeddingGemma2025Params{
+func (r *PGEmbeddings) UpsertCandidateEmbedding(ctx context.Context, arg repo.CreateCandidateEmbeddingParams) (repo.CandidateEmbedding, error) {
+	row, err := r.q.UpsertCandidateEmbeddingGemma2025(ctx, UpsertCandidateEmbeddingGemma2025Params{
 		CandidateID: arg.CandidateID,
 		ModelID:     arg.ModelID,
 		Category:    EmbeddingCategory(arg.Category),
 		Vector:      pgvector.NewVector(arg.Vector),
+		InputHash:   arg.InputHash,
 		TraceID:     arg.TraceID,
 	})
 	if err != nil {
@@ -1064,12 +1135,12 @@ func (r *PGEmbeddings) CreateCandidateEmbedding(ctx context.Context, arg repo.Cr
 	return dbCandidateEmbeddingToRepoCandidateEmbedding(row), nil
 }
 
-func (r *PGEmbeddings) CreateContentEmbedding(ctx context.Context, arg repo.CreateContentEmbeddingParams) (repo.ContentEmbedding, error) {
-	row, err := r.q.CreateContentEmbeddingGemma2025(ctx, CreateContentEmbeddingGemma2025Params{
+func (r *PGEmbeddings) UpsertContentEmbedding(ctx context.Context, arg repo.CreateContentEmbeddingParams) (repo.ContentEmbedding, error) {
+	row, err := r.q.UpsertContentEmbeddingGemma2025(ctx, UpsertContentEmbeddingGemma2025Params{
 		ContentID: arg.ContentID,
 		ModelID:   arg.ModelID,
-		Category:  EmbeddingCategory(arg.Category),
 		Vector:    pgvector.NewVector(arg.Vector),
+		InputHash: arg.InputHash,
 		TraceID:   arg.TraceID,
 	})
 	if err != nil {

@@ -149,6 +149,21 @@ func TestHandlerProcess_ArchivesStageErrorWithRecoverablePayloadKind(t *testing.
 	}
 }
 
+func TestHandlerEnsureContentEmbeddingTask(t *testing.T) {
+	tasks := repomocks.NewMockTasks(t)
+	contentID := uuid.Must(uuid.NewV7())
+	batchID := uuid.Must(uuid.NewV7())
+	tasks.EXPECT().CreateTask(mock.Anything, mock.MatchedBy(func(arg repo.CreateTaskParams) bool {
+		return arg.Kind == repo.TaskKindEmbedContent && arg.BatchID == batchID && arg.SourceType == repo.SourceTypeParty && arg.SourceAbbr == "dpp" && arg.URL == "https://example.test/article" && arg.PayloadHash != nil && len(*arg.PayloadHash) == 64
+	})).Return(repo.Task{}, nil)
+
+	h := &Handler{tasks: tasks}
+	err := h.ensureContentEmbeddingTask(context.Background(), repo.Content{
+		ID: contentID, BatchID: batchID, SourceAbbr: "dpp", URL: "https://example.test/article", TraceID: "trace-1",
+	}, message.TaskSignal{SourceType: repo.SourceTypeParty})
+	require.NoError(t, err)
+}
+
 func TestRetryMaxForError(t *testing.T) {
 	parseErr := &collector.StageError{Stage: collector.PipelineStageParse, Err: errors.New("parser mismatch")}
 	fetchErr := &collector.StageError{Stage: collector.PipelineStageFetch, Err: errors.New("temporary fetch failure")}

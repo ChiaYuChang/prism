@@ -1,6 +1,7 @@
 package pg
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/repo"
@@ -211,11 +212,15 @@ func dbPromptVersionRowToRepoPromptVersion(
 	}
 }
 
-func dbTokenToRepoToken(t Token) repo.Token {
+func dbTokenToRepoToken(t Token) (repo.Token, error) {
+	if t.Permissions < 0 || t.Permissions > 255 {
+		return repo.Token{}, fmt.Errorf("token %s has invalid permissions %d", t.ID, t.Permissions)
+	}
 	return repo.Token{
 		ID:            t.ID,
 		Type:          t.Type,
 		Name:          t.Name,
+		Permissions:   uint8(t.Permissions),
 		HashAlgorithm: t.HashAlgorithm,
 		TokenHash:     t.TokenHash,
 		CreatedAt:     *pgconv.PgTimestamptzToTimePtr(t.CreatedAt),
@@ -224,7 +229,7 @@ func dbTokenToRepoToken(t Token) repo.Token {
 		RenewedAt:     pgconv.PgTimestamptzToTimePtr(t.RenewedAt),
 		RotatedAt:     pgconv.PgTimestamptzToTimePtr(t.RotatedAt),
 		RevokedAt:     pgconv.PgTimestamptzToTimePtr(t.RevokedAt),
-	}
+	}, nil
 }
 
 func dbContentExtractionToRepoContentExtraction(c ContentExtraction) repo.ContentExtraction {
@@ -258,6 +263,7 @@ func dbCandidateEmbeddingToRepoCandidateEmbedding(e CandidateEmbeddingsGemma2025
 		CandidateID: e.CandidateID,
 		ModelID:     e.ModelID,
 		Category:    string(e.Category),
+		InputHash:   e.InputHash,
 		TraceID:     e.TraceID,
 		CreatedAt:   *pgconv.PgTimestamptzToTimePtr(e.CreatedAt),
 	}
@@ -268,9 +274,10 @@ func dbContentEmbeddingToRepoContentEmbedding(e ContentEmbeddingsGemma2025) repo
 		ID:        e.ID,
 		ContentID: e.ContentID,
 		ModelID:   e.ModelID,
-		Category:  string(e.Category),
+		InputHash: e.InputHash,
 		TraceID:   e.TraceID,
 		CreatedAt: *pgconv.PgTimestamptzToTimePtr(e.CreatedAt),
+		DeletedAt: pgconv.PgTimestamptzToTimePtr(e.DeletedAt),
 	}
 }
 
@@ -280,6 +287,7 @@ func dbCandidateEmbeddingRowToRepoEmbeddingRecord(e ListCandidateEmbeddingsGemma
 		TargetID:  e.CandidateID,
 		ModelID:   e.ModelID,
 		Category:  string(e.Category),
+		InputHash: e.InputHash,
 		TraceID:   e.TraceID,
 		CreatedAt: *pgconv.PgTimestamptzToTimePtr(e.CreatedAt),
 	}
@@ -290,7 +298,7 @@ func dbContentEmbeddingRowToRepoEmbeddingRecord(e ListContentEmbeddingsGemma2025
 		ID:        e.ID,
 		TargetID:  e.ContentID,
 		ModelID:   e.ModelID,
-		Category:  string(e.Category),
+		InputHash: e.InputHash,
 		TraceID:   e.TraceID,
 		CreatedAt: *pgconv.PgTimestamptzToTimePtr(e.CreatedAt),
 	}

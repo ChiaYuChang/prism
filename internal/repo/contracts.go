@@ -91,6 +91,7 @@ type Token struct {
 	ID            uuid.UUID
 	Type          string
 	Name          string
+	Permissions   uint8
 	HashAlgorithm string
 	TokenHash     string
 	CreatedAt     time.Time
@@ -140,6 +141,7 @@ type CandidateEmbedding struct {
 	CandidateID uuid.UUID
 	ModelID     int16
 	Category    string
+	InputHash   string
 	TraceID     string
 	CreatedAt   time.Time
 }
@@ -148,9 +150,10 @@ type ContentEmbedding struct {
 	ID        int64
 	ContentID uuid.UUID
 	ModelID   int16
-	Category  string
+	InputHash string
 	TraceID   string
 	CreatedAt time.Time
+	DeletedAt *time.Time
 }
 
 type EmbeddingRecord struct {
@@ -158,6 +161,7 @@ type EmbeddingRecord struct {
 	TargetID  uuid.UUID
 	ModelID   int16
 	Category  string
+	InputHash string
 	TraceID   string
 	CreatedAt time.Time
 }

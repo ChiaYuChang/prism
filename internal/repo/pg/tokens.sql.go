@@ -15,7 +15,7 @@ import (
 const countActiveAdminTokensExcluding = `-- name: CountActiveAdminTokensExcluding :one
 SELECT COUNT(*)::BIGINT
 FROM tokens
-WHERE type = 'admin'
+WHERE (permissions & 64) = 64
   AND revoked_at IS NULL
   AND expires_at > NOW()
   AND id <> $1
@@ -33,6 +33,7 @@ INSERT INTO tokens (
     id,
     type,
     name,
+    permissions,
     hash_algorithm,
     token_hash,
     expires_at
@@ -42,15 +43,17 @@ INSERT INTO tokens (
     $3,
     $4,
     $5,
-    $6
+    $6,
+    $7
 )
-RETURNING id, type, name, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
+RETURNING id, type, name, permissions, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
 `
 
 type CreateTokenParams struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	Type          string             `db:"type" json:"type"`
 	Name          string             `db:"name" json:"name"`
+	Permissions   int16              `db:"permissions" json:"permissions"`
 	HashAlgorithm string             `db:"hash_algorithm" json:"hash_algorithm"`
 	TokenHash     string             `db:"token_hash" json:"token_hash"`
 	ExpiresAt     pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
@@ -61,6 +64,7 @@ func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (Token
 		arg.ID,
 		arg.Type,
 		arg.Name,
+		arg.Permissions,
 		arg.HashAlgorithm,
 		arg.TokenHash,
 		arg.ExpiresAt,
@@ -70,6 +74,7 @@ func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (Token
 		&i.ID,
 		&i.Type,
 		&i.Name,
+		&i.Permissions,
 		&i.HashAlgorithm,
 		&i.TokenHash,
 		&i.CreatedAt,
@@ -83,7 +88,7 @@ func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (Token
 }
 
 const getRootToken = `-- name: GetRootToken :one
-SELECT id, type, name, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
+SELECT id, type, name, permissions, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
 FROM tokens
 WHERE type = 'root'
 LIMIT 1
@@ -96,6 +101,7 @@ func (q *Queries) GetRootToken(ctx context.Context) (Token, error) {
 		&i.ID,
 		&i.Type,
 		&i.Name,
+		&i.Permissions,
 		&i.HashAlgorithm,
 		&i.TokenHash,
 		&i.CreatedAt,
@@ -109,7 +115,7 @@ func (q *Queries) GetRootToken(ctx context.Context) (Token, error) {
 }
 
 const getTokenByID = `-- name: GetTokenByID :one
-SELECT id, type, name, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
+SELECT id, type, name, permissions, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
 FROM tokens
 WHERE id = $1
 LIMIT 1
@@ -122,6 +128,7 @@ func (q *Queries) GetTokenByID(ctx context.Context, id uuid.UUID) (Token, error)
 		&i.ID,
 		&i.Type,
 		&i.Name,
+		&i.Permissions,
 		&i.HashAlgorithm,
 		&i.TokenHash,
 		&i.CreatedAt,
@@ -135,8 +142,9 @@ func (q *Queries) GetTokenByID(ctx context.Context, id uuid.UUID) (Token, error)
 }
 
 const listTokens = `-- name: ListTokens :many
-SELECT id, type, name, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
+SELECT id, type, name, permissions, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
 FROM tokens
+WHERE type IN ('admin', 'user')
 ORDER BY created_at DESC, id DESC
 LIMIT $2
 OFFSET $1
@@ -160,6 +168,7 @@ func (q *Queries) ListTokens(ctx context.Context, arg ListTokensParams) ([]Token
 			&i.ID,
 			&i.Type,
 			&i.Name,
+			&i.Permissions,
 			&i.HashAlgorithm,
 			&i.TokenHash,
 			&i.CreatedAt,
@@ -185,7 +194,7 @@ SET expires_at = $1,
     renewed_at = NOW()
 WHERE id = $2
   AND revoked_at IS NULL
-RETURNING id, type, name, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
+RETURNING id, type, name, permissions, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
 `
 
 type RenewTokenParams struct {
@@ -200,6 +209,7 @@ func (q *Queries) RenewToken(ctx context.Context, arg RenewTokenParams) (Token, 
 		&i.ID,
 		&i.Type,
 		&i.Name,
+		&i.Permissions,
 		&i.HashAlgorithm,
 		&i.TokenHash,
 		&i.CreatedAt,
@@ -235,7 +245,7 @@ UPDATE tokens
 SET revoked_at = NOW()
 WHERE id = $1
   AND revoked_at IS NULL
-RETURNING id, type, name, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
+RETURNING id, type, name, permissions, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
 `
 
 func (q *Queries) RevokeToken(ctx context.Context, id uuid.UUID) (Token, error) {
@@ -245,6 +255,7 @@ func (q *Queries) RevokeToken(ctx context.Context, id uuid.UUID) (Token, error) 
 		&i.ID,
 		&i.Type,
 		&i.Name,
+		&i.Permissions,
 		&i.HashAlgorithm,
 		&i.TokenHash,
 		&i.CreatedAt,
@@ -265,7 +276,7 @@ SET hash_algorithm = $1,
     rotated_at = NOW()
 WHERE id = $4
   AND revoked_at IS NULL
-RETURNING id, type, name, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
+RETURNING id, type, name, permissions, hash_algorithm, token_hash, created_at, expires_at, last_used_at, renewed_at, rotated_at, revoked_at
 `
 
 type RotateTokenParams struct {
@@ -287,6 +298,7 @@ func (q *Queries) RotateToken(ctx context.Context, arg RotateTokenParams) (Token
 		&i.ID,
 		&i.Type,
 		&i.Name,
+		&i.Permissions,
 		&i.HashAlgorithm,
 		&i.TokenHash,
 		&i.CreatedAt,

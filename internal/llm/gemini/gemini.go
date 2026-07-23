@@ -198,8 +198,8 @@ func (p *Provider) Embed(ctx context.Context, req *llm.EmbedRequest) (*llm.Embed
 	}
 
 	config := &genai.EmbedContentConfig{}
-	if req.Dimentions > 0 {
-		config.OutputDimensionality = utils.Ptr(int32(req.Dimentions))
+	if req.Dimensions > 0 {
+		config.OutputDimensionality = utils.Ptr(int32(req.Dimensions))
 	}
 
 	resp, err := p.client.Models.EmbedContent(ctx, req.Model, contents, config)
