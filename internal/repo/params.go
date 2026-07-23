@@ -127,6 +127,7 @@ type CreateTokenParams struct {
 	ID            uuid.UUID `validate:"required"`
 	Type          string    `validate:"required"`
 	Name          string    `validate:"required"`
+	Permissions   uint8     `validate:"max=255"`
 	HashAlgorithm string    `validate:"required"`
 	TokenHash     string    `validate:"required"`
 	ExpiresAt     time.Time `validate:"required"`
@@ -143,6 +144,7 @@ type CreateCandidateEmbeddingParams struct {
 	CandidateID uuid.UUID `validate:"required"`
 	ModelID     int16     `validate:"required"`
 	Category    string    `validate:"required"`
+	InputHash   string    `validate:"required,len=64"`
 	Vector      []float32 `validate:"required,min=1"`
 	TraceID     string    `validate:"required"`
 }
@@ -150,7 +152,7 @@ type CreateCandidateEmbeddingParams struct {
 type CreateContentEmbeddingParams struct {
 	ContentID uuid.UUID `validate:"required"`
 	ModelID   int16     `validate:"required"`
-	Category  string    `validate:"required"`
+	InputHash string    `validate:"required,len=64"`
 	Vector    []float32 `validate:"required,min=1"`
 	TraceID   string    `validate:"required"`
 }

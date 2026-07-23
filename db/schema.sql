@@ -65,7 +65,6 @@ ALTER TYPE public.content_type OWNER TO postgres;
 
 CREATE TYPE public.embedding_category AS ENUM (
     'TITLE',
-    'CONTENT',
     'BRIEF'
 );
 
@@ -126,7 +125,9 @@ ALTER TYPE public.source_type OWNER TO postgres;
 CREATE TYPE public.task_kind AS ENUM (
     'DIRECTORY_FETCH',
     'KEYWORD_SEARCH',
-    'PAGE_FETCH'
+    'PAGE_FETCH',
+    'EMBED_CANDIDATE',
+    'EMBED_CONTENT'
 );
 
 
@@ -188,6 +189,7 @@ CREATE TABLE public.candidate_embeddings_gemma_2025 (
     model_id smallint NOT NULL,
     category public.embedding_category NOT NULL,
     vector public.vector(768) NOT NULL,
+    input_hash character varying(64) NOT NULL,
     trace_id character varying(100) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -261,10 +263,11 @@ CREATE TABLE public.content_embeddings_gemma_2025 (
     id bigint NOT NULL,
     content_id uuid NOT NULL,
     model_id smallint NOT NULL,
-    category public.embedding_category NOT NULL,
     vector public.vector(768) NOT NULL,
+    input_hash character varying(64) NOT NULL,
     trace_id character varying(100) NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
 );
 
 
@@ -710,6 +713,7 @@ CREATE TABLE public.tokens (
     id uuid DEFAULT uuidv7() NOT NULL,
     type text NOT NULL,
     name text NOT NULL,
+    permissions smallint NOT NULL,
     hash_algorithm text NOT NULL,
     token_hash text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -718,7 +722,8 @@ CREATE TABLE public.tokens (
     renewed_at timestamp with time zone,
     rotated_at timestamp with time zone,
     revoked_at timestamp with time zone,
-    CONSTRAINT tokens_type_check CHECK ((type = ANY (ARRAY['root'::text, 'admin'::text, 'user'::text, 'worker'::text])))
+    CONSTRAINT tokens_permissions_range_check CHECK (((permissions >= 0) AND (permissions <= 255))),
+    CONSTRAINT tokens_type_permissions_check CHECK (((type = 'root'::text) AND (permissions = 128)) OR ((type = 'admin'::text) AND (permissions <> 0) AND ((permissions & 32) = 32) AND ((permissions & ~ 97) = 0)) OR ((type = 'user'::text) AND (permissions = 1)) OR ((type = 'worker'::text) AND (permissions = 0) AND (revoked_at IS NOT NULL)))
 );
 
 
@@ -797,6 +802,14 @@ ALTER TABLE ONLY public.candidate_embeddings_gemma_2025
 
 
 --
+-- Name: candidate_embeddings_gemma_2025 candidate_embeddings_gemma_2025_candidate_model_category_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.candidate_embeddings_gemma_2025
+    ADD CONSTRAINT candidate_embeddings_gemma_2025_candidate_model_category_key UNIQUE (candidate_id, model_id, category);
+
+
+--
 -- Name: candidates candidates_fingerprint_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -818,6 +831,14 @@ ALTER TABLE ONLY public.candidates
 
 ALTER TABLE ONLY public.content_embeddings_gemma_2025
     ADD CONSTRAINT content_embeddings_gemma_2025_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: content_embeddings_gemma_2025 content_embeddings_gemma_2025_content_model_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.content_embeddings_gemma_2025
+    ADD CONSTRAINT content_embeddings_gemma_2025_content_model_key UNIQUE (content_id, model_id);
 
 
 --
@@ -1186,13 +1207,6 @@ CREATE INDEX idx_contents_type ON public.contents USING btree (type);
 
 
 --
--- Name: idx_emb_g25_category; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_emb_g25_category ON public.content_embeddings_gemma_2025 USING btree (category);
-
-
---
 -- Name: idx_emb_g25_content; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1330,6 +1344,13 @@ CREATE INDEX idx_tasks_url ON public.tasks USING btree (url);
 --
 
 CREATE INDEX idx_tokens_active_type_expires_at ON public.tokens USING btree (type, expires_at) WHERE (revoked_at IS NULL);
+
+
+--
+-- Name: idx_tokens_active_permissions_expires_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_tokens_active_permissions_expires_at ON public.tokens USING btree (permissions, expires_at) WHERE (revoked_at IS NULL);
 
 
 --

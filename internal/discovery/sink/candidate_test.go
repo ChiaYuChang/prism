@@ -196,13 +196,13 @@ func TestPersistingCandidateSinkCreatesPageFetchTaskForPartySource(t *testing.T)
 		}, nil).
 		Once()
 
-	var gotParams repo.CreateTaskParams
+	var gotParams []repo.CreateTaskParams
 	tasksRepo.On("CreateTask", mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
-			gotParams = args.Get(1).(repo.CreateTaskParams)
+			gotParams = append(gotParams, args.Get(1).(repo.CreateTaskParams))
 		}).
 		Return(repo.Task{}, nil).
-		Once()
+		Twice()
 
 	err = s.Handle(context.Background(), sink.CandidateSinkRequest{
 		SourceURL:       "https://example.com/listing",
@@ -219,9 +219,13 @@ func TestPersistingCandidateSinkCreatesPageFetchTaskForPartySource(t *testing.T)
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, repo.TaskKindPageFetch, gotParams.Kind)
-	require.Equal(t, "PARTY", gotParams.SourceType)
-	require.Equal(t, "https://example.com/a", gotParams.URL)
-	require.Equal(t, "trace-default", gotParams.TraceID)
-	require.Equal(t, batchID, gotParams.BatchID)
+	require.Len(t, gotParams, 2)
+	require.Equal(t, repo.TaskKindPageFetch, gotParams[0].Kind)
+	require.Equal(t, repo.TaskKindEmbedCandidate, gotParams[1].Kind)
+	for _, params := range gotParams {
+		require.Equal(t, "PARTY", params.SourceType)
+		require.Equal(t, "https://example.com/a", params.URL)
+		require.Equal(t, "trace-default", params.TraceID)
+		require.Equal(t, batchID, params.BatchID)
+	}
 }

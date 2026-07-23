@@ -1,20 +1,22 @@
-interval: 1m
-shutdown-timeout: 30s
-health-port: 8090
-batch-size: 100
+health-port: 8095
+shutdown-timeout: 2m
 retry-max: 3
-scheduler-name: slow
-kinds:
-  - DIRECTORY_FETCH
-  - KEYWORD_SEARCH
-  - EMBED_CANDIDATE
-  - EMBED_CONTENT
-lock-key: prism:scheduler:DIRECTORY_FETCH+EMBED_CANDIDATE+EMBED_CONTENT+KEYWORD_SEARCH:lock
-buffer: 10
-rate-limit-config: /app/assets/scheduler/ratelimits/scheduler.yaml
+embedding-dimension: 768
 messenger-type: nats
 nats-host: nats
 nats-port: 4222
+queue-group: embedder-worker
+subscribers-count: 1
+ack-wait-timeout: 2m
+nats-stream: prism_task
+nats-consumer: embedder-worker
+nats-auto-provision: false
+llm:
+  model: '{{ env "PRISM_EMBEDDER_WORKER_LLM_MODEL" "embeddinggemma:300m" }}'
+  timeout: 2m
+  provider:
+    ollama:
+      base_url: '{{ env "PRISM_EMBEDDER_WORKER_OLLAMA_BASE_URL" "http://host.docker.internal:11434" }}'
 postgres:
   host: '{{ env "POSTGRES_HOST" "postgres" }}'
   port: {{ env "POSTGRES_PORT" "5432" }}
@@ -22,17 +24,9 @@ postgres:
   db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
   metrics-enabled: true
-valkey:
-  host: '{{ env "VALKEY_HOST" "valkey" }}'
-  port: {{ env "VALKEY_PORT" "6379" }}
-  username: '{{ env "VALKEY_APP_USER" "prism" }}'
-  db: 0
-  client-name: scheduler-slow-lock
-  tracing-enabled: true
-  metrics-enabled: true
 telemetry:
   enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
-  service-name: prism.scheduler.slow
+  service-name: prism.embedder
   environment: local
   endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
   insecure: true

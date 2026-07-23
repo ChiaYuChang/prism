@@ -4,7 +4,7 @@ tasks:
   all:
     desc: build all microservice binaries
     deps:
-      - for: [api-server, prismctl, backfiller, scheduler, discovery, collector, archive, planner, schedule-trigger, batch-detector, batch-publisher, dev-downloader, dev-fixture-server, dev-mock-server, dev-parse-probe, recover, rss]
+      - for: [api-server, prismctl, backfiller, scheduler, discovery, collector, archive, planner, embedder, schedule-trigger, batch-detector, batch-publisher, dev-downloader, dev-fixture-server, dev-mock-server, dev-parse-probe, recover, rss]
         task: '{{.ITEM}}'
 
   api-server:
@@ -42,6 +42,11 @@ tasks:
     desc: build planner worker binary
     cmds:
       - go build -o {{.BUILD_DIR}}/planner ./{{.CMD_DIR}}/worker/planner
+
+  embedder:
+    desc: build embedder worker binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/embedder ./{{.CMD_DIR}}/worker/embedder
 
   batch-detector:
     desc: build batch detector binary

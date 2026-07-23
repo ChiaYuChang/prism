@@ -141,9 +141,8 @@ func AllContentTypeValues() []ContentType {
 type EmbeddingCategory string
 
 const (
-	EmbeddingCategoryTITLE   EmbeddingCategory = "TITLE"
-	EmbeddingCategoryCONTENT EmbeddingCategory = "CONTENT"
-	EmbeddingCategoryBRIEF   EmbeddingCategory = "BRIEF"
+	EmbeddingCategoryTITLE EmbeddingCategory = "TITLE"
+	EmbeddingCategoryBRIEF EmbeddingCategory = "BRIEF"
 )
 
 func (e *EmbeddingCategory) Scan(src interface{}) error {
@@ -184,7 +183,6 @@ func (ns NullEmbeddingCategory) Value() (driver.Value, error) {
 func (e EmbeddingCategory) Valid() bool {
 	switch e {
 	case EmbeddingCategoryTITLE,
-		EmbeddingCategoryCONTENT,
 		EmbeddingCategoryBRIEF:
 		return true
 	}
@@ -194,7 +192,6 @@ func (e EmbeddingCategory) Valid() bool {
 func AllEmbeddingCategoryValues() []EmbeddingCategory {
 	return []EmbeddingCategory{
 		EmbeddingCategoryTITLE,
-		EmbeddingCategoryCONTENT,
 		EmbeddingCategoryBRIEF,
 	}
 }
@@ -412,6 +409,8 @@ const (
 	TaskKindDIRECTORYFETCH TaskKind = "DIRECTORY_FETCH"
 	TaskKindKEYWORDSEARCH  TaskKind = "KEYWORD_SEARCH"
 	TaskKindPAGEFETCH      TaskKind = "PAGE_FETCH"
+	TaskKindEMBEDCANDIDATE TaskKind = "EMBED_CANDIDATE"
+	TaskKindEMBEDCONTENT   TaskKind = "EMBED_CONTENT"
 )
 
 func (e *TaskKind) Scan(src interface{}) error {
@@ -453,7 +452,9 @@ func (e TaskKind) Valid() bool {
 	switch e {
 	case TaskKindDIRECTORYFETCH,
 		TaskKindKEYWORDSEARCH,
-		TaskKindPAGEFETCH:
+		TaskKindPAGEFETCH,
+		TaskKindEMBEDCANDIDATE,
+		TaskKindEMBEDCONTENT:
 		return true
 	}
 	return false
@@ -464,6 +465,8 @@ func AllTaskKindValues() []TaskKind {
 		TaskKindDIRECTORYFETCH,
 		TaskKindKEYWORDSEARCH,
 		TaskKindPAGEFETCH,
+		TaskKindEMBEDCANDIDATE,
+		TaskKindEMBEDCONTENT,
 	}
 }
 
@@ -570,6 +573,7 @@ type CandidateEmbeddingsGemma2025 struct {
 	ModelID     int16              `db:"model_id" json:"model_id"`
 	Category    EmbeddingCategory  `db:"category" json:"category"`
 	Vector      pgvector_go.Vector `db:"vector" json:"vector"`
+	InputHash   string             `db:"input_hash" json:"input_hash"`
 	TraceID     string             `db:"trace_id" json:"trace_id"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
@@ -597,10 +601,11 @@ type ContentEmbeddingsGemma2025 struct {
 	ID        int64              `db:"id" json:"id"`
 	ContentID uuid.UUID          `db:"content_id" json:"content_id"`
 	ModelID   int16              `db:"model_id" json:"model_id"`
-	Category  EmbeddingCategory  `db:"category" json:"category"`
 	Vector    pgvector_go.Vector `db:"vector" json:"vector"`
+	InputHash string             `db:"input_hash" json:"input_hash"`
 	TraceID   string             `db:"trace_id" json:"trace_id"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DeletedAt pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 }
 
 // One structured extraction per (content, model, prompt, schema_version). Append-only snapshot.
@@ -759,6 +764,7 @@ type Token struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	Type          string             `db:"type" json:"type"`
 	Name          string             `db:"name" json:"name"`
+	Permissions   int16              `db:"permissions" json:"permissions"`
 	HashAlgorithm string             `db:"hash_algorithm" json:"hash_algorithm"`
 	TokenHash     string             `db:"token_hash" json:"token_hash"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`

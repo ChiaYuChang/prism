@@ -14,6 +14,8 @@ const (
 	TaskKindDirectoryFetch = "DIRECTORY_FETCH"
 	TaskKindKeywordSearch  = "KEYWORD_SEARCH"
 	TaskKindPageFetch      = "PAGE_FETCH"
+	TaskKindEmbedCandidate = "EMBED_CANDIDATE"
+	TaskKindEmbedContent   = "EMBED_CONTENT"
 
 	// Source Types
 	SourceTypeParty = "PARTY"
@@ -34,4 +36,9 @@ const (
 	SourceAbbrKMT   = "kmt"
 	SourceAbbrTPP   = "tpp"
 	SourceAbbrYahoo = "yahoo"
+)
+
+const (
+	EmbeddingCategoryTitle = "TITLE"
+	EmbeddingCategoryBrief = "BRIEF"
 )

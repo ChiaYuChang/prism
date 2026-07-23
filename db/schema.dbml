@@ -21,7 +21,6 @@ Enum content_type {
 
 Enum embedding_category {
   TITLE
-  CONTENT
   BRIEF
 }
 
@@ -56,7 +55,10 @@ Enum task_status {
 
 Enum task_kind {
   DIRECTORY_FETCH
+  KEYWORD_SEARCH
   PAGE_FETCH
+  EMBED_CANDIDATE
+  EMBED_CONTENT
 }
 
 Table models {
@@ -261,6 +263,7 @@ Table candidate_embeddings_gemma_2025 {
   model_id smallint [not null, ref: > models.id]
   category embedding_category [not null]
   vector vector(768) [not null]
+  input_hash varchar(64) [not null]
   trace_id varchar(100) [not null]
   created_at timestamptz [not null, default: `now()`]
 
@@ -276,15 +279,15 @@ Table content_embeddings_gemma_2025 {
   id bigserial [pk]
   content_id uuid [not null, ref: > contents.id]
   model_id smallint [not null, ref: > models.id]
-  category embedding_category [not null]
   vector vector(768) [not null]
+  input_hash varchar(64) [not null]
   trace_id varchar(100) [not null]
   created_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
 
   indexes {
     content_id [name: 'idx_emb_g25_content']
     model_id [name: 'idx_emb_g25_model']
-    category [name: 'idx_emb_g25_category']
     trace_id [name: 'idx_emb_g25_trace_id']
   }
 }

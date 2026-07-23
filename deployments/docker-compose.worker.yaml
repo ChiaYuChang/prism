@@ -249,6 +249,46 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  embedder:
+    profiles: [ worker ]
+    image: prism/embedder:latest
+    user: "0:0"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: worker/embedder
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --config=/app/configs/worker/embedder/config.yaml
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_EMBEDDER_WORKER_LLM_MODEL: ${PRISM_EMBEDDER_WORKER_LLM_MODEL:-embeddinggemma:300m}
+      PRISM_EMBEDDER_WORKER_OLLAMA_BASE_URL: ${PRISM_EMBEDDER_WORKER_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      PRISM_EMBEDDER_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_EMBEDDER_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_EMBEDDER_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_EMBEDDER_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_EMBEDDER_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+    networks:
+      - prism-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../runtime/logs/embedder:/logs
+    stop_grace_period: 150s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
   # fixture-server — serves testdata/real over HTTP for the e2e replay path.
   # It is isolated behind the `fixture` profile and is not part of the normal
   # real-world collection stack.

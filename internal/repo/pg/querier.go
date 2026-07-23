@@ -18,9 +18,7 @@ type Querier interface {
 	CountActiveAdminTokensExcluding(ctx context.Context, id uuid.UUID) (int64, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) (int64, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
-	CreateCandidateEmbeddingGemma2025(ctx context.Context, arg CreateCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
 	CreateContent(ctx context.Context, arg CreateContentParams) (Content, error)
-	CreateContentEmbeddingGemma2025(ctx context.Context, arg CreateContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
 	CreateModel(ctx context.Context, arg CreateModelParams) (Model, error)
@@ -49,10 +47,12 @@ type Querier interface {
 	GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
+	GetCandidateEmbeddingInputHash(ctx context.Context, arg GetCandidateEmbeddingInputHashParams) (string, error)
 	GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]Candidate, error)
 	GetContentByCandidateID(ctx context.Context, candidateID pgtype.UUID) (Content, error)
 	GetContentByID(ctx context.Context, id uuid.UUID) (Content, error)
 	GetContentByURL(ctx context.Context, url string) (Content, error)
+	GetContentEmbeddingInputHash(ctx context.Context, arg GetContentEmbeddingInputHashParams) (string, error)
 	GetContentExtractionByID(ctx context.Context, id uuid.UUID) (ContentExtraction, error)
 	GetContentExtractionSnapshot(ctx context.Context, arg GetContentExtractionSnapshotParams) (ContentExtraction, error)
 	GetEntityByCanonicalAndType(ctx context.Context, arg GetEntityByCanonicalAndTypeParams) (Entity, error)
@@ -114,6 +114,8 @@ type Querier interface {
 	RenewToken(ctx context.Context, arg RenewTokenParams) (Token, error)
 	ReplaceContentExtractionPhrases(ctx context.Context, arg ReplaceContentExtractionPhrasesParams) error
 	ReplaceContentExtractionTopics(ctx context.Context, arg ReplaceContentExtractionTopicsParams) error
+	RestoreContent(ctx context.Context, id uuid.UUID) (Content, error)
+	RestoreContentEmbeddings(ctx context.Context, contentID uuid.UUID) error
 	RestoreSource(ctx context.Context, abbr string) (Source, error)
 	// Atomically reschedules a failed task while retaining its retry_count and
 	// last_run_at history. Non-failed existing tasks are returned with retried=false.
@@ -124,9 +126,13 @@ type Querier interface {
 	SearchCandidatesByText(ctx context.Context, arg SearchCandidatesByTextParams) ([]Candidate, error)
 	SearchCandidatesByVector(ctx context.Context, arg SearchCandidatesByVectorParams) ([]SearchCandidatesByVectorRow, error)
 	SearchContentsByVector(ctx context.Context, arg SearchContentsByVectorParams) ([]SearchContentsByVectorRow, error)
+	SoftDeleteContent(ctx context.Context, id uuid.UUID) (Content, error)
+	SoftDeleteContentEmbeddings(ctx context.Context, contentID uuid.UUID) error
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
 	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
+	UpsertCandidateEmbeddingGemma2025(ctx context.Context, arg UpsertCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
+	UpsertContentEmbeddingGemma2025(ctx context.Context, arg UpsertContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)
 	UpsertEntity(ctx context.Context, arg UpsertEntityParams) (Entity, error)
 	UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) (Schedule, error)
 }

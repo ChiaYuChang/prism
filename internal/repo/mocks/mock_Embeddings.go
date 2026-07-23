@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/ChiaYuChang/prism/internal/repo"
+	"github.com/google/uuid"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -38,134 +39,152 @@ func (_m *MockEmbeddings) EXPECT() *MockEmbeddings_Expecter {
 	return &MockEmbeddings_Expecter{mock: &_m.Mock}
 }
 
-// CreateCandidateEmbedding provides a mock function for the type MockEmbeddings
-func (_mock *MockEmbeddings) CreateCandidateEmbedding(ctx context.Context, arg repo.CreateCandidateEmbeddingParams) (repo.CandidateEmbedding, error) {
-	ret := _mock.Called(ctx, arg)
+// GetCandidateEmbeddingInputHash provides a mock function for the type MockEmbeddings
+func (_mock *MockEmbeddings) GetCandidateEmbeddingInputHash(ctx context.Context, candidateID uuid.UUID, modelID int16, category string) (string, error) {
+	ret := _mock.Called(ctx, candidateID, modelID, category)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateCandidateEmbedding")
+		panic("no return value specified for GetCandidateEmbeddingInputHash")
 	}
 
-	var r0 repo.CandidateEmbedding
+	var r0 string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateCandidateEmbeddingParams) (repo.CandidateEmbedding, error)); ok {
-		return returnFunc(ctx, arg)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, int16, string) (string, error)); ok {
+		return returnFunc(ctx, candidateID, modelID, category)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateCandidateEmbeddingParams) repo.CandidateEmbedding); ok {
-		r0 = returnFunc(ctx, arg)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, int16, string) string); ok {
+		r0 = returnFunc(ctx, candidateID, modelID, category)
 	} else {
-		r0 = ret.Get(0).(repo.CandidateEmbedding)
+		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateCandidateEmbeddingParams) error); ok {
-		r1 = returnFunc(ctx, arg)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID, int16, string) error); ok {
+		r1 = returnFunc(ctx, candidateID, modelID, category)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockEmbeddings_CreateCandidateEmbedding_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateCandidateEmbedding'
-type MockEmbeddings_CreateCandidateEmbedding_Call struct {
+// MockEmbeddings_GetCandidateEmbeddingInputHash_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCandidateEmbeddingInputHash'
+type MockEmbeddings_GetCandidateEmbeddingInputHash_Call struct {
 	*mock.Call
 }
 
-// CreateCandidateEmbedding is a helper method to define mock.On call
+// GetCandidateEmbeddingInputHash is a helper method to define mock.On call
 //   - ctx context.Context
-//   - arg repo.CreateCandidateEmbeddingParams
-func (_e *MockEmbeddings_Expecter) CreateCandidateEmbedding(ctx interface{}, arg interface{}) *MockEmbeddings_CreateCandidateEmbedding_Call {
-	return &MockEmbeddings_CreateCandidateEmbedding_Call{Call: _e.mock.On("CreateCandidateEmbedding", ctx, arg)}
+//   - candidateID uuid.UUID
+//   - modelID int16
+//   - category string
+func (_e *MockEmbeddings_Expecter) GetCandidateEmbeddingInputHash(ctx interface{}, candidateID interface{}, modelID interface{}, category interface{}) *MockEmbeddings_GetCandidateEmbeddingInputHash_Call {
+	return &MockEmbeddings_GetCandidateEmbeddingInputHash_Call{Call: _e.mock.On("GetCandidateEmbeddingInputHash", ctx, candidateID, modelID, category)}
 }
 
-func (_c *MockEmbeddings_CreateCandidateEmbedding_Call) Run(run func(ctx context.Context, arg repo.CreateCandidateEmbeddingParams)) *MockEmbeddings_CreateCandidateEmbedding_Call {
+func (_c *MockEmbeddings_GetCandidateEmbeddingInputHash_Call) Run(run func(ctx context.Context, candidateID uuid.UUID, modelID int16, category string)) *MockEmbeddings_GetCandidateEmbeddingInputHash_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 repo.CreateCandidateEmbeddingParams
+		var arg1 uuid.UUID
 		if args[1] != nil {
-			arg1 = args[1].(repo.CreateCandidateEmbeddingParams)
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 int16
+		if args[2] != nil {
+			arg2 = args[2].(int16)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
+			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *MockEmbeddings_CreateCandidateEmbedding_Call) Return(candidateEmbedding repo.CandidateEmbedding, err error) *MockEmbeddings_CreateCandidateEmbedding_Call {
-	_c.Call.Return(candidateEmbedding, err)
+func (_c *MockEmbeddings_GetCandidateEmbeddingInputHash_Call) Return(s string, err error) *MockEmbeddings_GetCandidateEmbeddingInputHash_Call {
+	_c.Call.Return(s, err)
 	return _c
 }
 
-func (_c *MockEmbeddings_CreateCandidateEmbedding_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateCandidateEmbeddingParams) (repo.CandidateEmbedding, error)) *MockEmbeddings_CreateCandidateEmbedding_Call {
+func (_c *MockEmbeddings_GetCandidateEmbeddingInputHash_Call) RunAndReturn(run func(ctx context.Context, candidateID uuid.UUID, modelID int16, category string) (string, error)) *MockEmbeddings_GetCandidateEmbeddingInputHash_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// CreateContentEmbedding provides a mock function for the type MockEmbeddings
-func (_mock *MockEmbeddings) CreateContentEmbedding(ctx context.Context, arg repo.CreateContentEmbeddingParams) (repo.ContentEmbedding, error) {
-	ret := _mock.Called(ctx, arg)
+// GetContentEmbeddingInputHash provides a mock function for the type MockEmbeddings
+func (_mock *MockEmbeddings) GetContentEmbeddingInputHash(ctx context.Context, contentID uuid.UUID, modelID int16) (string, error) {
+	ret := _mock.Called(ctx, contentID, modelID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateContentEmbedding")
+		panic("no return value specified for GetContentEmbeddingInputHash")
 	}
 
-	var r0 repo.ContentEmbedding
+	var r0 string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateContentEmbeddingParams) (repo.ContentEmbedding, error)); ok {
-		return returnFunc(ctx, arg)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, int16) (string, error)); ok {
+		return returnFunc(ctx, contentID, modelID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateContentEmbeddingParams) repo.ContentEmbedding); ok {
-		r0 = returnFunc(ctx, arg)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, int16) string); ok {
+		r0 = returnFunc(ctx, contentID, modelID)
 	} else {
-		r0 = ret.Get(0).(repo.ContentEmbedding)
+		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateContentEmbeddingParams) error); ok {
-		r1 = returnFunc(ctx, arg)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID, int16) error); ok {
+		r1 = returnFunc(ctx, contentID, modelID)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockEmbeddings_CreateContentEmbedding_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateContentEmbedding'
-type MockEmbeddings_CreateContentEmbedding_Call struct {
+// MockEmbeddings_GetContentEmbeddingInputHash_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetContentEmbeddingInputHash'
+type MockEmbeddings_GetContentEmbeddingInputHash_Call struct {
 	*mock.Call
 }
 
-// CreateContentEmbedding is a helper method to define mock.On call
+// GetContentEmbeddingInputHash is a helper method to define mock.On call
 //   - ctx context.Context
-//   - arg repo.CreateContentEmbeddingParams
-func (_e *MockEmbeddings_Expecter) CreateContentEmbedding(ctx interface{}, arg interface{}) *MockEmbeddings_CreateContentEmbedding_Call {
-	return &MockEmbeddings_CreateContentEmbedding_Call{Call: _e.mock.On("CreateContentEmbedding", ctx, arg)}
+//   - contentID uuid.UUID
+//   - modelID int16
+func (_e *MockEmbeddings_Expecter) GetContentEmbeddingInputHash(ctx interface{}, contentID interface{}, modelID interface{}) *MockEmbeddings_GetContentEmbeddingInputHash_Call {
+	return &MockEmbeddings_GetContentEmbeddingInputHash_Call{Call: _e.mock.On("GetContentEmbeddingInputHash", ctx, contentID, modelID)}
 }
 
-func (_c *MockEmbeddings_CreateContentEmbedding_Call) Run(run func(ctx context.Context, arg repo.CreateContentEmbeddingParams)) *MockEmbeddings_CreateContentEmbedding_Call {
+func (_c *MockEmbeddings_GetContentEmbeddingInputHash_Call) Run(run func(ctx context.Context, contentID uuid.UUID, modelID int16)) *MockEmbeddings_GetContentEmbeddingInputHash_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 repo.CreateContentEmbeddingParams
+		var arg1 uuid.UUID
 		if args[1] != nil {
-			arg1 = args[1].(repo.CreateContentEmbeddingParams)
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 int16
+		if args[2] != nil {
+			arg2 = args[2].(int16)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
 }
 
-func (_c *MockEmbeddings_CreateContentEmbedding_Call) Return(contentEmbedding repo.ContentEmbedding, err error) *MockEmbeddings_CreateContentEmbedding_Call {
-	_c.Call.Return(contentEmbedding, err)
+func (_c *MockEmbeddings_GetContentEmbeddingInputHash_Call) Return(s string, err error) *MockEmbeddings_GetContentEmbeddingInputHash_Call {
+	_c.Call.Return(s, err)
 	return _c
 }
 
-func (_c *MockEmbeddings_CreateContentEmbedding_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateContentEmbeddingParams) (repo.ContentEmbedding, error)) *MockEmbeddings_CreateContentEmbedding_Call {
+func (_c *MockEmbeddings_GetContentEmbeddingInputHash_Call) RunAndReturn(run func(ctx context.Context, contentID uuid.UUID, modelID int16) (string, error)) *MockEmbeddings_GetContentEmbeddingInputHash_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -304,6 +323,138 @@ func (_c *MockEmbeddings_GetModelByNameAndType_Call) Return(model repo.Model, er
 }
 
 func (_c *MockEmbeddings_GetModelByNameAndType_Call) RunAndReturn(run func(ctx context.Context, name string, modelType string) (repo.Model, error)) *MockEmbeddings_GetModelByNameAndType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpsertCandidateEmbedding provides a mock function for the type MockEmbeddings
+func (_mock *MockEmbeddings) UpsertCandidateEmbedding(ctx context.Context, arg repo.CreateCandidateEmbeddingParams) (repo.CandidateEmbedding, error) {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpsertCandidateEmbedding")
+	}
+
+	var r0 repo.CandidateEmbedding
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateCandidateEmbeddingParams) (repo.CandidateEmbedding, error)); ok {
+		return returnFunc(ctx, arg)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateCandidateEmbeddingParams) repo.CandidateEmbedding); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repo.CandidateEmbedding)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateCandidateEmbeddingParams) error); ok {
+		r1 = returnFunc(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockEmbeddings_UpsertCandidateEmbedding_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpsertCandidateEmbedding'
+type MockEmbeddings_UpsertCandidateEmbedding_Call struct {
+	*mock.Call
+}
+
+// UpsertCandidateEmbedding is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.CreateCandidateEmbeddingParams
+func (_e *MockEmbeddings_Expecter) UpsertCandidateEmbedding(ctx interface{}, arg interface{}) *MockEmbeddings_UpsertCandidateEmbedding_Call {
+	return &MockEmbeddings_UpsertCandidateEmbedding_Call{Call: _e.mock.On("UpsertCandidateEmbedding", ctx, arg)}
+}
+
+func (_c *MockEmbeddings_UpsertCandidateEmbedding_Call) Run(run func(ctx context.Context, arg repo.CreateCandidateEmbeddingParams)) *MockEmbeddings_UpsertCandidateEmbedding_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.CreateCandidateEmbeddingParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.CreateCandidateEmbeddingParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockEmbeddings_UpsertCandidateEmbedding_Call) Return(candidateEmbedding repo.CandidateEmbedding, err error) *MockEmbeddings_UpsertCandidateEmbedding_Call {
+	_c.Call.Return(candidateEmbedding, err)
+	return _c
+}
+
+func (_c *MockEmbeddings_UpsertCandidateEmbedding_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateCandidateEmbeddingParams) (repo.CandidateEmbedding, error)) *MockEmbeddings_UpsertCandidateEmbedding_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpsertContentEmbedding provides a mock function for the type MockEmbeddings
+func (_mock *MockEmbeddings) UpsertContentEmbedding(ctx context.Context, arg repo.CreateContentEmbeddingParams) (repo.ContentEmbedding, error) {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpsertContentEmbedding")
+	}
+
+	var r0 repo.ContentEmbedding
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateContentEmbeddingParams) (repo.ContentEmbedding, error)); ok {
+		return returnFunc(ctx, arg)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateContentEmbeddingParams) repo.ContentEmbedding); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repo.ContentEmbedding)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateContentEmbeddingParams) error); ok {
+		r1 = returnFunc(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockEmbeddings_UpsertContentEmbedding_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpsertContentEmbedding'
+type MockEmbeddings_UpsertContentEmbedding_Call struct {
+	*mock.Call
+}
+
+// UpsertContentEmbedding is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.CreateContentEmbeddingParams
+func (_e *MockEmbeddings_Expecter) UpsertContentEmbedding(ctx interface{}, arg interface{}) *MockEmbeddings_UpsertContentEmbedding_Call {
+	return &MockEmbeddings_UpsertContentEmbedding_Call{Call: _e.mock.On("UpsertContentEmbedding", ctx, arg)}
+}
+
+func (_c *MockEmbeddings_UpsertContentEmbedding_Call) Run(run func(ctx context.Context, arg repo.CreateContentEmbeddingParams)) *MockEmbeddings_UpsertContentEmbedding_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.CreateContentEmbeddingParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.CreateContentEmbeddingParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockEmbeddings_UpsertContentEmbedding_Call) Return(contentEmbedding repo.ContentEmbedding, err error) *MockEmbeddings_UpsertContentEmbedding_Call {
+	_c.Call.Return(contentEmbedding, err)
+	return _c
+}
+
+func (_c *MockEmbeddings_UpsertContentEmbedding_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateContentEmbeddingParams) (repo.ContentEmbedding, error)) *MockEmbeddings_UpsertContentEmbedding_Call {
 	_c.Call.Return(run)
 	return _c
 }

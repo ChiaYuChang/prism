@@ -228,7 +228,7 @@ func (p *Provider) Embed(ctx context.Context, req *llm.EmbedRequest) (*llm.Embed
 	eReq := &api.EmbedRequest{
 		Model:      req.Model,
 		Input:      req.Input,
-		Dimensions: req.Dimentions,
+		Dimensions: req.Dimensions,
 	}
 
 	resp, err := p.client.Embed(ctx, eReq)

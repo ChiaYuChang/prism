@@ -4,7 +4,7 @@ package llm
 type EmbedRequest struct {
 	Model      string
 	Input      []string
-	Dimentions int
+	Dimensions int
 	Meta       map[string]string
 }
 

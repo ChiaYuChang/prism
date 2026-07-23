@@ -127,6 +127,8 @@ type Pipeline interface {
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
 	ListContentsByBatchID(ctx context.Context, batchID uuid.UUID) ([]Content, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
+	DeleteContent(ctx context.Context, id uuid.UUID) (Content, error)
+	RestoreContent(ctx context.Context, id uuid.UUID) (Content, error)
 }
 
 type BatchTrigger interface {
@@ -147,8 +149,10 @@ type BatchTrigger interface {
 type Embeddings interface {
 	GetModelByID(ctx context.Context, id int16) (Model, error)
 	GetModelByNameAndType(ctx context.Context, name string, modelType string) (Model, error)
-	CreateCandidateEmbedding(ctx context.Context, arg CreateCandidateEmbeddingParams) (CandidateEmbedding, error)
-	CreateContentEmbedding(ctx context.Context, arg CreateContentEmbeddingParams) (ContentEmbedding, error)
+	GetCandidateEmbeddingInputHash(ctx context.Context, candidateID uuid.UUID, modelID int16, category string) (string, error)
+	GetContentEmbeddingInputHash(ctx context.Context, contentID uuid.UUID, modelID int16) (string, error)
+	UpsertCandidateEmbedding(ctx context.Context, arg CreateCandidateEmbeddingParams) (CandidateEmbedding, error)
+	UpsertContentEmbedding(ctx context.Context, arg CreateContentEmbeddingParams) (ContentEmbedding, error)
 }
 
 // UserFetches is the user-facing observation layer for POST /page_fetch.
