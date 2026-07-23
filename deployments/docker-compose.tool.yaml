@@ -21,7 +21,8 @@ services:
         TARGET: prismctl-cli
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     environment:
-      PRISMCTL_API_URL: ${PRISMCTL_API_URL:-http://prism-api:8091/api/v1}
+      PRISMCTL_API_URL: ${PRISMCTL_API_URL:-http://prism-api:8090/api/v1}
+      PRISMCTL_ADMIN_API_URL: ${PRISMCTL_ADMIN_API_URL:-http://prism-api:8091/api/v1}
     secrets:
       - prism_admin_token
     networks:

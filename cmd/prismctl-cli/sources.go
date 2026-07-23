@@ -40,6 +40,14 @@ func (c *cliContext) sourceAPI() (*sourceAPI, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	return &sourceAPI{baseURL: strings.TrimRight(c.adminAPIURL, "/"), token: cred.Secret, client: &http.Client{Timeout: 15 * time.Second}}, cred.Warnings, nil
+}
+
+func (c *cliContext) publicAPI() (*sourceAPI, []string, error) {
+	cred, err := c.adminCredential()
+	if err != nil {
+		return nil, nil, err
+	}
 	return &sourceAPI{baseURL: strings.TrimRight(c.apiURL, "/"), token: cred.Secret, client: &http.Client{Timeout: 15 * time.Second}}, cred.Warnings, nil
 }
 
