@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -86,7 +87,13 @@ func (s *Server) PageFetch(w http.ResponseWriter, r *http.Request) {
 		byID[c.ID] = c
 	}
 
-	fetch, err := s.UserFetches.Create(ctx, repo.CreateUserFetchParams{UserID: nil})
+	principal, ok := middleware.PrincipalFromContext(ctx)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	fetchUserID := principal.TokenID
+	fetch, err := s.UserFetches.Create(ctx, repo.CreateUserFetchParams{UserID: &fetchUserID})
 	if err != nil {
 		s.Logger.ErrorContext(ctx, "create user fetch failed", slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to create fetch")

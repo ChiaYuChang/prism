@@ -291,7 +291,6 @@ func (s *Server) RegisterV1(r RouteRegistrar) {
 	r.Handle("GET /contents/{candidate_id}", http.HandlerFunc(s.GetContent))
 	r.Handle("GET /fetches/{id}", middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch)))
 	r.Handle("GET /status", http.HandlerFunc(s.GetStatus))
-	r.Handle("POST /tokens/{id}/renew", http.HandlerFunc(s.RenewToken))
 }
 
 // RegisterV1Admin wires authenticated v1 operator routes onto the supplied router.
@@ -331,12 +330,11 @@ func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("GET /prompts", s.requireAdmin(http.HandlerFunc(s.ListPromptVersions)))
 	r.Handle("POST /prompts", s.requireAdmin(http.HandlerFunc(s.CreatePromptVersion)))
 	r.Handle("GET /prompts/{id}", s.requireAdmin(http.HandlerFunc(s.GetPromptVersion)))
-	r.Handle("POST /tokens", s.requireAdmin(http.HandlerFunc(s.CreateToken)))
-	r.Handle("GET /tokens", s.requireAdmin(http.HandlerFunc(s.ListTokens)))
-	r.Handle("GET /tokens/{id}", s.requireAdmin(http.HandlerFunc(s.GetToken)))
-	r.Handle("POST /tokens/{id}/renew", s.requireAdmin(http.HandlerFunc(s.RenewToken)))
-	r.Handle("POST /tokens/{id}/rotate", s.requireAdmin(http.HandlerFunc(s.RotateToken)))
-	r.Handle("POST /tokens/{id}/revoke", s.requireAdmin(http.HandlerFunc(s.RevokeToken)))
+	r.Handle("GET /whoami", s.requireAdmin(http.HandlerFunc(s.WhoAmI)))
+	r.Handle("POST /tokens", s.requireTokenAdmin(http.HandlerFunc(s.CreateToken)))
+	r.Handle("GET /tokens", s.requireTokenAdmin(http.HandlerFunc(s.ListTokens)))
+	r.Handle("GET /tokens/{id}", s.requireTokenAdmin(http.HandlerFunc(s.GetToken)))
+	r.Handle("POST /tokens/{id}/revoke", s.requireTokenAdmin(http.HandlerFunc(s.RevokeToken)))
 }
 
 // RegisterInternal wires private routes for internal administration/push telemetry.
