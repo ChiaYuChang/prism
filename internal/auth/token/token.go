@@ -15,22 +15,19 @@ import (
 type Type string
 
 const (
-	TypeRoot   Type = "root"
-	TypeAdmin  Type = "admin"
-	TypeUser   Type = "user"
-	TypeWorker Type = "worker"
+	TypeRoot  Type = "root"
+	TypeAdmin Type = "admin"
+	TypeUser  Type = "user"
 )
 
 var typePrefixes = map[Type]string{
-	TypeAdmin:  "padm",
-	TypeUser:   "pusr",
-	TypeWorker: "pwrk",
+	TypeAdmin: "padm",
+	TypeUser:  "pusr",
 }
 
 var prefixTypes = map[string]Type{
 	"padm": TypeAdmin,
 	"pusr": TypeUser,
-	"pwrk": TypeWorker,
 }
 
 type Parsed struct {

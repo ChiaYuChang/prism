@@ -66,8 +66,8 @@ func adminTokensCreateCommand(ctx *cliContext) *cobra.Command {
 			return render(ctx, "admin", "tokens_create", toTokenSecretView(res.Token, res.Raw), warnings)
 		},
 	}
-	cmd.Flags().StringVar(&typ, "type", string(authtoken.TypeUser), "Token type: admin, user, worker")
-	cmd.Flags().StringVar(&name, "name", "", "Human token name; required for admin/user tokens, optional for worker tokens")
+	cmd.Flags().StringVar(&typ, "type", string(authtoken.TypeUser), "Token type: admin or user")
+	cmd.Flags().StringVar(&name, "name", "", "Token name; required for admin/user tokens")
 	cmd.Flags().StringVar(&expiresAt, "expires-at", "", "Token expiry RFC3339 timestamp")
 	return cmd
 }

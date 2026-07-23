@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	repomocks "github.com/ChiaYuChang/prism/internal/repo/mocks"
@@ -75,32 +76,20 @@ func TestCreateHumanTokenRequiresName(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = service.CreateToken(context.Background(), Actor{Type: authtoken.TypeAdmin}, CreateTokenRequest{Type: authtoken.TypeUser})
+	_, err = service.CreateToken(context.Background(), Actor{Type: authtoken.TypeAdmin, Permissions: permission.DefaultAdmin}, CreateTokenRequest{Type: authtoken.TypeUser})
 	require.ErrorIs(t, err, ErrInvalidToken)
 	require.ErrorContains(t, err, "token name is required for user tokens")
 }
 
-func TestCreateWorkerDefaultsNameToTokenID(t *testing.T) {
+func TestCreateWorkerIsRejected(t *testing.T) {
 	tokens := repomocks.NewMockTokens(t)
 	hasher, err := authtoken.NewHasher("sha256")
 	require.NoError(t, err)
 	service, err := NewService(ServiceParams{
 		Tokens: tokens,
 		Hasher: hasher,
-		TokenTypes: map[authtoken.Type]TokenTypeConfig{
-			authtoken.TypeWorker: {DefaultTTL: time.Hour, MaxTTL: 24 * time.Hour},
-		},
 	})
 	require.NoError(t, err)
-
-	var persisted repo.Token
-	tokens.EXPECT().CreateToken(mock.Anything, mock.AnythingOfType("repo.CreateTokenParams")).RunAndReturn(func(_ context.Context, arg repo.CreateTokenParams) (repo.Token, error) {
-		persisted = repo.Token{ID: arg.ID, Name: arg.Name, Type: arg.Type, ExpiresAt: arg.ExpiresAt}
-		return persisted, nil
-	})
-	result, err := service.CreateToken(context.Background(), Actor{Type: authtoken.TypeAdmin}, CreateTokenRequest{Type: authtoken.TypeWorker})
-	require.NoError(t, err)
-	parsed, err := authtoken.Parse(result.Raw)
-	require.NoError(t, err)
-	require.Equal(t, parsed.ID.String(), persisted.Name)
+	_, err = service.CreateToken(context.Background(), Actor{Type: authtoken.TypeAdmin, Permissions: permission.DefaultAdmin}, CreateTokenRequest{Type: authtoken.Type("worker")})
+	require.ErrorIs(t, err, ErrForbidden)
 }

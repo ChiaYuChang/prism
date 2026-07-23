@@ -114,9 +114,8 @@ func (c *cliContext) service(ctx context.Context) (*prismauth.Service, error) {
 		Tokens: repository.Tokens(),
 		Hasher: hasher,
 		TokenTypes: map[authtoken.Type]prismauth.TokenTypeConfig{
-			authtoken.TypeAdmin:  {DefaultTTL: 720 * time.Hour, MaxTTL: 2160 * time.Hour},
-			authtoken.TypeUser:   {DefaultTTL: 24 * time.Hour, MaxTTL: 168 * time.Hour},
-			authtoken.TypeWorker: {DefaultTTL: 720 * time.Hour, MaxTTL: 2160 * time.Hour},
+			authtoken.TypeAdmin: {DefaultTTL: 720 * time.Hour, MaxTTL: 2160 * time.Hour},
+			authtoken.TypeUser:  {DefaultTTL: 24 * time.Hour, MaxTTL: 168 * time.Hour},
 		},
 	})
 	if err != nil {

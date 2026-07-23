@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
@@ -33,9 +34,10 @@ const (
 )
 
 type Actor struct {
-	TokenID uuid.UUID
-	Type    authtoken.Type
-	Name    string
+	TokenID     uuid.UUID
+	Type        authtoken.Type
+	Name        string
+	Permissions permission.Permission
 }
 
 type TokenTypeConfig struct {
@@ -59,9 +61,10 @@ type ServiceParams struct {
 }
 
 type CreateTokenRequest struct {
-	Type      authtoken.Type
-	Name      string
-	ExpiresAt *time.Time
+	Type        authtoken.Type
+	Name        string
+	Permissions *permission.Permission
+	ExpiresAt   *time.Time
 }
 
 type TokenSecretResult struct {
@@ -88,7 +91,6 @@ func NewService(params ServiceParams) (*Service, error) {
 			AllowedTypes: []authtoken.Type{
 				authtoken.TypeAdmin,
 				authtoken.TypeUser,
-				authtoken.TypeWorker,
 			},
 		},
 	)
@@ -116,7 +118,7 @@ func NewService(params ServiceParams) (*Service, error) {
 
 func (s *Service) AuthenticateToken(ctx context.Context, raw string) (Actor, error) {
 	principal, err := s.auth.AuthenticateToken(ctx, raw)
-	return Actor(principal), err
+	return Actor{TokenID: principal.TokenID, Type: principal.Type, Name: principal.Name}, err
 }
 
 func (s *Service) AuthenticateRoot(ctx context.Context, raw string) error {
@@ -139,6 +141,7 @@ func (s *Service) InitRoot(ctx context.Context, raw string) (repo.Token, error) 
 			ID:            uuid.Must(uuid.NewV7()),
 			Type:          string(authtoken.TypeRoot),
 			Name:          RootTokenName,
+			Permissions:   uint8(permission.Root),
 			HashAlgorithm: s.hasher.Algorithm(),
 			TokenHash:     s.hasher.Hash([]byte(secret)),
 			ExpiresAt:     farFuture(),
@@ -157,7 +160,8 @@ func (s *Service) CreateAdminWithRoot(ctx context.Context, rootRaw string, name 
 	if err := s.AuthenticateRoot(ctx, rootRaw); err != nil {
 		return TokenSecretResult{}, err
 	}
-	return s.createToken(ctx, CreateTokenRequest{Type: authtoken.TypeAdmin, Name: name, ExpiresAt: expiresAt})
+	permissions := permission.DefaultAdmin
+	return s.createToken(ctx, CreateTokenRequest{Type: authtoken.TypeAdmin, Name: name, Permissions: &permissions, ExpiresAt: expiresAt})
 }
 
 func (s *Service) RevokeAllWithRoot(ctx context.Context, rootRaw string) (int64, error) {
@@ -168,17 +172,30 @@ func (s *Service) RevokeAllWithRoot(ctx context.Context, rootRaw string) (int64,
 }
 
 func (s *Service) CreateToken(ctx context.Context, actor Actor, req CreateTokenRequest) (TokenSecretResult, error) {
-	if actor.Type != authtoken.TypeAdmin {
+	if !actor.Permissions.Has(permission.TokenAdmin) {
 		return TokenSecretResult{}, ErrForbidden
 	}
-	if req.Type == authtoken.TypeRoot {
+	if req.Type != authtoken.TypeAdmin && req.Type != authtoken.TypeUser {
+		return TokenSecretResult{}, ErrForbidden
+	}
+	if req.Permissions == nil {
+		defaults := permission.DefaultUser
+		if req.Type == authtoken.TypeAdmin {
+			defaults = permission.DefaultAdmin
+		}
+		req.Permissions = &defaults
+	}
+	if err := req.Permissions.ValidateForType(string(req.Type)); err != nil {
+		return TokenSecretResult{}, fmt.Errorf("%w: %s", ErrInvalidToken, err)
+	}
+	if !req.Permissions.IsSubset(actor.Permissions) {
 		return TokenSecretResult{}, ErrForbidden
 	}
 	return s.createToken(ctx, req)
 }
 
 func (s *Service) RevokeToken(ctx context.Context, actor Actor, id uuid.UUID) (repo.Token, error) {
-	if actor.Type != authtoken.TypeAdmin {
+	if !actor.Permissions.Has(permission.TokenAdmin) {
 		return repo.Token{}, ErrForbidden
 	}
 	tok, err := s.tokens.GetTokenByID(ctx, id)
@@ -186,6 +203,12 @@ func (s *Service) RevokeToken(ctx context.Context, actor Actor, id uuid.UUID) (r
 		return repo.Token{}, err
 	}
 	if tok.Type == string(authtoken.TypeRoot) {
+		return repo.Token{}, ErrForbidden
+	}
+	if tok.Type != string(authtoken.TypeAdmin) && tok.Type != string(authtoken.TypeUser) {
+		return repo.Token{}, ErrForbidden
+	}
+	if !permission.Permission(tok.Permissions).IsSubset(actor.Permissions) {
 		return repo.Token{}, ErrForbidden
 	}
 	if tok.Type == string(authtoken.TypeAdmin) && actor.TokenID == id {
@@ -201,20 +224,23 @@ func (s *Service) RevokeToken(ctx context.Context, actor Actor, id uuid.UUID) (r
 }
 
 func (s *Service) ListTokens(ctx context.Context, actor Actor, params repo.ListOperatorParams) ([]repo.Token, error) {
-	if actor.Type != authtoken.TypeAdmin {
+	if !actor.Permissions.Has(permission.TokenAdmin) {
 		return nil, ErrForbidden
 	}
 	return s.tokens.ListTokens(ctx, params)
 }
 
 func (s *Service) GetToken(ctx context.Context, actor Actor, id uuid.UUID) (repo.Token, error) {
-	if actor.Type != authtoken.TypeAdmin {
+	if !actor.Permissions.Has(permission.TokenAdmin) {
 		return repo.Token{}, ErrForbidden
 	}
 	return s.tokens.GetTokenByID(ctx, id)
 }
 
 func (s *Service) createToken(ctx context.Context, req CreateTokenRequest) (TokenSecretResult, error) {
+	if req.Permissions == nil {
+		return TokenSecretResult{}, fmt.Errorf("%w: permissions are required", ErrInvalidToken)
+	}
 	expiresAt, err := s.resolveExpiry(req.Type, req.ExpiresAt)
 	if err != nil {
 		return TokenSecretResult{}, err
@@ -225,8 +251,6 @@ func (s *Service) createToken(ctx context.Context, req CreateTokenRequest) (Toke
 		switch req.Type {
 		case authtoken.TypeAdmin, authtoken.TypeUser:
 			return TokenSecretResult{}, fmt.Errorf("%w: token name is required for %s tokens", ErrInvalidToken, req.Type)
-		case authtoken.TypeWorker:
-			name = id.String()
 		default:
 			return TokenSecretResult{}, fmt.Errorf("%w: token name is required", ErrInvalidToken)
 		}
@@ -239,6 +263,7 @@ func (s *Service) createToken(ctx context.Context, req CreateTokenRequest) (Toke
 		ID:            id,
 		Type:          string(req.Type),
 		Name:          name,
+		Permissions:   uint8(*req.Permissions),
 		HashAlgorithm: s.hasher.Algorithm(),
 		TokenHash:     s.hasher.Hash(secret),
 		ExpiresAt:     expiresAt,
