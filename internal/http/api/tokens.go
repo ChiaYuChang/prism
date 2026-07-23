@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -55,14 +56,14 @@ type TokenExpiryRequest struct {
 
 // CreateToken handles token creation for CLI/shared admin flows.
 func (s *Server) CreateToken(w http.ResponseWriter, r *http.Request) {
+	setTokenNoStore(w)
 	actor, ok := tokenActor(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	var req CreateTokenRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid payload")
+	if !decodeTokenJSON(w, r, &req) {
 		return
 	}
 	if s.TokenService == nil {
@@ -79,7 +80,7 @@ func (s *Server) CreateToken(w http.ResponseWriter, r *http.Request) {
 		s.writeTokenError(w, r, "create token", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toAdminTokenSecret(result.Token, result.Raw))
+	writeJSON(w, http.StatusCreated, toAdminTokenSecret(result.Token, result.Raw))
 }
 
 // ListTokens handles GET /api/v1/admin/tokens.
@@ -94,6 +95,7 @@ func (s *Server) CreateToken(w http.ResponseWriter, r *http.Request) {
 // @Failure   500 {object} ErrorResponse
 // @Router    /admin/tokens [get]
 func (s *Server) ListTokens(w http.ResponseWriter, r *http.Request) {
+	setTokenNoStore(w)
 	actor, ok := tokenActor(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -131,6 +133,7 @@ func (s *Server) ListTokens(w http.ResponseWriter, r *http.Request) {
 // @Failure   500 {object} ErrorResponse
 // @Router    /admin/tokens/{id} [get]
 func (s *Server) GetToken(w http.ResponseWriter, r *http.Request) {
+	setTokenNoStore(w)
 	actor, ok := tokenActor(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -206,6 +209,7 @@ func (s *Server) RotateToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) RevokeToken(w http.ResponseWriter, r *http.Request) {
+	setTokenNoStore(w)
 	actor, ok := tokenActor(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -274,6 +278,52 @@ func (s *Server) requireAdmin(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) requireTokenAdmin(next http.Handler) http.Handler {
+	return s.requireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := middleware.PrincipalFromContext(r.Context())
+		if !ok || !principal.Permissions.Has(permission.TokenAdmin) {
+			writeError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		next.ServeHTTP(w, r)
+	}))
+}
+
+func (s *Server) WhoAmI(w http.ResponseWriter, r *http.Request) {
+	setTokenNoStore(w)
+	principal, ok := middleware.PrincipalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token_id":    principal.TokenID,
+		"type":        principal.Type,
+		"name":        principal.Name,
+		"permissions": principal.Permissions,
+	})
+}
+
+func setTokenNoStore(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+}
+
+func decodeTokenJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid payload")
+		return false
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid payload")
+		return false
+	}
+	return true
 }
 
 func toAdminToken(token repo.Token) AdminToken {

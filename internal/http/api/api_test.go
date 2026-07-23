@@ -548,12 +548,22 @@ func TestListAdminEmbeddings_UnsupportedModel(t *testing.T) {
 }
 
 // expectCreateFetch stubs UserFetches.Create with a fresh fetch_id.
-func expectCreateFetch(t *testing.T, m *testServerMocks) uuid.UUID {
+func expectCreateFetch(t *testing.T, m *testServerMocks, userID uuid.UUID) uuid.UUID {
 	t.Helper()
 	fetchID := uuid.Must(uuid.NewV7())
-	m.userFetches.EXPECT().Create(mock.Anything, repo.CreateUserFetchParams{UserID: nil}).
+	m.userFetches.EXPECT().Create(mock.Anything, mock.MatchedBy(func(p repo.CreateUserFetchParams) bool {
+		return p.UserID != nil && *p.UserID == userID
+	})).
 		Return(repo.UserFetch{ID: fetchID}, nil).Once()
 	return fetchID
+}
+
+func withUserPrincipal(req *http.Request, id uuid.UUID) *http.Request {
+	return req.WithContext(middleware.WithPrincipal(req.Context(), middleware.Principal{
+		TokenID:     id,
+		Type:        authtoken.TypeUser,
+		Permissions: permission.UserAPI,
+	}))
 }
 
 func TestPageFetch_CreatesTaskForFoundCandidate(t *testing.T) {
@@ -563,6 +573,7 @@ func TestPageFetch_CreatesTaskForFoundCandidate(t *testing.T) {
 	missingID := uuid.Must(uuid.NewV7())
 	batch := uuid.Must(uuid.NewV7())
 	taskID := uuid.Must(uuid.NewV7())
+	userID := uuid.Must(uuid.NewV7())
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, []uuid.UUID{candID, missingID}).
 		Return([]repo.Candidate{{
@@ -573,7 +584,7 @@ func TestPageFetch_CreatesTaskForFoundCandidate(t *testing.T) {
 			TraceID:    "trace-2",
 		}}, nil).Once()
 
-	fetchID := expectCreateFetch(t, m)
+	fetchID := expectCreateFetch(t, m, userID)
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.MatchedBy(func(p repo.CreateTaskParams) bool {
 		return p.Kind == repo.TaskKindPageFetch &&
@@ -590,7 +601,7 @@ func TestPageFetch_CreatesTaskForFoundCandidate(t *testing.T) {
 	})).Return(repo.UserFetchItem{}, nil).Once()
 
 	body, _ := json.Marshal(api.PageFetchRequest{CandidateIDs: []uuid.UUID{candID, missingID}})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body))
+	req := withUserPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body)), userID)
 	rec := httptest.NewRecorder()
 	srv.PageFetch(rec, req)
 
@@ -615,6 +626,7 @@ func TestPageFetch_AlreadyActiveCollapsesToCreated(t *testing.T) {
 
 	candID := uuid.Must(uuid.NewV7())
 	existingTaskID := uuid.Must(uuid.NewV7())
+	userID := uuid.Must(uuid.NewV7())
 	url := "https://news.example/x"
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, mock.Anything).
@@ -623,7 +635,7 @@ func TestPageFetch_AlreadyActiveCollapsesToCreated(t *testing.T) {
 			SourceAbbr: "yahoo", URL: url, TraceID: "t",
 		}}, nil).Once()
 
-	fetchID := expectCreateFetch(t, m)
+	fetchID := expectCreateFetch(t, m, userID)
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).
 		Return(repo.Task{ID: existingTaskID}, repo.ErrTaskAlreadyActive).Once()
@@ -633,7 +645,7 @@ func TestPageFetch_AlreadyActiveCollapsesToCreated(t *testing.T) {
 	})).Return(repo.UserFetchItem{}, nil).Once()
 
 	body, _ := json.Marshal(api.PageFetchRequest{CandidateIDs: []uuid.UUID{candID}})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body))
+	req := withUserPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body)), userID)
 	rec := httptest.NewRecorder()
 	srv.PageFetch(rec, req)
 
@@ -652,6 +664,7 @@ func TestPageFetch_AlreadyCompleteSnapshot(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	candID := uuid.Must(uuid.NewV7())
+	userID := uuid.Must(uuid.NewV7())
 	url := "https://news.example/done"
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, mock.Anything).
@@ -660,7 +673,7 @@ func TestPageFetch_AlreadyCompleteSnapshot(t *testing.T) {
 			SourceAbbr: "yahoo", URL: url, TraceID: "t",
 		}}, nil).Once()
 
-	fetchID := expectCreateFetch(t, m)
+	fetchID := expectCreateFetch(t, m, userID)
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).
 		Return(repo.Task{}, repo.ErrTaskAlreadyActive).Once()
@@ -673,7 +686,7 @@ func TestPageFetch_AlreadyCompleteSnapshot(t *testing.T) {
 	})).Return(repo.UserFetchItem{}, nil).Once()
 
 	body, _ := json.Marshal(api.PageFetchRequest{CandidateIDs: []uuid.UUID{candID}})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body))
+	req := withUserPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body)), userID)
 	rec := httptest.NewRecorder()
 	srv.PageFetch(rec, req)
 
@@ -687,6 +700,7 @@ func TestPageFetch_RaceMissReturns500(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	candID := uuid.Must(uuid.NewV7())
+	userID := uuid.Must(uuid.NewV7())
 	url := "https://news.example/race"
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, mock.Anything).
@@ -695,7 +709,7 @@ func TestPageFetch_RaceMissReturns500(t *testing.T) {
 			SourceAbbr: "yahoo", URL: url, TraceID: "t",
 		}}, nil).Once()
 
-	expectCreateFetch(t, m)
+	expectCreateFetch(t, m, userID)
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).
 		Return(repo.Task{}, repo.ErrTaskAlreadyActive).Once()
@@ -703,7 +717,7 @@ func TestPageFetch_RaceMissReturns500(t *testing.T) {
 		Return(repo.Content{}, pgx.ErrNoRows).Once()
 
 	body, _ := json.Marshal(api.PageFetchRequest{CandidateIDs: []uuid.UUID{candID}})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body))
+	req := withUserPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body)), userID)
 	rec := httptest.NewRecorder()
 	srv.PageFetch(rec, req)
 
