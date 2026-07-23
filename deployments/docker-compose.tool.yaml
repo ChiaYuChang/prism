@@ -10,27 +10,41 @@ services:
   prismctl:
     profiles: [ tool ]
     image: prism/prismctl:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
         TARGET: prismctl
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    secrets:
+      - prism_admin_token
+    networks:
+      - prism-net
+
+  prismctl-root:
+    profiles: [ tool ]
+    image: prism/prismctl-root:latest
+    user: "0:0"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: prismctl-root
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
       POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
-      PRISM_PRISMCTL_POSTGRES_HOST: postgres
-      PRISM_PRISMCTL_POSTGRES_PORT: 5432
-      PRISM_PRISMCTL_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
-      PRISM_PRISMCTL_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
-      PRISM_PRISMCTL_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
-      PRISM_PRISMCTL_POSTGRES_SSLMODE: disable
+      PRISM_PRISMCTL_ROOT_POSTGRES_HOST: postgres
+      PRISM_PRISMCTL_ROOT_POSTGRES_PORT: 5432
+      PRISM_PRISMCTL_ROOT_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_PRISMCTL_ROOT_POSTGRES_ROLE: prism_rootctl
+      PRISM_PRISMCTL_ROOT_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_PRISMCTL_ROOT_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_PRISMCTL_ROOT_POSTGRES_SSLMODE: disable
     secrets:
       - prism_root_token
-      - prism_admin_token
     networks:
       - prism-net
     depends_on:
