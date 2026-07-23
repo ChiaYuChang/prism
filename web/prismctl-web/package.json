@@ -1,0 +1,26 @@
+{
+  "name": "prismctl-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@alpinejs/csp": "3.14.9",
+    "yaml": "2.7.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.51.1",
+    "@tailwindcss/vite": "4.0.9",
+    "@vitejs/plugin-basic-ssl": "1.2.0",
+    "jsdom": "26.0.0",
+    "tailwindcss": "4.0.9",
+    "vite": "6.1.0",
+    "vitest": "3.0.5"
+  }
+}

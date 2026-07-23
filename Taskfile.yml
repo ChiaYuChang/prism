@@ -108,6 +108,9 @@ includes:
   prismctl:
     taskfile: ./taskfile/prismctl.yml
     dir: .
+  web:
+    taskfile: ./taskfile/web.yml
+    dir: .
   testtasks:
     taskfile: ./taskfile/test.yml
     dir: .

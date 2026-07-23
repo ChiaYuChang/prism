@@ -92,3 +92,7 @@ NOTE.md
 review_report.md
 
 runtime
+
+# web dependencies and build output
+web/prismctl-web/node_modules/
+web/prismctl-web/dist/

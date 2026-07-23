@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1118" />
+    <title>Prism Control Room</title>
+  </head>
+  <body>
+    <main x-data="controlRoom" x-cloak>
+      <section class="login-shell" x-show="!authenticated">
+        <div class="brand-mark">P / CONTROL ROOM</div>
+        <div class="login-card">
+          <p class="eyebrow">OPERATOR ACCESS</p>
+          <h1>Keep the signal clean.</h1>
+          <p class="lede">Authenticate with an existing admin token to inspect and operate the Prism pipeline.</p>
+          <form @submit.prevent="login">
+            <label for="token">Admin token</label>
+            <input id="token" type="password" autocomplete="off" x-model="tokenInput" placeholder="padm_..." />
+            <button type="submit" :disabled="busy || !tokenInput">Connect <span aria-hidden="true">&#8594;</span></button>
+          </form>
+          <p class="error-text" x-show="error" x-text="error"></p>
+        </div>
+      </section>
+
+      <section class="app-shell" x-show="authenticated">
+        <header class="topbar">
+          <div>
+            <div class="brand-mark">P / CONTROL ROOM</div>
+            <p class="topbar-title">Operations console</p>
+          </div>
+          <div class="operator-chip">
+            <span class="status-dot"></span>
+            <span x-text="operator.name || operator.token_id"></span>
+            <button class="quiet-button" type="button" @click="logout">Sign out</button>
+          </div>
+        </header>
+
+        <div class="workspace">
+          <aside class="rail">
+            <button class="rail-item active" type="button">Overview</button>
+            <button class="rail-item" type="button" @click="section = 'tokens'">Tokens</button>
+            <button class="rail-item" type="button" @click="section = 'diagnostics'">Diagnostics</button>
+            <div class="rail-footer"><span>PERMISSIONS</span><strong x-text="permissionHex(operator.permissions)"></strong></div>
+          </aside>
+
+          <div class="content">
+            <div class="content-heading">
+              <div>
+                <p class="eyebrow">LIVE / ADMIN API</p>
+                <h2 x-text="section === 'tokens' ? 'Token control' : section === 'diagnostics' ? 'Diagnostics' : 'System overview'"></h2>
+              </div>
+              <button class="outline-button" type="button" @click="refresh" :disabled="busy">Refresh</button>
+            </div>
+
+            <p class="error-text" x-show="error" x-text="error"></p>
+
+            <template x-if="section === 'overview'">
+              <div class="dashboard-grid">
+                <article class="metric-card accent-card"><span class="metric-label">CONTROL PLANE</span><strong>Connected</strong><small x-text="operator.type + ' / ' + permissionHex(operator.permissions)"></small></article>
+                <article class="metric-card"><span class="metric-label">SERVICES</span><strong x-text="serviceCount"></strong><small>reported in latest snapshot</small></article>
+                <article class="metric-card"><span class="metric-label">FAILED TASKS</span><strong x-text="failedTasks"></strong><small>recent diagnostic window</small></article>
+                <article class="wide-card"><div class="card-heading"><h3>Service pulse</h3><span class="live-label"><span class="status-dot"></span> refreshed</span></div><div class="service-list"><template x-for="(status, name) in services" :key="name"><div class="service-row"><span x-text="name"></span><span class="service-status" :class="status.level" x-text="status.level"></span></div></template><p x-show="Object.keys(services).length === 0" class="muted">No service snapshot available.</p></div></article>
+              </div>
+            </template>
+
+            <template x-if="section === 'diagnostics'"><div class="wide-card"><div class="card-heading"><h3>Diagnostic snapshot</h3><span class="live-label" x-text="diagnostics.nats_error || 'healthy response' "></span></div><pre class="json-view" x-text="pretty(diagnostics)"></pre></div></template>
+
+            <template x-if="section === 'tokens'"><div class="tokens-layout"><article class="wide-card"><div class="card-heading"><h3>Issued tokens</h3><button class="small-button" type="button" @click="showCreate = true" :disabled="!canTokenAdmin">New token</button></div><div class="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Permissions</th><th>Expires</th><th></th></tr></thead><tbody><template x-for="item in tokens" :key="item.id"><tr><td x-text="item.name"></td><td><span class="type-pill" x-text="item.type"></span></td><td class="mono" x-text="permissionHex(item.permissions)"></td><td x-text="formatDate(item.expires_at)"></td><td><button class="danger-link" type="button" @click="revoke(item)" :disabled="!!item.revoked_at">Revoke</button></td></tr></template></tbody></table><p x-show="tokens.length === 0" class="muted">No routine tokens found.</p></div></article></div></template>
+          </div>
+        </div>
+
+        <div class="modal-backdrop" x-show="showCreate" @click.self="showCreate = false">
+          <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="create-title">
+            <button class="modal-close" type="button" @click="showCreate = false" aria-label="Close">&#10005;</button>
+            <p class="eyebrow">TOKEN ADMIN</p><h2 id="create-title">Issue a token</h2>
+            <form @submit.prevent="createToken"><label for="token-name">Name</label><input id="token-name" x-model="createForm.name" required /><label for="token-type">Type</label><select id="token-type" x-model="createForm.type"><option value="user">user</option><option value="admin">admin</option></select><label for="token-permissions">Permissions <span class="muted">decimal or 0xNN</span></label><input id="token-permissions" x-model="createForm.permissions" placeholder="1 or 0x61" /><button type="submit" :disabled="busy || !canTokenAdmin">Issue token</button></form>
+            <div class="secret-box" x-show="oneTimeSecret"><span class="metric-label">ONE-TIME SECRET</span><code x-text="oneTimeSecret"></code><button class="small-button" type="button" @click="oneTimeSecret = ''">Dismiss</button></div>
+          </section>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
