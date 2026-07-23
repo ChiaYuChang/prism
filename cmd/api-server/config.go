@@ -37,7 +37,6 @@ type AuthConfig struct {
 }
 
 type TokenTypeConfig struct {
-	Prefix     string        `mapstructure:"prefix"      validate:"required"`
 	DefaultTTL time.Duration `mapstructure:"default-ttl" validate:"required,min=1s"`
 	MaxTTL     time.Duration `mapstructure:"max-ttl"     validate:"required,min=1s"`
 }
@@ -133,9 +132,6 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetDefault("auth.token-types.user.prefix", "pusr")
 	v.SetDefault("auth.token-types.user.default-ttl", 24*time.Hour)
 	v.SetDefault("auth.token-types.user.max-ttl", 168*time.Hour)
-	v.SetDefault("auth.token-types.worker.prefix", "pwrk")
-	v.SetDefault("auth.token-types.worker.default-ttl", 720*time.Hour)
-	v.SetDefault("auth.token-types.worker.max-ttl", 2160*time.Hour)
 
 	fs := pflag.NewFlagSet("api-server", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
@@ -283,6 +279,12 @@ func LoadConfig(args []string) (*Config, error) {
 	validate := validator.New()
 	if err := validate.Struct(&cfg); err != nil {
 		return nil, fmt.Errorf("config validation failed: %v", err)
+	}
+	if cfg.Monitoring.Mode == "push" {
+		return nil, fmt.Errorf("monitoring.mode=push is not supported")
+	}
+	if cfg.Port == cfg.Admin.Port || cfg.Port == cfg.Monitoring.InternalPort || cfg.Admin.Port == cfg.Monitoring.InternalPort {
+		return nil, fmt.Errorf("API, admin, and internal ports must be distinct")
 	}
 
 	if err := validateMonitoringTargets(validate, cfg.Monitoring.Targets); err != nil {

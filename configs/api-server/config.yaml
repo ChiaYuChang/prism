@@ -37,21 +37,14 @@ rate-limit:
   burst: 200
   ip-cache-size: 4096
 auth:
-  enabled: true
   hash-algorithm: sha256
   token-types:
     admin:
-      prefix: padm
       default-ttl: 720h
       max-ttl: 2160h
     user:
-      prefix: pusr
       default-ttl: 24h
       max-ttl: 168h
-    worker:
-      prefix: pwrk
-      default-ttl: 720h
-      max-ttl: 2160h
 prompts:
   storage-uri: '{{ env "PRISM_PROMPT_STORAGE_URI" "file:///app/runtime/prompts" }}'
 s3:
