@@ -24,6 +24,7 @@ func TestCreateAdminUsesPersistedTokenID(t *testing.T) {
 	root := repo.Token{
 		ID:            uuid.New(),
 		Type:          string(authtoken.TypeRoot),
+		Permissions:   uint8(permission.Root),
 		HashAlgorithm: rootHash.Algorithm(),
 		TokenHash:     rootHash.Hash([]byte(rootRaw)),
 		ExpiresAt:     time.Now().Add(time.Hour),

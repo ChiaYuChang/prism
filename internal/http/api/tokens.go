@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/repo"
@@ -272,7 +273,7 @@ func canRenew(principal middleware.Principal, token repo.Token) bool {
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := middleware.PrincipalFromContext(r.Context())
-		if !ok || principal.Type != authtoken.TypeAdmin {
+		if !ok || !principal.Permissions.Has(permission.AdminAPI) {
 			writeError(w, http.StatusForbidden, "forbidden")
 			return
 		}

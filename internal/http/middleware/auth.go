@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	prismauth "github.com/ChiaYuChang/prism/internal/auth"
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
@@ -21,10 +23,11 @@ const TokenAuthHeader = "X-PRISM-TOKEN"
 type principalContextKey struct{}
 
 type Principal struct {
-	TokenID uuid.UUID
-	Type    authtoken.Type
-	Name    string
-	Source  string
+	TokenID     uuid.UUID
+	Type        authtoken.Type
+	Name        string
+	Permissions permission.Permission
+	Source      string
 }
 
 func PrincipalFromContext(ctx context.Context) (Principal, bool) {
@@ -71,7 +74,7 @@ func (a TokenAuthenticator) authenticate(ctx context.Context, raw string) (Princ
 	if err != nil {
 		return Principal{}, err
 	}
-	return Principal{TokenID: principal.TokenID, Type: principal.Type, Name: principal.Name, Source: "db"}, nil
+	return Principal{TokenID: principal.TokenID, Type: principal.Type, Name: principal.Name, Permissions: principal.Permissions, Source: "db"}, nil
 }
 
 func setPrincipalSpanAttributes(ctx context.Context, principal Principal) {
@@ -83,6 +86,7 @@ func setPrincipalSpanAttributes(ctx context.Context, principal Principal) {
 		attribute.String("prism.actor.name", name),
 		attribute.String("prism.actor.token_id", principal.TokenID.String()),
 		attribute.String("prism.actor.type", string(principal.Type)),
+		attribute.String("prism.actor.permissions", fmt.Sprintf("0x%02x", uint8(principal.Permissions))),
 	)
 }
 
@@ -91,17 +95,25 @@ func (a TokenAuthenticator) writeError(w http.ResponseWriter, err error) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
-	if a.ErrorDetail == AuthErrorAdmin {
-		switch {
-		case errors.Is(err, prismauth.ErrTokenExpired):
-			http.Error(w, prismauth.ErrTokenExpired.Error(), http.StatusUnauthorized)
-			return
-		case errors.Is(err, prismauth.ErrTokenRevoked):
-			http.Error(w, prismauth.ErrTokenRevoked.Error(), http.StatusUnauthorized)
-			return
-		}
-	}
 	http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+}
+
+// RequirePermissions rejects authenticated principals that lack required bits.
+func RequirePermissions(required permission.Permission) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			principal, ok := PrincipalFromContext(r.Context())
+			if !ok {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+			if !principal.Permissions.Has(required) {
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // TokenAuth requires callers to provide TokenAuthHeader with the configured

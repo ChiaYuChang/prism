@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
@@ -34,6 +35,7 @@ func TestAuthenticateTokenIncludesName(t *testing.T) {
 			ID:            id,
 			Type:          string(authtoken.TypeAdmin),
 			Name:          "alice-cli",
+			Permissions:   uint8(permission.DefaultAdmin),
 			HashAlgorithm: hasher.Algorithm(),
 			TokenHash:     hasher.Hash(secret),
 			ExpiresAt:     time.Now().Add(time.Hour),

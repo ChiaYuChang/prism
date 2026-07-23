@@ -22,6 +22,7 @@ import (
 	_ "github.com/ChiaYuChang/prism/cmd/api-server/docs"
 	"github.com/ChiaYuChang/prism/internal/appconfig"
 	prismauth "github.com/ChiaYuChang/prism/internal/auth"
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	prismhttp "github.com/ChiaYuChang/prism/internal/http"
 	"github.com/ChiaYuChang/prism/internal/http/api"
@@ -193,13 +194,15 @@ func main() {
 	}
 	authenticator, aerr := prismauth.NewAuthenticator(prismauth.AuthenticatorParams{
 		Store:        repository.Tokens(),
-		AllowedTypes: []authtoken.Type{authtoken.TypeAdmin},
+		AllowedTypes: []authtoken.Type{authtoken.TypeAdmin, authtoken.TypeUser},
 	})
 	if aerr != nil {
 		logger.Error("failed to initialize token authenticator", "error", aerr)
 		os.Exit(1)
 	}
-	authMiddleware := []middleware.Middleware{middleware.TokenAuthMiddleware(middleware.TokenAuthenticator{Authenticator: authenticator, ErrorDetail: middleware.AuthErrorAdmin})}
+	tokenAuth := middleware.TokenAuthMiddleware(middleware.TokenAuthenticator{Authenticator: authenticator})
+	publicAuthMiddleware := []middleware.Middleware{tokenAuth, middleware.RequirePermissions(permission.UserAPI)}
+	adminAuthMiddleware := []middleware.Middleware{tokenAuth, middleware.RequirePermissions(permission.AdminAPI)}
 	serverOpts = append(serverOpts, api.WithTokens(repository.Tokens(), hasher, tokenTypes))
 	promptStore, err := appconfig.NewStorage(ctx, config.Prompts.StorageURI, config.S3)
 	if err != nil {
@@ -249,7 +252,7 @@ func main() {
 	rootRouter.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
 	rootRouter.Route("/api/v1", func(apiV1Router *prismhttp.Router) {
 		apiServer.RegisterV1(apiV1Router)
-	})
+	}, publicAuthMiddleware...)
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", config.Port),
@@ -286,7 +289,7 @@ func main() {
 		adminRouter.Route("/api/v1", func(apiV1Router *prismhttp.Router) {
 			apiV1Router.Route("/admin", func(admin *prismhttp.Router) {
 				apiServer.RegisterV1Admin(admin)
-			}, authMiddleware...)
+			}, adminAuthMiddleware...)
 		})
 		adminServer = &http.Server{
 			Addr:         fmt.Sprintf(":%d", config.Admin.Port),
@@ -304,7 +307,7 @@ func main() {
 
 	internalMux := http.NewServeMux()
 	if config.Monitoring.Mode == "push" {
-		apiServer.RegisterInternal(internalMux, authMiddleware...)
+		apiServer.RegisterInternal(internalMux, adminAuthMiddleware...)
 	}
 
 	// Register pprof handlers internally on the internal port for secure monitoring
