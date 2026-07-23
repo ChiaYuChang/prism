@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -124,11 +123,10 @@ func adminStatusCommand(ctx *cliContext) *cobra.Command {
 		Use:   "status",
 		Short: "Show API status",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			a, warnings, err := ctx.sourceAPI()
+			a, warnings, err := ctx.publicAPI()
 			if err != nil {
 				return err
 			}
-			a.baseURL = publicAPIBase(a.baseURL)
 			var out map[string]any
 			if err := a.request(cmd.Context(), http.MethodGet, "/status", nil, &out); err != nil {
 				return renderError(ctx, "admin", "status", err, warnings)
@@ -360,7 +358,10 @@ func getByIDCommand[T any](ctx *cliContext, use, short, prefix, action string, r
 			return err
 		}
 		if public {
-			a.baseURL = publicAPIBase(a.baseURL)
+			a, warnings, err = ctx.publicAPI()
+			if err != nil {
+				return err
+			}
 		}
 		out := result
 		if err := a.request(cmd.Context(), http.MethodGet, prefix+url.PathEscape(args[0]), nil, &out); err != nil {
@@ -368,13 +369,4 @@ func getByIDCommand[T any](ctx *cliContext, use, short, prefix, action string, r
 		}
 		return render(ctx, "admin", action, out, warnings)
 	}}
-}
-
-func publicAPIBase(adminBase string) string {
-	u, err := url.Parse(adminBase)
-	if err != nil || u.Port() != "8091" {
-		return strings.TrimRight(adminBase, "/")
-	}
-	u.Host = u.Hostname() + ":8090"
-	return strings.TrimRight(u.String(), "/")
 }
