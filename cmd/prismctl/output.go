@@ -32,6 +32,7 @@ type tokenView struct {
 	ID            uuid.UUID  `json:"id"`
 	Type          string     `json:"type"`
 	Name          string     `json:"name"`
+	Permissions   uint8      `json:"permissions"`
 	HashAlgorithm string     `json:"hash_algorithm"`
 	CreatedAt     time.Time  `json:"created_at"`
 	ExpiresAt     time.Time  `json:"expires_at"`
@@ -87,7 +88,7 @@ func errorCode(err error) string {
 }
 
 func toTokenView(tok repo.Token) tokenView {
-	return tokenView{ID: tok.ID, Type: tok.Type, Name: tok.Name, HashAlgorithm: tok.HashAlgorithm, CreatedAt: tok.CreatedAt, ExpiresAt: tok.ExpiresAt, LastUsedAt: tok.LastUsedAt, RenewedAt: tok.RenewedAt, RotatedAt: tok.RotatedAt, RevokedAt: tok.RevokedAt}
+	return tokenView{ID: tok.ID, Type: tok.Type, Name: tok.Name, Permissions: tok.Permissions, HashAlgorithm: tok.HashAlgorithm, CreatedAt: tok.CreatedAt, ExpiresAt: tok.ExpiresAt, LastUsedAt: tok.LastUsedAt, RenewedAt: tok.RenewedAt, RotatedAt: tok.RotatedAt, RevokedAt: tok.RevokedAt}
 }
 
 func toTokenSecretView(tok repo.Token, raw string) tokenSecretView {

@@ -1,11 +1,11 @@
 package main
 
 import (
-	"context"
+	"net/http"
+	"net/url"
+	"strconv"
 
-	prismauth "github.com/ChiaYuChang/prism/internal/auth"
 	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
-	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
@@ -46,7 +46,7 @@ func adminTokensCreateCommand(ctx *cliContext) *cobra.Command {
 		Use:   "create",
 		Short: "Create a token",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			actor, warnings, err := ctx.adminActor(cmd.Context())
+			a, warnings, err := ctx.sourceAPI()
 			if err != nil {
 				return err
 			}
@@ -54,16 +54,16 @@ func adminTokensCreateCommand(ctx *cliContext) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			service, err := ctx.service(cmd.Context())
-			if err != nil {
-				return err
-			}
-			defer ctx.close()
-			res, err := service.CreateToken(cmd.Context(), actor, prismauth.CreateTokenRequest{Type: authtoken.Type(typ), Name: name, ExpiresAt: expires})
+			var out tokenSecretView
+			err = a.request(cmd.Context(), http.MethodPost, "/admin/tokens", map[string]any{
+				"type":       typ,
+				"name":       name,
+				"expires_at": expires,
+			}, &out)
 			if err != nil {
 				return renderError(ctx, "admin", "tokens_create", err, warnings)
 			}
-			return render(ctx, "admin", "tokens_create", toTokenSecretView(res.Token, res.Raw), warnings)
+			return render(ctx, "admin", "tokens_create", out, warnings)
 		},
 	}
 	cmd.Flags().StringVar(&typ, "type", string(authtoken.TypeUser), "Token type: admin or user")
@@ -79,24 +79,22 @@ func adminTokensListCommand(ctx *cliContext) *cobra.Command {
 		Use:   "list",
 		Short: "List tokens",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			actor, warnings, err := ctx.adminActor(cmd.Context())
+			a, warnings, err := ctx.sourceAPI()
 			if err != nil {
 				return err
 			}
-			service, err := ctx.service(cmd.Context())
-			if err != nil {
-				return err
+			var out struct {
+				Items []tokenView `json:"items"`
+				Limit int32       `json:"limit"`
+				Next  int32       `json:"next"`
+				Count int         `json:"count"`
 			}
-			defer ctx.close()
-			rows, err := service.ListTokens(cmd.Context(), actor, repo.ListOperatorParams{Limit: limit, Next: next})
+			path := "/admin/tokens?limit=" + strconv.FormatInt(int64(limit), 10) + "&next=" + strconv.FormatInt(int64(next), 10)
+			err = a.request(cmd.Context(), http.MethodGet, path, nil, &out)
 			if err != nil {
 				return renderError(ctx, "admin", "tokens_list", err, warnings)
 			}
-			items := make([]tokenView, 0, len(rows))
-			for _, row := range rows {
-				items = append(items, toTokenView(row))
-			}
-			return render(ctx, "admin", "tokens_list", map[string]any{"items": items, "count": len(items), "limit": limit, "next": next}, warnings)
+			return render(ctx, "admin", "tokens_list", out, warnings)
 		},
 	}
 	cmd.Flags().Int32Var(&limit, "limit", 100, "Result limit")
@@ -110,7 +108,7 @@ func adminTokensGetCommand(ctx *cliContext) *cobra.Command {
 		Short: "Get token by id",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			actor, warnings, err := ctx.adminActor(cmd.Context())
+			a, warnings, err := ctx.sourceAPI()
 			if err != nil {
 				return err
 			}
@@ -118,16 +116,12 @@ func adminTokensGetCommand(ctx *cliContext) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			service, err := ctx.service(cmd.Context())
-			if err != nil {
-				return err
-			}
-			defer ctx.close()
-			tok, err := service.GetToken(cmd.Context(), actor, id)
+			var out tokenView
+			err = a.request(cmd.Context(), http.MethodGet, "/admin/tokens/"+url.PathEscape(id.String()), nil, &out)
 			if err != nil {
 				return renderError(ctx, "admin", "tokens_get", err, warnings)
 			}
-			return render(ctx, "admin", "tokens_get", toTokenView(tok), warnings)
+			return render(ctx, "admin", "tokens_get", out, warnings)
 		},
 	}
 	return cmd
@@ -139,7 +133,7 @@ func adminTokensRevokeCommand(ctx *cliContext) *cobra.Command {
 		Short: "Revoke token by id",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			actor, warnings, err := ctx.adminActor(cmd.Context())
+			a, warnings, err := ctx.sourceAPI()
 			if err != nil {
 				return err
 			}
@@ -147,33 +141,13 @@ func adminTokensRevokeCommand(ctx *cliContext) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			service, err := ctx.service(cmd.Context())
-			if err != nil {
-				return err
-			}
-			defer ctx.close()
-			tok, err := service.RevokeToken(cmd.Context(), actor, id)
+			var out tokenView
+			err = a.request(cmd.Context(), http.MethodPost, "/admin/tokens/"+url.PathEscape(id.String())+"/revoke", nil, &out)
 			if err != nil {
 				return renderError(ctx, "admin", "tokens_revoke", err, warnings)
 			}
-			return render(ctx, "admin", "tokens_revoke", toTokenView(tok), warnings)
+			return render(ctx, "admin", "tokens_revoke", out, warnings)
 		},
 	}
 	return cmd
-}
-
-func (c *cliContext) adminActor(ctx context.Context) (prismauth.Actor, []string, error) {
-	cred, err := c.adminCredential()
-	if err != nil {
-		return prismauth.Actor{}, nil, err
-	}
-	service, err := c.service(ctx)
-	if err != nil {
-		return prismauth.Actor{}, cred.Warnings, err
-	}
-	actor, err := service.AuthenticateToken(ctx, cred.Secret)
-	if err != nil {
-		return prismauth.Actor{}, cred.Warnings, err
-	}
-	return actor, cred.Warnings, nil
 }

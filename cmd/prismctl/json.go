@@ -7,11 +7,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
-	prismauth "github.com/ChiaYuChang/prism/internal/auth"
-	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
-	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
 )
 
@@ -119,21 +118,19 @@ func (c *cliContext) runJSONAdmin(ctx context.Context, env commandEnvelope) erro
 	if strings.HasPrefix(env.Action, "sources_") {
 		return c.runJSONAdminSources(ctx, env)
 	}
-	actor, warnings, err := c.adminActorFromJSON(ctx, env.Auth)
+	cred, err := c.adminCredentialFromJSON(env.Auth)
 	if err != nil {
 		return err
 	}
-	service, err := c.service(ctx)
-	if err != nil {
-		return err
-	}
-	defer c.close()
+	a := &sourceAPI{baseURL: strings.TrimRight(c.apiURL, "/"), token: cred.Secret, client: http.DefaultClient}
+	warnings := cred.Warnings
 	switch env.Action {
 	case "tokens_create":
 		var params struct {
-			Type      string  `json:"type"`
-			Name      string  `json:"name"`
-			ExpiresAt *string `json:"expires_at"`
+			Type        string  `json:"type"`
+			Name        string  `json:"name"`
+			Permissions *uint8  `json:"permissions"`
+			ExpiresAt   *string `json:"expires_at"`
 		}
 		if err := json.Unmarshal(env.Params, &params); err != nil {
 			return err
@@ -146,11 +143,17 @@ func (c *cliContext) runJSONAdmin(ctx context.Context, env commandEnvelope) erro
 		if err != nil {
 			return err
 		}
-		res, err := service.CreateToken(ctx, actor, prismauth.CreateTokenRequest{Type: authtoken.Type(params.Type), Name: params.Name, ExpiresAt: expires})
+		var out tokenSecretView
+		err = a.request(ctx, http.MethodPost, "/admin/tokens", struct {
+			Type        string     `json:"type"`
+			Name        string     `json:"name"`
+			Permissions *uint8     `json:"permissions,omitempty"`
+			ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+		}{Type: params.Type, Name: params.Name, Permissions: params.Permissions, ExpiresAt: expires}, &out)
 		if err != nil {
 			return renderError(c, "admin", "tokens_create", err, warnings)
 		}
-		return render(c, "admin", "tokens_create", toTokenSecretView(res.Token, res.Raw), warnings)
+		return render(c, "admin", "tokens_create", out, warnings)
 	case "tokens_list":
 		var params struct {
 			Limit int32 `json:"limit"`
@@ -165,15 +168,18 @@ func (c *cliContext) runJSONAdmin(ctx context.Context, env commandEnvelope) erro
 		if params.Next == 0 {
 			params.Next = 1
 		}
-		rows, err := service.ListTokens(ctx, actor, repo.ListOperatorParams{Limit: params.Limit, Next: params.Next})
+		var out struct {
+			Items []tokenView `json:"items"`
+			Limit int32       `json:"limit"`
+			Next  int32       `json:"next"`
+			Count int         `json:"count"`
+		}
+		path := "/admin/tokens?limit=" + strconv.FormatInt(int64(params.Limit), 10) + "&next=" + strconv.FormatInt(int64(params.Next), 10)
+		err = a.request(ctx, http.MethodGet, path, nil, &out)
 		if err != nil {
 			return renderError(c, "admin", "tokens_list", err, warnings)
 		}
-		items := make([]tokenView, 0, len(rows))
-		for _, row := range rows {
-			items = append(items, toTokenView(row))
-		}
-		return render(c, "admin", "tokens_list", map[string]any{"items": items, "count": len(items), "limit": params.Limit, "next": params.Next}, warnings)
+		return render(c, "admin", "tokens_list", out, warnings)
 	case "tokens_get":
 		var params struct {
 			ID string `json:"id"`
@@ -185,11 +191,12 @@ func (c *cliContext) runJSONAdmin(ctx context.Context, env commandEnvelope) erro
 		if err != nil {
 			return err
 		}
-		tok, err := service.GetToken(ctx, actor, id)
+		var out tokenView
+		err = a.request(ctx, http.MethodGet, "/admin/tokens/"+url.PathEscape(id.String()), nil, &out)
 		if err != nil {
 			return renderError(c, "admin", "tokens_get", err, warnings)
 		}
-		return render(c, "admin", "tokens_get", toTokenView(tok), warnings)
+		return render(c, "admin", "tokens_get", out, warnings)
 	case "tokens_revoke":
 		var params struct {
 			ID string `json:"id"`
@@ -201,11 +208,12 @@ func (c *cliContext) runJSONAdmin(ctx context.Context, env commandEnvelope) erro
 		if err != nil {
 			return err
 		}
-		tok, err := service.RevokeToken(ctx, actor, id)
+		var out tokenView
+		err = a.request(ctx, http.MethodPost, "/admin/tokens/"+url.PathEscape(id.String())+"/revoke", nil, &out)
 		if err != nil {
 			return renderError(c, "admin", "tokens_revoke", err, warnings)
 		}
-		return render(c, "admin", "tokens_revoke", toTokenView(tok), warnings)
+		return render(c, "admin", "tokens_revoke", out, warnings)
 	default:
 		return renderError(c, "admin", env.Action, fmt.Errorf("unsupported admin action %q", env.Action), warnings)
 	}
@@ -263,28 +271,6 @@ func (c *cliContext) rootCredentialFromJSON(auth jsonAuth) (credential, error) {
 		return loadCredential(credentialRequest{File: auth.RootTokenFile, Raw: auth.RootToken, Name: "root"})
 	}
 	return c.rootCredential()
-}
-
-func (c *cliContext) adminActorFromJSON(ctx context.Context, auth jsonAuth) (prismauth.Actor, []string, error) {
-	var cred credential
-	var err error
-	if auth.AdminTokenFile != "" || auth.AdminToken != "" {
-		cred, err = loadCredential(credentialRequest{File: auth.AdminTokenFile, Raw: auth.AdminToken, Name: "admin"})
-	} else {
-		cred, err = c.adminCredential()
-	}
-	if err != nil {
-		return prismauth.Actor{}, nil, err
-	}
-	service, err := c.service(ctx)
-	if err != nil {
-		return prismauth.Actor{}, cred.Warnings, err
-	}
-	actor, err := service.AuthenticateToken(ctx, cred.Secret)
-	if err != nil {
-		return prismauth.Actor{}, cred.Warnings, err
-	}
-	return actor, cred.Warnings, nil
 }
 
 func (c *cliContext) adminCredentialFromJSON(auth jsonAuth) (credential, error) {
