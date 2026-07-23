@@ -10,9 +10,13 @@ services:
   prismctl-cli:
     profiles: [ tool ]
     image: prism/prismctl-cli:latest
+    read_only: true
+    cap_drop: [ ALL ]
+    security_opt: [ no-new-privileges:true ]
+    restart: "no"
     build:
       context: ..
-      dockerfile: deployments/Dockerfile.worker
+      dockerfile: deployments/Dockerfile.prismctl
       args:
         TARGET: prismctl-cli
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
@@ -26,10 +30,13 @@ services:
   prismctl-root:
     profiles: [ root ]
     image: prism/prismctl-root:latest
-    user: "0:0"
+    read_only: true
+    cap_drop: [ ALL ]
+    security_opt: [ no-new-privileges:true ]
+    restart: "no"
     build:
       context: ..
-      dockerfile: deployments/Dockerfile.worker
+      dockerfile: deployments/Dockerfile.prismctl
       args:
         TARGET: prismctl-root
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
@@ -217,7 +224,6 @@ services:
   otel-collector:
     profiles: [ obs ]
     image: otel/opentelemetry-collector-contrib:0.141.0
-    user: "0:0"
     command: [ "--config=/etc/otelcol-contrib/otel.yaml" ]
     depends_on:
       victoria-metrics:

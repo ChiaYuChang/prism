@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+
+ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot
+
+FROM golang:1.26-alpine AS build
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+COPY . .
+
+ARG TARGET=prismctl-cli
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+      -trimpath \
+      -ldflags="-s -w" \
+      -o /out/prismctl \
+      ./cmd/${TARGET}
+
+FROM ${RUNTIME_IMAGE}
+
+WORKDIR /app
+COPY --from=build /out/prismctl /app/prismctl
+
+ENTRYPOINT ["/app/prismctl"]
