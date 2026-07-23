@@ -133,6 +133,28 @@ type CreateTokenParams struct {
 	ExpiresAt     time.Time `validate:"required"`
 }
 
+type RootAuthParams struct {
+	HashAlgorithm string `validate:"required"`
+	TokenHash     string `validate:"required"`
+}
+
+type CreateRootControlParams struct {
+	ID            uuid.UUID `validate:"required"`
+	Name          string    `validate:"required"`
+	HashAlgorithm string    `validate:"required"`
+	TokenHash     string    `validate:"required"`
+	ExpiresAt     time.Time `validate:"required"`
+}
+
+type CreateRootAdminParams struct {
+	RootAuthParams
+	ID            uuid.UUID `validate:"required"`
+	Name          string    `validate:"required"`
+	HashAlgorithm string    `validate:"required"`
+	TokenHash     string    `validate:"required"`
+	ExpiresAt     time.Time `validate:"required"`
+}
+
 type RotateTokenParams struct {
 	ID            uuid.UUID `validate:"required"`
 	HashAlgorithm string    `validate:"required"`

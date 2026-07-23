@@ -21,7 +21,15 @@ type Repository interface {
 	Prompts() Prompts
 	Planner() PlannerResults
 	Tokens() Tokens
+	RootControl() RootControl
 	Sources() Sources
+}
+
+type RootControl interface {
+	InitRoot(ctx context.Context, arg CreateRootControlParams) (Token, error)
+	CheckRoot(ctx context.Context, arg RootAuthParams) (bool, error)
+	CreateAdmin(ctx context.Context, arg CreateRootAdminParams) (Token, error)
+	RevokeAll(ctx context.Context, arg RootAuthParams) (int64, error)
 }
 
 // TaskReporter is the push side of the task lifecycle: workers use it to
