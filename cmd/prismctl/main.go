@@ -33,6 +33,6 @@ func newRootCommand() *cobra.Command {
 		},
 	}
 	ctx.bindPersistentFlags(cmd)
-	cmd.AddCommand(newRootAuthCommand(ctx), newAdminCommand(ctx))
+	cmd.AddCommand(newAdminCommand(ctx))
 	return cmd
 }

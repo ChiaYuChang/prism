@@ -9,6 +9,7 @@ PG_PORT="${PRISMCTL_PG_PORT:-5432}"
 PG_USER="${PRISMCTL_PG_USERNAME:-prism}"
 PG_DB="${PRISMCTL_PG_DB:-prism}"
 PG_PASSWORD_FILE="${PRISMCTL_PG_PASSWORD_FILE:-.secrets/pg-prism}"
+API_URL="${PRISM_API_URL:-http://localhost:8091/api/v1}"
 
 if [[ ! -d .secrets ]]; then
     printf '%s\n' '.secrets is missing; run from the repository root' >&2
@@ -23,14 +24,15 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
-cli=(
-    go run ./cmd/prismctl
+root_cli=(
+    go run ./cmd/prismctl-root
     --pg-host "$PG_HOST"
     --pg-port "$PG_PORT"
     --pg-username "$PG_USER"
     --pg-password-file "$PG_PASSWORD_FILE"
     --pg-db "$PG_DB"
 )
+api_cli=(go run ./cmd/prismctl --api-url "$API_URL")
 
 if [[ ! -f "$ROOT_FILE" ]]; then
     mkdir -p "$(dirname "$ROOT_FILE")"
@@ -38,20 +40,20 @@ if [[ ! -f "$ROOT_FILE" ]]; then
     chmod 0600 "$ROOT_FILE"
 fi
 
-if ! "${cli[@]}" --root-token-file "$ROOT_FILE" root check >/dev/null 2>&1; then
-    "${cli[@]}" --root-token-file "$ROOT_FILE" root init >/dev/null
+if ! "${root_cli[@]}" --root-token-file "$ROOT_FILE" check >/dev/null 2>&1; then
+    "${root_cli[@]}" --root-token-file "$ROOT_FILE" init >/dev/null
 fi
 
 admin_valid=false
 if [[ -f "$ADMIN_FILE" ]]; then
-    if "${cli[@]}" --admin-token-file "$ADMIN_FILE" --output json admin tokens list >/dev/null 2>&1; then
+    if "${api_cli[@]}" --admin-token-file "$ADMIN_FILE" --output json admin tokens list >/dev/null 2>&1; then
         admin_valid=true
     fi
 fi
 
 if [[ "$admin_valid" != true ]]; then
     mkdir -p "$(dirname "$ADMIN_FILE")"
-    response="$("${cli[@]}" --root-token-file "$ROOT_FILE" --output json root admin-create --name local-admin)"
+    response="$("${root_cli[@]}" --root-token-file "$ROOT_FILE" --output json admin-create --name local-admin)"
     token="$(printf '%s' "$response" | jq -er '.result.token')"
     tmp="$(mktemp "${ADMIN_FILE}.XXXXXX")"
     printf '%s\n' "$token" >"$tmp"

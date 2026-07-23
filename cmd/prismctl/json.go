@@ -22,8 +22,6 @@ type commandEnvelope struct {
 }
 
 type jsonAuth struct {
-	RootTokenFile  string `json:"root_token_file"`
-	RootToken      string `json:"root_token"`
 	AdminTokenFile string `json:"admin_token_file"`
 	AdminToken     string `json:"admin_token"`
 }
@@ -44,8 +42,6 @@ func (c *cliContext) runJSON(ctx context.Context) error {
 		c.output = "json"
 	}
 	switch env.Endpoint {
-	case "root":
-		return c.runJSONRoot(ctx, env)
 	case "admin":
 		return c.runJSONAdmin(ctx, env)
 	default:
@@ -58,60 +54,6 @@ func (c *cliContext) readJSONInput() ([]byte, error) {
 		return os.ReadFile(c.inputFile)
 	}
 	return readStdin()
-}
-
-func (c *cliContext) runJSONRoot(ctx context.Context, env commandEnvelope) error {
-	cred, err := c.rootCredentialFromJSON(env.Auth)
-	if err != nil {
-		return err
-	}
-	service, err := c.service(ctx)
-	if err != nil {
-		return err
-	}
-	defer c.close()
-	switch env.Action {
-	case "init":
-		tok, err := service.InitRoot(ctx, cred.Secret)
-		if err != nil {
-			return renderError(c, "root", "init", err, cred.Warnings)
-		}
-		return render(c, "root", "init", toTokenView(tok), cred.Warnings)
-	case "check":
-		if err := service.CheckRoot(ctx, cred.Secret); err != nil {
-			return renderError(c, "root", "check", err, cred.Warnings)
-		}
-		return render(c, "root", "check", map[string]bool{"valid": true}, cred.Warnings)
-	case "admin_create":
-		var params struct {
-			Name      string  `json:"name"`
-			ExpiresAt *string `json:"expires_at"`
-		}
-		if err := json.Unmarshal(env.Params, &params); err != nil {
-			return err
-		}
-		expiresAt := ""
-		if params.ExpiresAt != nil {
-			expiresAt = *params.ExpiresAt
-		}
-		expires, err := parseOptionalTime(expiresAt)
-		if err != nil {
-			return err
-		}
-		res, err := service.CreateAdminWithRoot(ctx, cred.Secret, params.Name, expires)
-		if err != nil {
-			return renderError(c, "root", "admin_create", err, cred.Warnings)
-		}
-		return render(c, "root", "admin_create", toTokenSecretView(res.Token, res.Raw), cred.Warnings)
-	case "tokens_revoke_all":
-		count, err := service.RevokeAllWithRoot(ctx, cred.Secret)
-		if err != nil {
-			return renderError(c, "root", "tokens_revoke_all", err, cred.Warnings)
-		}
-		return render(c, "root", "tokens_revoke_all", map[string]int64{"revoked": count}, cred.Warnings)
-	default:
-		return renderError(c, "root", env.Action, fmt.Errorf("unsupported root action %q", env.Action), cred.Warnings)
-	}
 }
 
 func (c *cliContext) runJSONAdmin(ctx context.Context, env commandEnvelope) error {
@@ -264,13 +206,6 @@ func (c *cliContext) runJSONAdminSources(ctx context.Context, env commandEnvelop
 	default:
 		return renderError(c, "admin", env.Action, fmt.Errorf("unsupported source action %q", env.Action), cred.Warnings)
 	}
-}
-
-func (c *cliContext) rootCredentialFromJSON(auth jsonAuth) (credential, error) {
-	if auth.RootTokenFile != "" || auth.RootToken != "" {
-		return loadCredential(credentialRequest{File: auth.RootTokenFile, Raw: auth.RootToken, Name: "root"})
-	}
-	return c.rootCredential()
 }
 
 func (c *cliContext) adminCredentialFromJSON(auth jsonAuth) (credential, error) {

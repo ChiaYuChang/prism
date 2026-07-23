@@ -8,7 +8,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
 )
 
@@ -85,12 +84,4 @@ func errorCode(err error) string {
 		code = code[:len(code)-1]
 	}
 	return string(code)
-}
-
-func toTokenView(tok repo.Token) tokenView {
-	return tokenView{ID: tok.ID, Type: tok.Type, Name: tok.Name, Permissions: tok.Permissions, HashAlgorithm: tok.HashAlgorithm, CreatedAt: tok.CreatedAt, ExpiresAt: tok.ExpiresAt, LastUsedAt: tok.LastUsedAt, RenewedAt: tok.RenewedAt, RotatedAt: tok.RotatedAt, RevokedAt: tok.RevokedAt}
-}
-
-func toTokenSecretView(tok repo.Token, raw string) tokenSecretView {
-	return tokenSecretView{tokenView: toTokenView(tok), Token: raw}
 }

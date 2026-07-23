@@ -58,17 +58,6 @@ func loadCredential(req credentialRequest) (credential, error) {
 	return credential{}, fmt.Errorf("%s token not provided", req.Name)
 }
 
-func (c *cliContext) rootCredential() (credential, error) {
-	return loadCredential(credentialRequest{
-		File:    c.rootFile,
-		Raw:     c.rootToken,
-		EnvFile: "PRISM_ROOT_TOKEN_FILE",
-		EnvRaw:  "PRISM_ROOT_TOKEN",
-		Default: defaultRootTokenFile,
-		Name:    "root",
-	})
-}
-
 func (c *cliContext) adminCredential() (credential, error) {
 	return loadCredential(credentialRequest{
 		File:    c.adminFile,
