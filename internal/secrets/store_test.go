@@ -145,6 +145,16 @@ func TestWithPrefix(t *testing.T) {
 	assert.Equal(t, "google-gemini", mappings[0].Item)
 }
 
+func TestRootctlMappingIsOptIn(t *testing.T) {
+	for _, mapping := range DefaultMappings() {
+		assert.NotEqual(t, "pg-rootctl", mapping.Item)
+	}
+
+	got := WithRootctl(DefaultMappings())
+	require.Equal(t, "pg-rootctl", got[len(got)-1].Item)
+	require.Equal(t, "pg-rootctl", got[len(got)-1].Path)
+}
+
 func TestSyncRetrievesAllBeforeWriting(t *testing.T) {
 	dir := t.TempDir()
 	store := fakeStore{values: map[string][]byte{"one": []byte("value")}, err: errors.New("missing")}

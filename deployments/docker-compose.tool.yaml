@@ -25,6 +25,8 @@ services:
       PRISMCTL_ADMIN_API_URL: ${PRISMCTL_ADMIN_API_URL:-http://prism-api:8091/api/v1}
     secrets:
       - prism_admin_token
+    volumes:
+      - ../configs/registry:/app/configs/registry:ro
     networks:
       - prism-admin-net
 

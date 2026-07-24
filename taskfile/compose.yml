@@ -45,6 +45,19 @@ tasks:
           go run ./cmd/prism-secrets
         fi
 
+  secrets:sync-root:
+    desc: sync routine secrets plus the gated rootctl credential
+    preconditions:
+      - sh: test "${PRISM_BREAK_GLASS:-0}" = "1"
+        msg: "refuse root secret sync: set PRISM_BREAK_GLASS=1"
+    cmds:
+      - |
+        if [ "${PRISM_SECRETS_SYNC:-1}" = "0" ]; then
+          test -s .secrets/pg-rootctl
+        else
+          PRISM_SECRETS_INCLUDE_ROOTCTL=1 go run ./cmd/prism-secrets
+        fi
+
   bake:clean:
     desc: remove all per-(ENV,PROFILES) merged compose files
     summary: |
@@ -83,6 +96,24 @@ tasks:
       - mkdir -p {{.TASK_DIR}}
       - mkdir -p runtime/prompts runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
       - chmod 0777 runtime/logs runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - chmod 0777 runtime/prompts
+      - |
+        docker run --rm \
+          --env HOST_UID="$(id -u)" \
+          --env HOST_GID="$(id -g)" \
+          -v "$PWD/runtime/logs:/logs" \
+          -v "$PWD/runtime/prompts:/prompts" \
+          alpine:3.20 sh -c \
+          'chown -R "$HOST_UID:$HOST_GID" /logs /prompts && chmod -R a+rwX /logs /prompts'
+      - |
+        if [[ ",{{.COMPOSE_PROFILES}}," == *",obs,"* ]]; then
+          docker volume create "{{.PROJECT}}_otel_storage" >/dev/null
+          docker volume create "{{.PROJECT}}_otel_backup" >/dev/null
+          docker run --rm \
+            -v "{{.PROJECT}}_otel_storage:/var/lib/otelcol" \
+            -v "{{.PROJECT}}_otel_backup:/var/log/app" \
+            alpine:3.20 chown -R 10001:10001 /var/lib/otelcol /var/log/app
+        fi
       - docker compose -f {{.COMPOSE_MERGED}} up -d
       - "echo {{.MODE}} > {{.MODE_FILE}}"
       - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"

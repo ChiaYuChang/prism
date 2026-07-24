@@ -15,7 +15,6 @@ services:
   scheduler-slow:
     profiles: [ worker ]
     image: prism/scheduler:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -64,7 +63,6 @@ services:
   scheduler-fast:
     profiles: [ worker ]
     image: prism/scheduler:latest
-    user: "0:0"
     command:
       - --config=/app/configs/scheduler/fast.yaml
     environment:
@@ -103,7 +101,6 @@ services:
   discovery:
     profiles: [ worker ]
     image: prism/discovery:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -150,7 +147,6 @@ services:
   collector:
     profiles: [ worker ]
     image: prism/collector:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -200,7 +196,6 @@ services:
   archive:
     profiles: [ worker ]
     image: prism/archive:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -238,7 +233,6 @@ services:
   planner:
     profiles: [ planner ]
     image: prism/planner:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -288,7 +282,6 @@ services:
   embedder:
     profiles: [ worker ]
     image: prism/embedder:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
