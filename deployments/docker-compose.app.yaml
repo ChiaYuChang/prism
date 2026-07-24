@@ -6,7 +6,6 @@ services:
   schedule-trigger:
     profiles: [ app ]
     image: prism/schedule-trigger:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -45,7 +44,6 @@ services:
   batch-detector:
     profiles: [ app ]
     image: prism/batch-detector:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -86,7 +84,6 @@ services:
   batch-publisher:
     profiles: [ app ]
     image: prism/batch-publisher:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -134,7 +131,6 @@ services:
   prism-api:
     profiles: [ app ]
     image: prism/api-server:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker

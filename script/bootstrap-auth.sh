@@ -25,13 +25,13 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
-root_cli=(env PRISM_BREAK_GLASS=1 task prismctl:root --)
-api_cli=(task prismctl:cli --)
+root_cli=(env PRISM_BREAK_GLASS=1 task --silent prismctl:root --)
+api_cli=(task --silent prismctl:cli --)
 
 if [[ ! -f "$ROOT_FILE" ]]; then
     mkdir -p "$(dirname "$ROOT_FILE")"
     od -An -N32 -tx1 /dev/urandom | tr -d ' \n' >"$ROOT_FILE"
-    chmod 0600 "$ROOT_FILE"
+    chmod 0444 "$ROOT_FILE"
 fi
 
 if ! "${root_cli[@]}" check >/dev/null 2>&1; then
@@ -40,6 +40,10 @@ fi
 
 admin_valid=false
 if [[ -f "$ADMIN_FILE" ]]; then
+    # Docker Compose file-backed secrets preserve the source file mode. The
+    # owner-only .secrets directory still protects this host file while the
+    # non-root CLI container needs read access to the mounted secret.
+    chmod 0444 "$ADMIN_FILE"
     if "${api_cli[@]}" --output json admin tokens list >/dev/null 2>&1; then
         admin_valid=true
     fi
@@ -48,10 +52,10 @@ fi
 if [[ "$admin_valid" != true ]]; then
     mkdir -p "$(dirname "$ADMIN_FILE")"
     response="$("${root_cli[@]}" --output json admin-create --name local-admin)"
-    token="$(printf '%s' "$response" | jq -er '.result.token')"
+    token="$(printf '%s\n' "$response" | jq -Rer 'select(startswith("{")) | fromjson.result.token')"
     tmp="$(mktemp "${ADMIN_FILE}.XXXXXX")"
     printf '%s\n' "$token" >"$tmp"
-    chmod 0600 "$tmp"
+    chmod 0444 "$tmp"
     mv "$tmp" "$ADMIN_FILE"
     unset response token
 fi

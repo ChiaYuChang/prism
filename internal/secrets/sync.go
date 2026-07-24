@@ -25,12 +25,19 @@ func DefaultMappings() []Mapping {
 		{Item: "opencode", Path: "opencode"},
 		{Item: "pg-admin", Path: "pg-admin"},
 		{Item: "pg-prism", Path: "pg-prism"},
-		{Item: "pg-rootctl", Path: "pg-rootctl"},
 		{Item: "seaweedfs", Path: "seaweedfs"},
 		{Item: "serpapi", Path: "serpapi"},
 		{Item: "valkey-admin", Path: "valkey-admin"},
 		{Item: "valkey-prism", Path: "valkey-app"},
 	}
+}
+
+// WithRootctl adds the break-glass database credential to the normal mappings.
+// It is intentionally opt-in so routine stack startup does not require root
+// control secrets.
+func WithRootctl(mappings []Mapping) []Mapping {
+	result := append([]Mapping(nil), mappings...)
+	return append(result, Mapping{Item: "pg-rootctl", Path: "pg-rootctl"})
 }
 
 // WithPrefix returns mappings whose item names are prefixed for the external

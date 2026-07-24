@@ -19,6 +19,9 @@ func main() {
 	flag.Parse()
 
 	mappings := secrets.WithPrefix(secrets.DefaultMappings(), *prefixFlag)
+	if os.Getenv("PRISM_SECRETS_INCLUDE_ROOTCTL") == "1" {
+		mappings = secrets.WithRootctl(mappings)
+	}
 	if err := secrets.Sync(context.Background(), secrets.NewRBWStore(), *dir, mappings); err != nil {
 		fmt.Fprintf(os.Stderr, "sync secrets: %v\n", err)
 		os.Exit(1)

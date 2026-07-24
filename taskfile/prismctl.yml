@@ -23,9 +23,8 @@ tasks:
         msg: "missing .secrets/prism_root_token"
       - sh: test -f .secrets/pg-prism
         msg: "missing .secrets/pg-prism"
-      - sh: test -f .secrets/pg-rootctl
-        msg: "missing .secrets/pg-rootctl"
     cmds:
+      - task: :compose:secrets:sync-root
       - ENV={{.ENV}} PROFILES=root ./script/compose-bake.sh
       - docker compose -f {{.ROOT_COMPOSE}} up -d postgres
       - POSTGRES_ROOTCTL_PASSWORD_FILE=.secrets/pg-rootctl ./script/provision-rootctl-db.sh
