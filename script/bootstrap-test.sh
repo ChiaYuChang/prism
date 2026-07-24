@@ -10,7 +10,7 @@ MODEL_NAME="${PRISM_TEST_MODEL_NAME:-gemma4:31b-cloud}"
 MODEL_PROVIDER="${PRISM_TEST_MODEL_PROVIDER:-ollama}"
 MODEL_TYPE="${PRISM_TEST_MODEL_TYPE:-EXTRACTOR}"
 PROMPT_NAME="${PRISM_TEST_PROMPT_NAME:-worker/planner/analysis/extractor}"
-PROMPT_FILE="${PRISM_TEST_PROMPT_FILE:-assets/worker/planner/prompts/analysis/extractor.md}"
+PROMPT_FILE="${PRISM_TEST_PROMPT_FILE:-assets/worker/planner/extractor_v2.md}"
 PROMPT_API_NAME="${PROMPT_NAME//\//.}"
 
 require_command() {

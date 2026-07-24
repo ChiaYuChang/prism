@@ -1,6 +1,6 @@
 health-port: 8094
 shutdown-timeout: 3m
-prompt-path: /app/assets/worker/planner/prompts/analysis/extractor.md
+prompt-path: /app/assets/worker/planner/extractor_v2.md
 prompt:
   key: worker/planner/analysis/extractor
 prompt-storage: '{{ env "PRISM_PROMPT_STORAGE_URI" "file:///app/runtime/prompts" }}'

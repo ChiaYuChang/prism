@@ -10,7 +10,7 @@ version: 1
 #
 # fallback:
 #   enable: true
-#   prompt_file: /app/assets/worker/collector/prompts/collector/article_parser.md
+#   prompt_file: /app/assets/worker/collector/parser_v2.md
 #   # Optional DB-registered prompt pin. Takes precedence over prompt_file.
 #   prompt:
 #     id: 00000000-0000-0000-0000-000000000000
