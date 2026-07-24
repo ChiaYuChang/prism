@@ -45,6 +45,12 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/scheduler-slow:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8090/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     stop_grace_period: 45s
     depends_on:
       postgres:
@@ -82,6 +88,12 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/scheduler-fast:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8091/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     stop_grace_period: 45s
     depends_on:
       scheduler-slow:
@@ -121,6 +133,12 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/discovery:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8092/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     stop_grace_period: 45s
     depends_on:
       postgres:
@@ -161,6 +179,12 @@ services:
       - sw_secret_key
     volumes:
       - ../runtime/logs/collector:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8093/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     stop_grace_period: 150s
     networks:
       - prism-net
@@ -197,6 +221,12 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/archive:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8095/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     stop_grace_period: 45s
     depends_on:
       nats:
@@ -241,6 +271,12 @@ services:
     volumes:
       - ../runtime/logs/planner:/logs
       - ../runtime/prompts:/app/runtime/prompts
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8094/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     stop_grace_period: 210s
     depends_on:
       postgres:
@@ -281,6 +317,12 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ../runtime/logs/embedder:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8095/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     stop_grace_period: 150s
     depends_on:
       postgres:
