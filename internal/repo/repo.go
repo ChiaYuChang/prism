@@ -23,6 +23,7 @@ type Repository interface {
 	Tokens() Tokens
 	RootControl() RootControl
 	Sources() Sources
+	Models() Models
 }
 
 type RootControl interface {
@@ -154,9 +155,15 @@ type BatchTrigger interface {
 	ListContentsByBatchID(ctx context.Context, batchID uuid.UUID) ([]Content, error)
 }
 
-type Embeddings interface {
+type Models interface {
 	GetModelByID(ctx context.Context, id int16) (Model, error)
 	GetModelByNameAndType(ctx context.Context, name string, modelType string) (Model, error)
+	GetEmbedderByName(ctx context.Context, name string) (Model, error)
+	GetExtractorByName(ctx context.Context, name string) (Model, error)
+	GetAnalyzerByName(ctx context.Context, name string) (Model, error)
+}
+
+type Embeddings interface {
 	GetCandidateEmbeddingInputHash(ctx context.Context, candidateID uuid.UUID, modelID int16, category string) (string, error)
 	GetContentEmbeddingInputHash(ctx context.Context, contentID uuid.UUID, modelID int16) (string, error)
 	UpsertCandidateEmbedding(ctx context.Context, arg CreateCandidateEmbeddingParams) (CandidateEmbedding, error)

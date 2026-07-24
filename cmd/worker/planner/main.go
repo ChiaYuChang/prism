@@ -94,7 +94,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() { _ = dbRepoCloser.Close() }()
-	plannerModel, err := loadPlannerModel(ctx, dbRepo.Embedding(), config.LLM.Model)
+	plannerModel, err := loadPlannerModel(ctx, dbRepo.Models(), config.LLM.Model)
 	if err != nil {
 		logger.Error("configured planner model is not registered", "model", config.LLM.Model, "error", err)
 		monitor.SetStatus(obs.LevelError, "Configured planner model is not registered")
@@ -199,19 +199,19 @@ func main() {
 	}
 }
 
-func ensurePlannerModel(ctx context.Context, embeddings repo.Embeddings, modelName string) error {
-	_, err := loadPlannerModel(ctx, embeddings, modelName)
+func ensurePlannerModel(ctx context.Context, models repo.Models, modelName string) error {
+	_, err := loadPlannerModel(ctx, models, modelName)
 	return err
 }
 
-func loadPlannerModel(ctx context.Context, embeddings repo.Embeddings, modelName string) (repo.Model, error) {
-	if embeddings == nil {
-		return repo.Model{}, fmt.Errorf("embedding repository is missing")
+func loadPlannerModel(ctx context.Context, models repo.Models, modelName string) (repo.Model, error) {
+	if models == nil {
+		return repo.Model{}, fmt.Errorf("models repository is missing")
 	}
 	if strings.TrimSpace(modelName) == "" {
 		return repo.Model{}, fmt.Errorf("planner model is missing")
 	}
-	model, err := embeddings.GetModelByNameAndType(ctx, modelName, "EXTRACTOR")
+	model, err := models.GetExtractorByName(ctx, modelName)
 	if err != nil {
 		return repo.Model{}, fmt.Errorf("planner model %q is not registered: %w", modelName, err)
 	}

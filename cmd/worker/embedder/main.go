@@ -15,7 +15,10 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 )
 
-const tracerName = "prism.worker.embedder"
+const (
+	WorkerTracerName    = "prism.worker.embedder"
+	MessagingTracerName = "prism.messaging"
+)
 
 func main() {
 	config, err := LoadConfig(os.Args[1:])
@@ -45,9 +48,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() { _ = telemetry.Shutdown(context.Background()) }()
-	tracer := telemetry.Tracer(tracerName)
+	tracer := telemetry.Tracer(WorkerTracerName)
 	infra.SetTracer(tracer)
-	metrics, err := newMetrics(telemetry.Meter(tracerName))
+	metrics, err := newMetrics(telemetry.Meter(WorkerTracerName))
 	if err != nil {
 		logger.Error("failed to initialize embedder metrics", "error", err)
 		os.Exit(1)
@@ -60,12 +63,17 @@ func main() {
 		monitor.SetStatus(obs.LevelWarn, "shutting down")
 	}()
 
-	msgr, err := config.Messenger.NewMessenger(logger, &infra.MessagingTelemetry{
-		Tracer: telemetry.Tracer("prism.messaging"),
-		Meter:  telemetry.Meter("prism.messaging"),
-	})
+	msgr, err := config.Messenger.NewMessenger(logger,
+		&infra.MessagingTelemetry{
+			Tracer: telemetry.Tracer(MessagingTracerName),
+			Meter:  telemetry.Meter(MessagingTracerName),
+		})
 	if err != nil {
-		logger.Error("failed to initialize messenger", "error", err)
+		logger.Error("failed to initialize messenger",
+			"error", err,
+			"tracer", MessagingTracerName,
+			"meter", MessagingTracerName,
+		)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize messenger")
 		os.Exit(1)
 	}
@@ -79,38 +87,42 @@ func main() {
 	}
 	defer func() { _ = dbCloser.Close() }()
 
-	model, err := dbRepo.Embedding().GetModelByNameAndType(ctx, config.LLM.Model, "EMBEDDER")
+	model, err := dbRepo.Models().GetEmbedderByName(ctx, config.Embedder.Model)
 	if err != nil {
-		logger.Error("configured embedding model is not registered", "model", config.LLM.Model, "error", err)
+		logger.Error("configured embedding model is not registered", "model", config.Embedder.Model, "error", err)
 		monitor.SetStatus(obs.LevelError, "Configured embedding model is not registered")
 		os.Exit(1)
 	}
-	embedder, err := llmfactory.NewEmbedder(ctx, config.LLM, logger)
+	embedder, err := llmfactory.NewEmbedder(ctx, config.Embedder.LLMConfig, logger)
 	if err != nil {
 		logger.Error("failed to initialize LLM embedder", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize LLM embedder")
 		os.Exit(1)
 	}
-	handler, err := NewHandler(
-		logger,
-		tracer,
-		embedder,
-		dbRepo.Scout(),
-		dbRepo.Pipeline(),
-		dbRepo.Embedding(),
-		dbRepo.Scheduler(),
-		metrics,
-		model.ID,
-		config.LLM.Model,
-		config.EmbeddingDimension,
-		config.RetryMax,
-	)
+	handler, err := NewHandler(HandlerConfig{
+		Logger: logger,
+		Tracer: tracer,
+		Embedder: EmbedderConfig{
+			Embedder:  embedder,
+			ModelID:   model.ID,
+			ModelName: config.Embedder.Model,
+			Dimension: config.Embedder.Dimension,
+			RetryMax:  config.Embedder.RetryMax,
+		},
+		Store: Store{
+			Scout:      dbRepo.Scout(),
+			Pipeline:   dbRepo.Pipeline(),
+			Embeddings: dbRepo.Embedding(),
+			Reporter:   dbRepo.Scheduler(),
+			Tasks:      dbRepo.Tasks(),
+		},
+		Metrics: metrics,
+	})
 	if err != nil {
 		logger.Error("failed to initialize embedder handler", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize embedder handler")
 		os.Exit(1)
 	}
-	handler.taskReader = dbRepo.Tasks()
 
 	messages, err := msgr.Subscribe(ctx, message.TaskTopic)
 	if err != nil {
@@ -122,9 +134,9 @@ func main() {
 	logger.Info("embedder worker started",
 		"topic", message.TaskTopic,
 		"messenger", config.MessengerType,
-		"model", config.LLM.Model,
+		"model", config.Embedder.Model,
 		"model_id", model.ID,
-		"dimension", config.EmbeddingDimension,
+		"dimension", config.Embedder.Dimension,
 	)
 
 	for {

@@ -68,7 +68,8 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Duration("shutdown-timeout", 2*time.Minute, "Graceful shutdown drain timeout")
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.collector"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.collector"))
-	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
+	appconfig.RegisterMessengerFlags(fs, "collector-worker")
+
 	fs.Duration("http-timeout", 30*time.Second, "HTTP timeout for page fetch requests")
 	fs.Duration("max-processing-time", 2*time.Minute, "Maximum wall-clock time for handling a single message (ctx timeout passed to handler)")
 	fs.Int("retry-max", repo.DefaultTaskRetryMax, "Maximum total task attempts before terminal failure")
@@ -94,18 +95,6 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("s3-secret-key", "", "S3 secret key (empty uses AWS SDK default credential chain)")
 	fs.String("s3-secret-key-file", "", "Path to file containing the S3 secret key")
 	fs.Bool("s3-use-path-style", true, "Use path style addressing (required for SeaweedFS/MinIO)")
-
-	fs.String("nats-host", "localhost", "The NATS server host")
-	fs.Int("nats-port", 4222, "The NATS server port")
-	fs.String("nats-token", "", "The NATS server auth token")
-	fs.String("nats-token-file", "", "Path to file containing the NATS auth token (overrides --nats-token and the env var)")
-	fs.String("nats-password", "", "The NATS server password")
-	fs.String("nats-password-file", "", "Path to file containing the NATS password (overrides --nats-password and the env var)")
-	fs.String("queue-group", "collector-worker", "Queue group for worker subscriptions")
-	fs.Int("subscribers-count", 1, "How many subscriber goroutines to run")
-	fs.Duration("ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscriber")
-	fs.Int64("channel-buffer", 100, "GoChannel output buffer size")
-	fs.Bool("persistent", true, "Whether GoChannel should persist messages in memory")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, fmt.Errorf("failed to parse flags: %w", err)
@@ -155,32 +144,11 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, fmt.Errorf("s3 secrets: %w", err)
 	}
 
-	switch config.MessengerType {
-	case "nats":
-		var natsCfg appconfig.NatsConfig
-		if err := v.Unmarshal(&natsCfg); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal nats config: %w", err)
-		}
-		if natsCfg.SubscribersCount == 0 {
-			natsCfg.SubscribersCount = 1
-		}
-		if natsCfg.AckWaitTimeout == 0 {
-			natsCfg.AckWaitTimeout = 30 * time.Second
-		}
-		if err := natsCfg.ResolveSecrets(); err != nil {
-			return nil, fmt.Errorf("nats secrets: %w", err)
-		}
-		config.Messenger = &natsCfg
-	case "gochannel":
-		var goChannelCfg appconfig.GoChannelConfig
-		if err := v.Unmarshal(&goChannelCfg); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal gochannel config: %w", err)
-		}
-		if goChannelCfg.ChannelBuffer == 0 {
-			goChannelCfg.ChannelBuffer = 100
-		}
-		config.Messenger = &goChannelCfg
+	msgrCfg, err := appconfig.LoadMessengerConfig(v)
+	if err != nil {
+		return nil, err
 	}
+	config.Messenger = msgrCfg
 
 	if config.CaptureDir != "" && config.FixtureBase != "" {
 		return nil, fmt.Errorf("--capture-dir and --fixture-base are mutually exclusive")

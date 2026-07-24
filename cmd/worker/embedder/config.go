@@ -15,17 +15,21 @@ import (
 
 const defaultEmbeddingDimension = 768
 
+type EmbedderSettings struct {
+	appconfig.LLMConfig `mapstructure:",squash"`
+	Dimension           int `mapstructure:"dimension" validate:"required,min=1"`
+	RetryMax            int `mapstructure:"retry-max" validate:"required,min=1"`
+}
+
 type Config struct {
-	HealthPort         int                       `mapstructure:"health-port" validate:"required,min=1024,max=65535"`
-	ShutdownTimeout    time.Duration             `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
-	RetryMax           int                       `mapstructure:"retry-max" validate:"required,min=1"`
-	EmbeddingDimension int                       `mapstructure:"embedding-dimension" validate:"required,min=1"`
-	Logger             obs.LoggingConfig         `mapstructure:"logger"`
-	Telemetry          obs.TelemetryConfig       `mapstructure:"telemetry"`
-	Postgres           appconfig.PostgresConfig  `mapstructure:"postgres"`
-	MessengerType      string                    `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
-	Messenger          appconfig.MessengerConfig `mapstructure:"-"`
-	LLM                appconfig.LLMConfig       `mapstructure:"llm"`
+	HealthPort      int                       `mapstructure:"health-port"      validate:"required,min=1024,max=65535"`
+	ShutdownTimeout time.Duration             `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
+	Embedder        EmbedderSettings          `mapstructure:"embedder"`
+	Logger          obs.LoggingConfig         `mapstructure:"logger"`
+	Telemetry       obs.TelemetryConfig       `mapstructure:"telemetry"`
+	Postgres        appconfig.PostgresConfig  `mapstructure:"postgres"`
+	MessengerType   string                    `mapstructure:"messenger-type"   validate:"oneof=nats gochannel"`
+	Messenger       appconfig.MessengerConfig `mapstructure:"-"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -42,17 +46,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("embedding-dimension", defaultEmbeddingDimension, "Expected vector dimension")
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.embedder"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.embedder"))
-
-	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
-	fs.String("nats-host", "localhost", "The NATS server host")
-	fs.Int("nats-port", 4222, "The NATS server port")
-	fs.String("nats-token", "", "The NATS server auth token")
-	fs.String("nats-token-file", "", "Path to file containing the NATS auth token")
-	fs.String("queue-group", "embedder-worker", "Queue group for worker subscriptions")
-	fs.Int("subscribers-count", 1, "How many subscriber goroutines to run")
-	fs.Duration("ack-wait-timeout", 2*time.Minute, "Ack wait timeout for NATS subscriber")
-	fs.Int64("channel-buffer", 100, "GoChannel output buffer size")
-	fs.Bool("persistent", true, "Whether GoChannel should persist messages in memory")
+	appconfig.RegisterMessengerFlags(fs, "embedder-worker")
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -79,12 +73,14 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
 	}
+	_ = v.BindPFlag("embedder.dimension", fs.Lookup("embedding-dimension"))
+	_ = v.BindPFlag("embedder.retry-max", fs.Lookup("retry-max"))
 
 	var config Config
 	if err := config.Postgres.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
-	if err := config.LLM.BindFlags(v, fs); err != nil {
+	if err := config.Embedder.LLMConfig.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
 	if err := obs.BindLoggingFlags(v, fs); err != nil {
@@ -109,36 +105,15 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := config.Postgres.ResolveSecrets(); err != nil {
 		return nil, fmt.Errorf("resolve Postgres secrets: %w", err)
 	}
-	if err := config.LLM.ResolveSecrets(); err != nil {
+	if err := config.Embedder.LLMConfig.ResolveSecrets(); err != nil {
 		return nil, fmt.Errorf("resolve LLM secrets: %w", err)
 	}
 
-	switch config.MessengerType {
-	case "nats":
-		var natsConfig appconfig.NatsConfig
-		if err := v.Unmarshal(&natsConfig); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal NATS config: %w", err)
-		}
-		if err := natsConfig.ResolveSecrets(); err != nil {
-			return nil, fmt.Errorf("resolve NATS secrets: %w", err)
-		}
-		if natsConfig.SubscribersCount == 0 {
-			natsConfig.SubscribersCount = 1
-		}
-		if natsConfig.AckWaitTimeout == 0 {
-			natsConfig.AckWaitTimeout = 2 * time.Minute
-		}
-		config.Messenger = &natsConfig
-	case "gochannel":
-		var goChannelConfig appconfig.GoChannelConfig
-		if err := v.Unmarshal(&goChannelConfig); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal GoChannel config: %w", err)
-		}
-		if goChannelConfig.ChannelBuffer == 0 {
-			goChannelConfig.ChannelBuffer = 100
-		}
-		config.Messenger = &goChannelConfig
+	msgrConfig, err := appconfig.LoadMessengerConfig(v)
+	if err != nil {
+		return nil, err
 	}
+	config.Messenger = msgrConfig
 
 	validate := validator.New()
 	if err := validate.Struct(&config); err != nil {

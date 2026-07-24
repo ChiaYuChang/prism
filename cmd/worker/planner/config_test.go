@@ -54,17 +54,17 @@ func setShippedConfigEnv(t *testing.T) {
 }
 
 func TestEnsurePlannerModel(t *testing.T) {
-	embeddings := mocks.NewMockEmbeddings(t)
-	embeddings.EXPECT().GetModelByNameAndType(context.Background(), "gemma4:31b-cloud", "EXTRACTOR").Return(repo.Model{ID: 1}, nil)
+	models := mocks.NewMockModels(t)
+	models.EXPECT().GetExtractorByName(context.Background(), "gemma4:31b-cloud").Return(repo.Model{ID: 1}, nil)
 
-	require.NoError(t, ensurePlannerModel(context.Background(), embeddings, "gemma4:31b-cloud"))
+	require.NoError(t, ensurePlannerModel(context.Background(), models, "gemma4:31b-cloud"))
 }
 
 func TestEnsurePlannerModelMissing(t *testing.T) {
-	embeddings := mocks.NewMockEmbeddings(t)
-	embeddings.EXPECT().GetModelByNameAndType(context.Background(), "missing", "EXTRACTOR").Return(repo.Model{}, errors.New("not found"))
+	models := mocks.NewMockModels(t)
+	models.EXPECT().GetExtractorByName(context.Background(), "missing").Return(repo.Model{}, errors.New("not found"))
 
-	err := ensurePlannerModel(context.Background(), embeddings, "missing")
+	err := ensurePlannerModel(context.Background(), models, "missing")
 
 	require.Error(t, err)
 }

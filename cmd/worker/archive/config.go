@@ -36,16 +36,8 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("archive", "", "S3 archive URI (s3://bucket/prefix)")
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.archive"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.archive"))
-	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
-	fs.String("nats-host", "localhost", "The NATS server host")
-	fs.Int("nats-port", 4222, "The NATS server port")
-	fs.String("nats-token", "", "The NATS server auth token")
-	fs.String("nats-token-file", "", "Path to file containing the NATS auth token")
-	fs.String("queue-group", "archive-worker", "Queue group for worker subscriptions")
-	fs.Int("subscribers-count", 1, "How many subscriber goroutines to run")
-	fs.Duration("ack-wait-timeout", 30*time.Second, "Ack wait timeout for NATS subscriber")
-	fs.Int64("channel-buffer", 100, "GoChannel output buffer size")
-	fs.Bool("persistent", true, "Whether GoChannel should persist messages in memory")
+	appconfig.RegisterMessengerFlags(fs, "archive-worker")
+
 	fs.String("s3-endpoint", "", "S3 endpoint URL")
 	fs.String("s3-region", "us-east-1", "S3 region")
 	fs.String("s3-access-key", "", "S3 access key")
@@ -91,23 +83,11 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, fmt.Errorf("s3 secrets: %w", err)
 	}
 
-	switch config.MessengerType {
-	case "nats":
-		var natsCfg appconfig.NatsConfig
-		if err := v.Unmarshal(&natsCfg); err != nil {
-			return nil, fmt.Errorf("unmarshal nats config: %w", err)
-		}
-		if err := natsCfg.ResolveSecrets(); err != nil {
-			return nil, fmt.Errorf("nats secrets: %w", err)
-		}
-		config.Messenger = &natsCfg
-	case "gochannel":
-		var goChannelCfg appconfig.GoChannelConfig
-		if err := v.Unmarshal(&goChannelCfg); err != nil {
-			return nil, fmt.Errorf("unmarshal gochannel config: %w", err)
-		}
-		config.Messenger = &goChannelCfg
+	msgrCfg, err := appconfig.LoadMessengerConfig(v)
+	if err != nil {
+		return nil, err
 	}
+	config.Messenger = msgrCfg
 	if err := validator.New().Struct(&config); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}

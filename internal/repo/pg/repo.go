@@ -81,6 +81,10 @@ type PGSources struct {
 	q *Queries
 }
 
+type PGModels struct {
+	q *Queries
+}
+
 type pgBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
@@ -99,6 +103,7 @@ var _ repo.Operator = (*PGOperator)(nil)
 var _ repo.Prompts = (*PGPrompts)(nil)
 var _ repo.Tokens = (*PGTokens)(nil)
 var _ repo.Sources = (*PGSources)(nil)
+var _ repo.Models = (*PGModels)(nil)
 
 // Repository root getters.
 func (r *PGRepository) Scheduler() repo.Scheduler {
@@ -151,6 +156,10 @@ func (r *PGRepository) Tokens() repo.Tokens {
 
 func (r *PGRepository) Sources() repo.Sources {
 	return &PGSources{q: r.q}
+}
+
+func (r *PGRepository) Models() repo.Models {
+	return &PGModels{q: r.q}
 }
 
 // Scheduler repository.
@@ -1066,8 +1075,8 @@ func (r *PGBatchTrigger) ListContentsByBatchID(ctx context.Context, batchID uuid
 	return out, nil
 }
 
-// Embeddings repository.
-func (r *PGEmbeddings) GetModelByID(ctx context.Context, id int16) (repo.Model, error) {
+// Models repository.
+func (r *PGModels) GetModelByID(ctx context.Context, id int16) (repo.Model, error) {
 	row, err := r.q.GetModelByID(ctx, id)
 	if err != nil {
 		return repo.Model{}, err
@@ -1075,7 +1084,7 @@ func (r *PGEmbeddings) GetModelByID(ctx context.Context, id int16) (repo.Model, 
 	return dbModelToRepoModel(row), nil
 }
 
-func (r *PGEmbeddings) GetModelByNameAndType(ctx context.Context, name string, modelType string) (repo.Model, error) {
+func (r *PGModels) GetModelByNameAndType(ctx context.Context, name string, modelType string) (repo.Model, error) {
 	row, err := r.q.GetModelByNameAndType(ctx, GetModelByNameAndTypeParams{
 		Name: name,
 		Type: ModelType(modelType),
@@ -1085,6 +1094,20 @@ func (r *PGEmbeddings) GetModelByNameAndType(ctx context.Context, name string, m
 	}
 	return dbModelToRepoModel(row), nil
 }
+
+func (r *PGModels) GetEmbedderByName(ctx context.Context, name string) (repo.Model, error) {
+	return r.GetModelByNameAndType(ctx, name, string(ModelTypeEMBEDDER))
+}
+
+func (r *PGModels) GetExtractorByName(ctx context.Context, name string) (repo.Model, error) {
+	return r.GetModelByNameAndType(ctx, name, string(ModelTypeEXTRACTOR))
+}
+
+func (r *PGModels) GetAnalyzerByName(ctx context.Context, name string) (repo.Model, error) {
+	return r.GetModelByNameAndType(ctx, name, string(ModelTypeANALYZER))
+}
+
+// Embeddings repository.
 
 func (r *PGEmbeddings) GetCandidateEmbeddingInputHash(ctx context.Context, candidateID uuid.UUID, modelID int16, category string) (string, error) {
 	return r.q.GetCandidateEmbeddingInputHash(ctx, GetCandidateEmbeddingInputHashParams{

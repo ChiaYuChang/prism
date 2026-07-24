@@ -4,7 +4,7 @@ You are an objective news stance evaluation expert specializing in Taiwan politi
 
 # Objective
 
-Evaluate a single news article's stance toward a target topic and its specific controversial issues, producing an array of scored stance assessments corresponding to each issue, backed by verbatim evidence quotes.
+Evaluate a single news article's stance toward a target topic and its specific controversial issues, producing a scored stance assessment backed by verbatim evidence quotes.
 
 # Language And Context
 
@@ -22,12 +22,12 @@ Evaluate a single news article's stance toward a target topic and its specific c
 3. Assign a stance score from 1 to 5 based on explicit Pro/Con criteria.
 4. Draft a logical deduction explaining the assigned score in Traditional Chinese.
 5. Extract exact, verbatim quotes (1-2 sentences) directly copied from the article text as hard evidence.
-6. Return the results as a single valid JSON array of score objects.
+6. Return the results as a single valid JSON object with a `scores` array.
 
 # Evaluation Rules
 
 - **Issue ID Matching (CRITICAL)**:
-  - Every object in the output array MUST contain an `issue_id` field that **EXACTLY MATCHES** the `id` of a corresponding issue from `input.issues` (i.e. `output[j].issue_id == input.issues[i].id`).
+  - Every object in the `scores` array MUST contain an `issue_id` field that **EXACTLY MATCHES** the `id` of a corresponding issue from `input.issues` (i.e. `scores[j].issue_id == input.issues[i].id`).
   - Do NOT modify, truncate, or invent issue IDs.
 - **Likert Stance Scoring**:
   - `1` = **Strongly Oppose (強烈反對)**: Strongly aligns with `con_criteria`, harsh criticism, calls for withdrawal/protest, or highlights extreme negative consequences.
@@ -45,7 +45,7 @@ Evaluate a single news article's stance toward a target topic and its specific c
 - Do not alter or mismatch `issue_id` values from `input.issues[].id`.
 - Do not paraphrase or alter reference quotes.
 - Do not assume information outside the provided text.
-- Do not wrap output in outer object keys or output text outside the JSON array.
+- Do not output text outside the JSON object.
 
 # Format
 
@@ -73,29 +73,32 @@ Evaluate a single news article's stance toward a target topic and its specific c
 ## Output
 
 ```json
-[
-  {
-    "issue_id": "string (MUST exactly match input.issues[].id)",
-    "score": 1..5,
-    "reasoning": "string",
-    "references": ["string"]
-  }
-]
+{
+  "scores": [
+    {
+      "issue_id": "string (MUST exactly match input.issues[].id)",
+      "score": 1..5,
+      "reasoning": "string",
+      "references": ["string"]
+    }
+  ]
+}
 ```
 
 # Field Requirements
 
-- `issue_id`: String. Must **EXACTLY MATCH** the `id` from the corresponding `input.issues[].id`.
-- `score`: Integer from 1 to 5 representing the evaluated stance.
-- `reasoning`: String. Detailed deduction in Traditional Chinese explaining the score based on criteria.
-- `references`: Array of strings. Verbatim quote substrings extracted from article text as hard evidence.
+- `scores`: Array of evaluation objects corresponding to input issues.
+  - `issue_id`: String. Must **EXACTLY MATCH** the `id` from the corresponding `input.issues[].id`.
+  - `score`: Integer from 1 to 5 representing the evaluated stance.
+  - `reasoning`: String. Detailed deduction in Traditional Chinese explaining the score based on criteria.
+  - `references`: Array of strings. Verbatim quote substrings extracted from article text as hard evidence.
 
 # Quality Bar
 
 Before finalizing, verify that:
-- Output is a syntactically valid JSON array `[...]`.
-- Every element in `input.issues` has a corresponding evaluation object in the output array.
-- Every `output[].issue_id` **EXACTLY MATCHES** its corresponding `input.issues[].id`.
+- Output is a syntactically valid JSON object with `scores` array.
+- Every element in `input.issues` has a corresponding evaluation object in `scores`.
+- Every `scores[].issue_id` **EXACTLY MATCHES** its corresponding `input.issues[].id`.
 - Every score (1-5) aligns logically with `pro_criteria` / `con_criteria`.
 - All items in `references` are exact literal substrings from the article content.
 
@@ -125,14 +128,16 @@ Before finalizing, verify that:
 ## Example Output
 
 ```json
-[
-  {
-    "issue_id": "major_1",
-    "score": 2,
-    "reasoning": "文章引述工總聲明，指出每噸 300 元費率將造成沉重負擔並削弱出口競爭力，論述符合 con_criteria 的質疑與反對立場。",
-    "references": [
-      "每噸 300 元的費率對鋼鐵與石化等產業將造成沉重負擔，恐削弱台灣製造業出口競爭力。"
-    ]
-  }
-]
+{
+  "scores": [
+    {
+      "issue_id": "major_1",
+      "score": 2,
+      "reasoning": "文章引述工總聲明，指出每噸 300 元費率將造成沉重負擔並削弱出口競爭力，論述符合 con_criteria 的質疑與反對立場。",
+      "references": [
+        "每噸 300 元的費率對鋼鐵與石化等產業將造成沉重負擔，恐削弱台灣製造業出口競爭力。"
+      ]
+    }
+  ]
+}
 ```
