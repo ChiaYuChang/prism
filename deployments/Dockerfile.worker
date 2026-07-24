@@ -38,7 +38,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -trimpath \
         -ldflags="-s -w" \
         -o /out/app/worker \
-        ./cmd/${TARGET}
+        ./cmd/${TARGET} && \
+    CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -ldflags="-s -w" \
+        -o /out/app/healthcheck \
+        ./cmd/healthcheck
 
 # Prepare runtime assets and configs selectively based on TARGET to minimize
 # image size and security attack surface in the final runtime container.
