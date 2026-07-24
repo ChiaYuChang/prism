@@ -51,6 +51,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.planner"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.planner"))
+	app.RegisterMessengerFlags(fs, "planner-worker")
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -58,16 +59,6 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("pg-password", "postgres", "Postgres password")
 	fs.String("pg-db", "prism", "Postgres database name")
 	fs.String("pg-sslmode", "disable", "Postgres SSL mode")
-
-	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel)")
-	fs.String("nats-host", "localhost", "The NATS server host")
-	fs.Int("nats-port", 4222, "The NATS server port")
-	fs.String("nats-token", "", "The NATS server auth token")
-	fs.String("queue-group", "planner-worker", "Queue group for worker subscriptions")
-	fs.Int("subscribers-count", 1, "How many subscriber goroutines to run")
-	fs.Duration("ack-wait-timeout", 3*time.Minute+15*time.Second, "Ack wait timeout for NATS subscriber")
-	fs.Int64("channel-buffer", 100, "GoChannel output buffer size")
-	fs.Bool("persistent", true, "Whether GoChannel should persist messages in memory")
 
 	fs.String("llm-key", "", "LLM API key")
 	fs.String("llm-key-file", "", "Path to a file containing the LLM API key")
@@ -142,29 +133,11 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, fmt.Errorf("resolve S3 secrets: %w", err)
 	}
 
-	switch config.MessengerType {
-	case "nats":
-		var natsCfg app.NatsConfig
-		if err := v.Unmarshal(&natsCfg); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal nats config: %w", err)
-		}
-		if natsCfg.SubscribersCount == 0 {
-			natsCfg.SubscribersCount = 1
-		}
-		if natsCfg.AckWaitTimeout == 0 {
-			natsCfg.AckWaitTimeout = 30 * time.Second
-		}
-		config.Messenger = &natsCfg
-	case "gochannel":
-		var goChannelCfg app.GoChannelConfig
-		if err := v.Unmarshal(&goChannelCfg); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal gochannel config: %w", err)
-		}
-		if goChannelCfg.ChannelBuffer == 0 {
-			goChannelCfg.ChannelBuffer = 100
-		}
-		config.Messenger = &goChannelCfg
+	msgrCfg, err := app.LoadMessengerConfig(v)
+	if err != nil {
+		return nil, err
 	}
+	config.Messenger = msgrCfg
 
 	validate := validator.New()
 	if err := validate.Struct(&config); err != nil {
