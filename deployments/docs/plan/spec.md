@@ -106,7 +106,7 @@ More generally, Prism uses multiple trigger classes:
 * `resource` trigger: state/lifecycle observation such as batch completion or insert-driven follow-up work
 * `manual` trigger: operator or user initiated actions such as backfill or explicit selection
 
-`cmd/trigger/schedule` materializes recurring schedule intent into concrete task rows. `cmd/scheduler` is the task dispatcher: it claims runnable rows from `tasks` and publishes them to workers.
+`cmd/trigger/cron` materializes recurring schedule intent into concrete task rows. `cmd/scheduler` is the task dispatcher: it claims runnable rows from `tasks` and publishes them to workers.
 
 ### Schedule Materialization
 
@@ -114,12 +114,12 @@ Recurring discovery is stored as schedule state, not as in-memory Go tickers and
 
 Schedule identity is an operator-provided UUIDv7 per schedule. Human labels (`name`) and routing metadata (`source_abbr`) are mutable and are not used as durable identity. Removing a YAML entry marks its DB row as not config-present; runtime history is not deleted automatically.
 
-`cmd/trigger/schedule` runs a single heartbeat loop. On each tick it claims due rows from `schedules` with `FOR UPDATE SKIP LOCKED`, then in the same transaction creates or recovers a concrete task and advances schedule state:
+`cmd/trigger/cron` runs a single heartbeat loop. On each tick it claims due rows from `schedules` with `FOR UPDATE SKIP LOCKED`, then in the same transaction creates or recovers a concrete task and advances schedule state:
 
 ```
 schedules.yaml
  └─► config sync into schedules
-      └─► cmd/trigger/schedule heartbeat
+      └─► cmd/trigger/cron heartbeat
            └─► BEGIN
                 ├─► SELECT due schedules FOR UPDATE SKIP LOCKED
                 ├─► CreateTask / recover active task
@@ -135,7 +135,7 @@ Schedule columns use schedule-specific names (`next_fire_at`, `last_fire_at`, `l
 ### Party Press Release Intake
 
 ```
-cmd/trigger/schedule
+cmd/trigger/cron
  └─► materializes due schedule into CreateTask(PARTY + DIRECTORY_FETCH)
       └─► scheduler-slow claims → publishes TaskSignal → [prism.task]
            └─► Discovery Worker: Scout crawls party directory pages

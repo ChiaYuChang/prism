@@ -1,4 +1,4 @@
-package main
+package scheduler
 
 import (
 	"context"
@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
@@ -59,7 +60,7 @@ func TestDispatchTasksPublishesTaskSignal(t *testing.T) {
 		},
 	}
 
-	svc := newScheduler(
+	svc := newTestScheduler(
 		testSchedulerLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		nil,
@@ -97,7 +98,7 @@ func TestDispatchTasksMarksTaskFailedWhenPublishFails(t *testing.T) {
 		},
 	}
 
-	svc := newScheduler(
+	svc := newTestScheduler(
 		testSchedulerLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		nil,
@@ -113,7 +114,7 @@ func TestDispatchTasksRecordsMetrics(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	t.Cleanup(func() { require.NoError(t, meterProvider.Shutdown(context.Background())) })
-	metrics, err := newSchedulerMetrics(meterProvider.Meter("test"))
+	metrics, err := NewMetrics(meterProvider.Meter("test"))
 	require.NoError(t, err)
 
 	scheduler := repomocks.NewMockScheduler(t)
@@ -129,7 +130,7 @@ func TestDispatchTasksRecordsMetrics(t *testing.T) {
 	}}
 	publisher := stubTaskPublisher{}
 
-	svc := newScheduler(
+	svc := newTestScheduler(
 		testSchedulerLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		metrics,
@@ -150,7 +151,7 @@ func TestDispatchTasksRecordsFailureMetrics(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	t.Cleanup(func() { require.NoError(t, meterProvider.Shutdown(context.Background())) })
-	metrics, err := newSchedulerMetrics(meterProvider.Meter("test"))
+	metrics, err := NewMetrics(meterProvider.Meter("test"))
 	require.NoError(t, err)
 
 	scheduler := repomocks.NewMockScheduler(t)
@@ -169,7 +170,7 @@ func TestDispatchTasksRecordsFailureMetrics(t *testing.T) {
 		return errors.New("publish failed")
 	}}
 
-	svc := newScheduler(
+	svc := newTestScheduler(
 		testSchedulerLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		metrics,
@@ -190,7 +191,7 @@ func TestRunTickRecordsMetrics(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	t.Cleanup(func() { require.NoError(t, meterProvider.Shutdown(context.Background())) })
-	metrics, err := newSchedulerMetrics(meterProvider.Meter("test"))
+	metrics, err := NewMetrics(meterProvider.Meter("test"))
 	require.NoError(t, err)
 
 	scheduler := repomocks.NewMockScheduler(t)
@@ -218,19 +219,21 @@ func TestRunTickRecordsMetrics(t *testing.T) {
 		ClaimTasks(mock.Anything, int32(5), []string{repo.TaskKindDirectoryFetch}, mock.Anything).
 		Return(tasks, nil)
 
-	svc := newScheduler(
-		testSchedulerLogger(),
-		noop.NewTracerProvider().Tracer("test"),
-		metrics,
-		infra.NoOpRateLimiter{},
-		scheduler,
-		stubTaskPublisher{},
-	)
-	got := svc.RunTick(context.Background(), &Config{
-		LockKey:   "test-lock",
+	svc, err := New(Config{
+		Name:      "test",
 		BatchSize: 5,
 		Kinds:     []string{repo.TaskKindDirectoryFetch},
+		RetryMax:  repo.DefaultTaskRetryMax,
+	}, Dependencies{
+		Logger:    testSchedulerLogger(),
+		Tracer:    noop.NewTracerProvider().Tracer("test"),
+		Metrics:   metrics,
+		RateLimit: infra.NoOpRateLimiter{},
+		Tasks:     scheduler,
+		Publisher: stubTaskPublisher{},
 	})
+	require.NoError(t, err)
+	got := svc.RunTick(context.Background())
 	require.Len(t, got, len(tasks))
 
 	rm := collectMetrics(t, reader)
@@ -307,4 +310,30 @@ func histogramCount(t *testing.T, rm metricdata.ResourceMetrics, name string) ui
 
 func testSchedulerLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func newTestScheduler(
+	logger *slog.Logger,
+	tracer trace.Tracer,
+	metrics *Metrics,
+	rl infra.RateLimiter,
+	tasks repo.Scheduler,
+	publisher TaskPublisher,
+) *Service {
+	svc, err := New(Config{
+		Name:      "test",
+		BatchSize: 100,
+		RetryMax:  repo.DefaultTaskRetryMax,
+	}, Dependencies{
+		Logger:    logger,
+		Tracer:    tracer,
+		Metrics:   metrics,
+		RateLimit: rl,
+		Tasks:     tasks,
+		Publisher: publisher,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return svc
 }

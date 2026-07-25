@@ -73,9 +73,13 @@ func (h *HealthMonitor) Uptime() time.Duration {
 	return time.Since(h.start)
 }
 
-// StartHealthServer starts a minimal HTTP server on the specified port for Docker health checks.
+// StartHealthServer starts a minimal HTTP server for Docker health checks.
 // It uses the provided monitor to report the current status.
-func StartHealthServer(ctx context.Context, port int, monitor *HealthMonitor) {
+func StartHealthServer(ctx context.Context, cfg HealthConfig, monitor *HealthMonitor) {
+	if !cfg.Enabled {
+		return
+	}
+
 	mux := http.NewServeMux()
 
 	// Register pprof handlers internally on the health port for secure monitoring
@@ -84,7 +88,7 @@ func StartHealthServer(ctx context.Context, port int, monitor *HealthMonitor) {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle(MetricsPath, promhttp.Handler())
 
 	writeStatus := func(w http.ResponseWriter, ready bool) {
 		level, message := monitor.Status()
@@ -105,15 +109,15 @@ func StartHealthServer(ctx context.Context, port int, monitor *HealthMonitor) {
 			slog.Error("Failed to write health response", "error", err.Error())
 		}
 	}
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(HealthzPath, func(w http.ResponseWriter, r *http.Request) {
 		writeStatus(w, false)
 	})
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(ReadyzPath, func(w http.ResponseWriter, r *http.Request) {
 		writeStatus(w, true)
 	})
 
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
+		Addr:    fmt.Sprintf(":%d", cfg.Port),
 		Handler: mux,
 	}
 

@@ -23,7 +23,7 @@ type Config struct {
 	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
 	Once            bool                `mapstructure:"once"`
 	BatchSize       int32               `mapstructure:"batch-size"       validate:"required,min=1,max=200"`
-	HealthPort      int                 `mapstructure:"health-port"      validate:"required,min=1024,max=65535"`
+	Health          obs.HealthConfig    `mapstructure:"health"`
 	SchedulesFile   string              `mapstructure:"schedules-file"   validate:"required"`
 	TraceIDPrefix   string              `mapstructure:"trace-id-prefix"  validate:"required"`
 	Logger          obs.LoggingConfig   `mapstructure:"logger"`
@@ -52,22 +52,22 @@ type scheduleYAMLItem struct {
 
 func LoadConfig(args []string) (*Config, error) {
 	v := viper.New()
-	v.SetEnvPrefix("PRISM_SCHEDULE_TRIGGER")
+	v.SetEnvPrefix("PRISM_CRON_TRIGGER")
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	v.AutomaticEnv()
 
-	fs := pflag.NewFlagSet("schedule-trigger", pflag.ContinueOnError)
+	fs := pflag.NewFlagSet("cron-trigger", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Duration("interval", time.Minute, "Polling interval for due schedule checks")
 	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
 	fs.Bool("once", false, "Execute one materialization tick and exit")
 	fs.Int32("batch-size", 20, "Maximum due schedules to materialize per tick")
-	fs.Int("health-port", 8085, "The port for the health check server")
-	fs.String("schedules-file", "configs/trigger/schedule/schedules.yaml", "Path to schedules YAML")
-	fs.String("trace-id-prefix", "schedule", "Trace ID prefix for materialized tasks")
+	obs.RegisterHealthFlags(fs, obs.DefaultHealthConfig(8085))
+	fs.String("schedules-file", "configs/trigger/cron/schedules.yaml", "Path to schedules YAML")
+	fs.String("trace-id-prefix", "cron", "Trace ID prefix for materialized tasks")
 
-	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.trigger.schedule"))
-	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.trigger.schedule"))
+	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.trigger.cron"))
+	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.trigger.cron"))
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -88,6 +88,9 @@ func LoadConfig(args []string) (*Config, error) {
 	}
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
+	}
+	if err := obs.BindHealthFlags(v, fs); err != nil {
+		return nil, fmt.Errorf("failed to bind health flags: %w", err)
 	}
 
 	var cfg Config

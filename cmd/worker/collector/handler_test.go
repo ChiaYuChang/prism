@@ -326,16 +326,15 @@ func newTestHandlerWithReporter(t *testing.T, p collector.Pipeline,
 	pipeline.EXPECT().GetContentByURL(mock.Anything, mock.Anything).Return(repo.Content{}, errContentNotFound).Maybe()
 	pipeline.EXPECT().CreateContent(mock.Anything, mock.Anything).Return(repo.Content{ID: uuid.Must(uuid.NewV7())}, nil).Maybe()
 
-	h, err := NewHandler(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		noop.NewTracerProvider().Tracer("test"),
-		dispatcher,
-		saver,
-		nil,
-		pipeline,
-		reporter,
-		metrics,
-	)
+	h, err := NewHandler(HandlerConfig{
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Tracer:     noop.NewTracerProvider().Tracer("test"),
+		Dispatcher: dispatcher,
+		ErrorSaver: saver,
+		Pipeline:   pipeline,
+		Reporter:   reporter,
+		Metrics:    metrics,
+	})
 	require.NoError(t, err)
 	return h
 }

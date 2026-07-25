@@ -17,7 +17,7 @@ import (
 type Config struct {
 	Interval        time.Duration       `mapstructure:"interval"         validate:"required,min=1s"`
 	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
-	HealthPort      int                 `mapstructure:"health-port"      validate:"required,min=1024,max=65535"`
+	Health          obs.HealthConfig    `mapstructure:"health"`
 	Valkey          app.ValkeyConfig    `mapstructure:"valkey"`
 	Logger          obs.LoggingConfig   `mapstructure:"logger"`
 	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
@@ -63,7 +63,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs.Duration("interval", 10*time.Minute, "The ticker interval for the scheduler (min: 1s, default: 10m)")
 	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
-	fs.Int("health-port", 8090, "The port for the health check server (default: 8090)")
+	obs.RegisterHealthFlags(fs, obs.DefaultHealthConfig(8090))
 	fs.String("valkey-host", "localhost", "The host of the Valkey/Redis instance")
 	fs.Int("valkey-port", 6379, "The port of the Valkey/Redis instance")
 	fs.String("valkey-username", "", "The username for the Valkey/Redis instance")
@@ -119,6 +119,9 @@ func LoadConfig(args []string) (*Config, error) {
 	// 2. Bind flags to viper (Flags override file values)
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
+	}
+	if err := obs.BindHealthFlags(v, fs); err != nil {
+		return nil, fmt.Errorf("failed to bind health flags: %w", err)
 	}
 
 	var config Config

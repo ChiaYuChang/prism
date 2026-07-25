@@ -94,8 +94,8 @@ tasks:
       - task: secrets:sync
       - task: bake
       - mkdir -p {{.TASK_DIR}}
-      - mkdir -p runtime/prompts runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
-      - chmod 0777 runtime/logs runtime/logs/{api-server,schedule-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - mkdir -p runtime/prompts runtime/logs/{api-server,cron-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - chmod 0777 runtime/logs runtime/logs/{api-server,cron-trigger,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
       - chmod 0777 runtime/prompts
       - |
         docker run --rm \
@@ -292,9 +292,9 @@ tasks:
       WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
       API_INTERNAL_PORT: '{{.API_INTERNAL_PORT | default "8089"}}'
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} build schedule-trigger
+      - docker compose -f {{.COMPOSE_MERGED}} build cron-trigger
         batch-detector batch-publisher prism-api
-      - docker compose -f {{.COMPOSE_MERGED}} up -d schedule-trigger
+      - docker compose -f {{.COMPOSE_MERGED}} up -d cron-trigger
         batch-detector batch-publisher prism-api
       - "echo {{.APP_PROFILES}} > {{.PROFILES_FILE}}"
 
@@ -360,8 +360,8 @@ tasks:
     env:
       COMPOSE_PROFILES: "{{.APP_PROFILES}}"
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} stop schedule-trigger batch-detector batch-publisher prism-api
-      - docker compose -f {{.COMPOSE_MERGED}} rm -f schedule-trigger batch-detector batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} stop cron-trigger batch-detector batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} rm -f cron-trigger batch-detector batch-publisher prism-api
 
   app:logs:
     desc: tail logs from containerized app services
@@ -383,7 +383,7 @@ tasks:
     env:
       COMPOSE_PROFILES: "{{.APP_PROFILES}}"
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} logs -f schedule-trigger
+      - docker compose -f {{.COMPOSE_MERGED}} logs -f cron-trigger
         batch-detector batch-publisher prism-api
 
   fixture:

@@ -1,4 +1,6 @@
-health-port: 8094
+health:
+  enabled: true
+  port: 8094
 shutdown-timeout: 3m
 prompt-path: /app/assets/worker/planner/extractor_v2.md
 prompt:

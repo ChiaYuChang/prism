@@ -13,7 +13,7 @@ import (
 )
 
 type Config struct {
-	HealthPort      int                       `mapstructure:"health-port" validate:"required,min=1024,max=65535"`
+	Health          obs.HealthConfig          `mapstructure:"health"`
 	ShutdownTimeout time.Duration             `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
 	Archive         string                    `mapstructure:"archive" validate:"required"`
 	S3              appconfig.S3Config        `mapstructure:"s3"`
@@ -31,7 +31,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs := pflag.NewFlagSet("worker-archive", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
-	fs.Int("health-port", 8095, "The port for the health check server")
+	obs.RegisterHealthFlags(fs, obs.DefaultHealthConfig(8095))
 	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
 	fs.String("archive", "", "S3 archive URI (s3://bucket/prefix)")
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.archive"))
@@ -55,6 +55,9 @@ func LoadConfig(args []string) (*Config, error) {
 	}
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("bind flags: %w", err)
+	}
+	if err := obs.BindHealthFlags(v, fs); err != nil {
+		return nil, fmt.Errorf("bind health flags: %w", err)
 	}
 	var config Config
 	if err := config.S3.BindFlags(v, fs); err != nil {

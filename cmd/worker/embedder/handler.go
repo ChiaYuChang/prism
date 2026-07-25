@@ -30,7 +30,7 @@ var (
 	ErrInvalidTaskSignal = errors.New("invalid embedding task signal")
 )
 
-type taskReader interface {
+type TaskReader interface {
 	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
@@ -63,7 +63,7 @@ type Handler struct {
 	Tracer     trace.Tracer
 	Service    *embedder.Service
 	Reporter   repo.TaskReporter
-	TaskReader taskReader
+	TaskReader TaskReader
 	Metrics    *metrics
 	RetryMax   int
 }
@@ -164,7 +164,7 @@ func NewHandler(cfg HandlerConfig) (*Handler, error) {
 		return nil, fmt.Errorf("create embedder service: %w", err)
 	}
 
-	var tr taskReader
+	var tr TaskReader
 	if cfg.Store.Tasks != nil {
 		tr = cfg.Store.Tasks
 	}

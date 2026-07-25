@@ -26,20 +26,27 @@ type Handler struct {
 	targets []discovery.PlannerTarget
 }
 
-func NewHandler(logger *slog.Logger, tracer trace.Tracer, planner discovery.Planner, targets []discovery.PlannerTarget) (*Handler, error) {
-	if logger == nil {
+type HandlerConfig struct {
+	Logger  *slog.Logger
+	Tracer  trace.Tracer
+	Planner discovery.Planner
+	Targets []discovery.PlannerTarget
+}
+
+func NewHandler(cfg HandlerConfig) (*Handler, error) {
+	if cfg.Logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
-	if tracer == nil {
+	if cfg.Tracer == nil {
 		return nil, fmt.Errorf("%w: tracer", ErrParamMissing)
 	}
-	if planner == nil {
+	if cfg.Planner == nil {
 		return nil, fmt.Errorf("%w: planner", ErrParamMissing)
 	}
-	if len(targets) == 0 {
+	if len(cfg.Targets) == 0 {
 		return nil, ErrNoPlannerTargets
 	}
-	return &Handler{logger: logger, tracer: tracer, planner: planner, targets: targets}, nil
+	return &Handler{logger: cfg.Logger, tracer: cfg.Tracer, planner: cfg.Planner, targets: cfg.Targets}, nil
 }
 
 func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, error) {

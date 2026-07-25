@@ -45,26 +45,39 @@ type Handler struct {
 	sink       discoverysink.CandidateSink
 	scoutRepo  repo.Scout
 	reporter   repo.TaskReporter
-	taskReader taskReader
+	taskReader TaskReader
 	metrics    *metrics
 	retryMax   int
 }
 
-type taskReader interface {
+type TaskReader interface {
 	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
-type metrics struct {
-	task   *taskMetrics
-	search *searchMetrics
+type HandlerConfig struct {
+	Logger          *slog.Logger
+	Tracer          trace.Tracer
+	Scout           discovery.Scout
+	SearchProviders map[string]discovery.SearchClient
+	Sink            discoverysink.CandidateSink
+	ScoutRepo       repo.Scout
+	Reporter        repo.TaskReporter
+	TaskReader      TaskReader
+	Metrics         *metrics
+	RetryMax        int
 }
 
-type taskMetrics struct {
+type metrics struct {
+	task   *TaskMetrics
+	search *SearchMetrics
+}
+
+type TaskMetrics struct {
 	count    otelmetric.Int64Counter
 	duration otelmetric.Float64Histogram
 }
 
-type searchMetrics struct {
+type SearchMetrics struct {
 	requests otelmetric.Int64Counter
 	duration otelmetric.Float64Histogram
 	results  otelmetric.Int64Counter
@@ -113,11 +126,11 @@ func newMetrics(meter otelmetric.Meter) (*metrics, error) {
 	}
 
 	return &metrics{
-		task: &taskMetrics{
+		task: &TaskMetrics{
 			count:    tasks,
 			duration: taskDuration,
 		},
-		search: &searchMetrics{
+		search: &SearchMetrics{
 			requests: searchRequests,
 			duration: searchRequestDuration,
 			results:  searchResults,
@@ -139,7 +152,7 @@ func (m *metrics) recordSearch(ctx context.Context, provider, config, result str
 	m.search.record(ctx, provider, config, result, duration, resultCount)
 }
 
-func (m *taskMetrics) record(ctx context.Context, sig message.TaskSignal, result string, started time.Time) {
+func (m *TaskMetrics) record(ctx context.Context, sig message.TaskSignal, result string, started time.Time) {
 	if m == nil {
 		return
 	}
@@ -162,7 +175,7 @@ func (m *taskMetrics) record(ctx context.Context, sig message.TaskSignal, result
 	m.duration.Record(ctx, time.Since(started).Seconds(), attrs)
 }
 
-func (m *searchMetrics) record(ctx context.Context, provider, config, result string, duration time.Duration, resultCount int) {
+func (m *SearchMetrics) record(ctx context.Context, provider, config, result string, duration time.Duration, resultCount int) {
 	if m == nil {
 		return
 	}
@@ -181,55 +194,46 @@ func (m *searchMetrics) record(ctx context.Context, provider, config, result str
 	}
 }
 
-func NewHandler(
-	logger *slog.Logger,
-	tracer trace.Tracer,
-	scout discovery.Scout,
-	searchProviders map[string]discovery.SearchClient,
-	sink discoverysink.CandidateSink,
-	scoutRepo repo.Scout,
-	reporter repo.TaskReporter,
-	metrics *metrics,
-	retryMax ...int,
-) (*Handler, error) {
-	if logger == nil {
+func NewHandler(cfg HandlerConfig) (*Handler, error) {
+	if cfg.Logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
-	if tracer == nil {
+	if cfg.Tracer == nil {
 		return nil, fmt.Errorf("%w: tracer", ErrParamMissing)
 	}
-	if scout == nil {
+	if cfg.Scout == nil {
 		return nil, fmt.Errorf("%w: scout", ErrParamMissing)
 	}
-	if sink == nil {
+	if cfg.Sink == nil {
 		return nil, fmt.Errorf("%w: sink", ErrParamMissing)
 	}
-	if scoutRepo == nil {
+	if cfg.ScoutRepo == nil {
 		return nil, fmt.Errorf("%w: scout_repository", ErrParamMissing)
 	}
-	if reporter == nil {
+	if cfg.Reporter == nil {
 		return nil, fmt.Errorf("%w: task_reporter", ErrParamMissing)
 	}
-	if searchProviders == nil {
-		searchProviders = map[string]discovery.SearchClient{}
+	if cfg.SearchProviders == nil {
+		cfg.SearchProviders = map[string]discovery.SearchClient{}
 	}
 	maxAttempts := repo.DefaultTaskRetryMax
-	if len(retryMax) > 0 {
-		maxAttempts = retryMax[0]
+	if cfg.RetryMax != 0 {
+		maxAttempts = cfg.RetryMax
 	}
 	if maxAttempts < 1 {
 		return nil, fmt.Errorf("%w: retry_max", ErrParamMissing)
 	}
 	return &Handler{
-		logger:    logger,
-		tracer:    tracer,
-		scout:     scout,
-		providers: searchProviders,
-		sink:      sink,
-		scoutRepo: scoutRepo,
-		reporter:  reporter,
-		metrics:   metrics,
-		retryMax:  maxAttempts,
+		logger:     cfg.Logger,
+		tracer:     cfg.Tracer,
+		scout:      cfg.Scout,
+		providers:  cfg.SearchProviders,
+		sink:       cfg.Sink,
+		scoutRepo:  cfg.ScoutRepo,
+		reporter:   cfg.Reporter,
+		taskReader: cfg.TaskReader,
+		metrics:    cfg.Metrics,
+		retryMax:   maxAttempts,
 	}, nil
 }
 

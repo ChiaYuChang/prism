@@ -3,17 +3,17 @@
 # `task compose:app` or `docker compose --profile app up`.
 
 services:
-  schedule-trigger:
+  cron-trigger:
     profiles: [ app ]
-    image: prism/schedule-trigger:latest
+    image: prism/cron-trigger:latest
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        TARGET: trigger/schedule
+        TARGET: trigger/cron
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --config=/app/configs/trigger/schedule/config.yaml
+      - --config=/app/configs/trigger/cron/config.yaml
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -21,14 +21,14 @@ services:
       POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
       PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
-      PRISM_SCHEDULE_TRIGGER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
-      PRISM_SCHEDULE_TRIGGER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
-      PRISM_SCHEDULE_TRIGGER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
-      PRISM_SCHEDULE_TRIGGER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_CRON_TRIGGER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_CRON_TRIGGER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_CRON_TRIGGER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_CRON_TRIGGER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
     volumes:
-      - ../runtime/logs/schedule-trigger:/logs
+      - ../runtime/logs/cron-trigger:/logs
     healthcheck:
       test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8085/readyz" ]
       interval: 15s

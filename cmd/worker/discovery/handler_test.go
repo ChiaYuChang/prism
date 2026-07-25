@@ -24,8 +24,31 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
+
+func newTestHandler(
+	logger *slog.Logger,
+	tracer trace.Tracer,
+	scout discovery.Scout,
+	searchProviders map[string]discovery.SearchClient,
+	sink discoverysink.CandidateSink,
+	scoutRepo repo.Scout,
+	reporter repo.TaskReporter,
+	metrics *metrics,
+) (*Handler, error) {
+	return NewHandler(HandlerConfig{
+		Logger:          logger,
+		Tracer:          tracer,
+		Scout:           scout,
+		SearchProviders: searchProviders,
+		Sink:            sink,
+		ScoutRepo:       scoutRepo,
+		Reporter:        reporter,
+		Metrics:         metrics,
+	})
+}
 
 func TestHandlerHandleMessageCompletesTask(t *testing.T) {
 	taskID := uuid.Must(uuid.NewV7())
@@ -37,7 +60,7 @@ func TestHandlerHandleMessageCompletesTask(t *testing.T) {
 
 	sink := sinkmocks.NewMockCandidateSink(t)
 
-	h, err := NewHandler(
+	h, err := newTestHandler(
 		testLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scout,
@@ -97,7 +120,7 @@ func TestHandlerHandleMessageIgnoresTerminalTask(t *testing.T) {
 	sink := sinkmocks.NewMockCandidateSink(t)
 	tasks := repomocks.NewMockTasks(t)
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, nil)
+	h, err := newTestHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, nil)
 	require.NoError(t, err)
 	h.taskReader = tasks
 	tasks.EXPECT().IsTaskRunning(mock.Anything, taskID).Return(false, nil)
@@ -126,7 +149,7 @@ func TestHandlerHandleMessageIgnoresUnsupportedTask(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := sinkmocks.NewMockCandidateSink(t)
 
-	h, err := NewHandler(
+	h, err := newTestHandler(
 		testLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scout,
@@ -163,7 +186,7 @@ func TestHandlerHandleMessageNacksWhenCompleteFails(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := sinkmocks.NewMockCandidateSink(t)
 
-	h, err := NewHandler(
+	h, err := newTestHandler(
 		testLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scout,
@@ -224,7 +247,7 @@ func TestHandlerHandleMessageKeywordSearch(t *testing.T) {
 		"brave": searchClient,
 	}
 
-	h, err := NewHandler(
+	h, err := newTestHandler(
 		testLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scout,
@@ -287,7 +310,7 @@ func TestHandlerHandleMessageKeywordSearchNoProviders(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := sinkmocks.NewMockCandidateSink(t)
 
-	h, err := NewHandler(
+	h, err := newTestHandler(
 		testLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scout,
@@ -334,7 +357,7 @@ func TestHandlerHandleMessageKeywordSearchCompletesWhenOneProviderSucceeds(t *te
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := sinkmocks.NewMockCandidateSink(t)
 
-	h, err := NewHandler(
+	h, err := newTestHandler(
 		testLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scout,
@@ -408,7 +431,7 @@ func TestHandlerHandleMessageKeywordSearchRecordsSearchMetrics(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := sinkmocks.NewMockCandidateSink(t)
 
-	h, err := NewHandler(
+	h, err := newTestHandler(
 		testLogger(),
 		noop.NewTracerProvider().Tracer("test"),
 		scout,
@@ -530,7 +553,7 @@ func TestHandlerHandleMessageDirectoryFetchMedia(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := sinkmocks.NewMockCandidateSink(t)
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, nil)
+	h, err := newTestHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, nil)
 	require.NoError(t, err)
 
 	source := repo.Source{Abbr: "cna", Type: repo.SourceTypeMedia, BaseURL: "https://www.cna.com.tw"}
@@ -576,7 +599,7 @@ func TestHandlerHandleMessageRecordsMetrics(t *testing.T) {
 	scheduler := repomocks.NewMockScheduler(t)
 	sink := sinkmocks.NewMockCandidateSink(t)
 
-	h, err := NewHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, metrics)
+	h, err := newTestHandler(testLogger(), noop.NewTracerProvider().Tracer("test"), scout, nil, sink, scoutRepo, scheduler, metrics)
 	require.NoError(t, err)
 
 	okTaskID := uuid.Must(uuid.NewV7())

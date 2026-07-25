@@ -1,4 +1,6 @@
-health-port: 8095
+health:
+  enabled: true
+  port: 8095
 shutdown-timeout: 30s
 archive: s3://prism-archives/canonical
 messenger-type: nats

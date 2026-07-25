@@ -46,7 +46,7 @@ func main() {
 	defer func() { _ = telemetry.Shutdown(context.Background()) }()
 	infra.SetTracer(telemetry.Tracer(TracerName))
 	monitor := obs.NewHealthMonitor()
-	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	obs.StartHealthServer(ctx, config.Health, monitor)
 	arch, err := openArchiver(ctx, config.Archive, config.S3, logger)
 	if err != nil {
 		logger.Error("failed to initialize archiver", "error", err)

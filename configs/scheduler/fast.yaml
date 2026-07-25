@@ -1,6 +1,8 @@
 interval: 3s
 shutdown-timeout: 30s
-health-port: 8091
+health:
+  enabled: true
+  port: 8091
 batch-size: 100
 retry-max: 3
 scheduler-name: fast

@@ -2,9 +2,11 @@ interval: 1m
 shutdown-timeout: 30s
 once: false
 batch-size: 20
-health-port: 8085
-schedules-file: /app/configs/trigger/schedule/schedules.yaml
-trace-id-prefix: schedule
+health:
+  enabled: true
+  port: 8085
+schedules-file: /app/configs/trigger/cron/schedules.yaml
+trace-id-prefix: cron
 postgres:
   host: '{{ env "POSTGRES_HOST" "postgres" }}'
   port: {{ env "POSTGRES_PORT" "5432" }}
@@ -14,7 +16,7 @@ postgres:
   metrics-enabled: true
 telemetry:
   enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
-  service-name: prism.trigger.schedule
+  service-name: prism.trigger.cron
   environment: local
   endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
   insecure: true
