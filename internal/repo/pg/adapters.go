@@ -105,6 +105,7 @@ func dbScheduleToRepoSchedule(s Schedule) repo.Schedule {
 
 func dbBatchToRepoBatch(
 	id uuid.UUID,
+	parentID *uuid.UUID,
 	sourceType string,
 	traceID *string,
 	createdAt time.Time,
@@ -118,6 +119,7 @@ func dbBatchToRepoBatch(
 ) repo.Batch {
 	return repo.Batch{
 		ID:                   id,
+		ParentID:             parentID,
 		SourceType:           sourceType,
 		TraceID:              traceID,
 		CreatedAt:            createdAt,

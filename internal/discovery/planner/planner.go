@@ -173,6 +173,9 @@ func (p *Planner) Plan(ctx context.Context, req discovery.PlannerRequest) (disco
 		)
 		phrases = phrases[:phraseLimit]
 	}
+	parentBatchID := req.BatchID
+	childBatchID := uuid.Must(uuid.NewV7())
+
 	plannerTasks := make([]repo.CreateTaskParams, 0, len(phrases)*len(req.Targets))
 	for _, target := range req.Targets {
 		if err := validateTarget(target); err != nil {
@@ -189,17 +192,18 @@ func (p *Planner) Plan(ctx context.Context, req discovery.PlannerRequest) (disco
 			sum := sha256.Sum256(payload)
 			hash := hex.EncodeToString(sum[:])
 			taskParams := repo.CreateTaskParams{
-				BatchID:     req.BatchID,
-				Kind:        repo.TaskKindKeywordSearch,
-				SourceType:  repo.SourceTypeMedia,
-				SourceAbbr:  target.SourceAbbr,
-				URL:         target.URL,
-				Payload:     payload,
-				PayloadHash: &hash,
-				TraceID:     req.TraceID,
-				Frequency:   req.Frequency,
-				NextRunAt:   req.NextRunAt,
-				ExpiresAt:   req.ExpiresAt,
+				BatchID:       childBatchID,
+				ParentBatchID: &parentBatchID,
+				Kind:          repo.TaskKindKeywordSearch,
+				SourceType:    repo.SourceTypeMedia,
+				SourceAbbr:    target.SourceAbbr,
+				URL:           target.URL,
+				Payload:       payload,
+				PayloadHash:   &hash,
+				TraceID:       req.TraceID,
+				Frequency:     req.Frequency,
+				NextRunAt:     req.NextRunAt,
+				ExpiresAt:     req.ExpiresAt,
 			}
 			if p.persist != nil {
 				plannerTasks = append(plannerTasks, taskParams)

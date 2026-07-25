@@ -63,7 +63,10 @@ func TestPlannerPlanCreatesMediaTasksFromUniquePhrases(t *testing.T) {
 	require.Equal(t, 4, result.TasksCreated)
 	require.Len(t, created, 4)
 	for _, arg := range created {
-		require.Equal(t, batchID, arg.BatchID)
+		require.NotNil(t, arg.ParentBatchID)
+		require.Equal(t, batchID, *arg.ParentBatchID)
+		require.NotEqual(t, uuid.Nil, arg.BatchID)
+		require.NotEqual(t, batchID, arg.BatchID)
 		require.Equal(t, repo.TaskKindKeywordSearch, arg.Kind)
 		require.Equal(t, repo.SourceTypeMedia, arg.SourceType)
 		require.Equal(t, "trace-123", arg.TraceID)

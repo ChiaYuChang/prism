@@ -157,6 +157,7 @@ SET default_table_access_method = heap;
 
 CREATE TABLE public.batches (
     id uuid NOT NULL,
+    parent_id uuid,
     source_type public.source_type NOT NULL,
     trace_id character varying(100),
     created_at timestamp with time zone DEFAULT now() NOT NULL,

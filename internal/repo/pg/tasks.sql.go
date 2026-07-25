@@ -256,19 +256,26 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (CreateT
 }
 
 const ensureBatchExists = `-- name: EnsureBatchExists :exec
-INSERT INTO batches (id, source_type, trace_id)
-VALUES ($1, $2, $3)
-ON CONFLICT (id) DO NOTHING
+INSERT INTO batches (id, source_type, trace_id, parent_id)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (id) DO UPDATE
+SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id)
 `
 
 type EnsureBatchExistsParams struct {
 	ID         uuid.UUID   `db:"id" json:"id"`
 	SourceType SourceType  `db:"source_type" json:"source_type"`
 	TraceID    pgtype.Text `db:"trace_id" json:"trace_id"`
+	ParentID   pgtype.UUID `db:"parent_id" json:"parent_id"`
 }
 
 func (q *Queries) EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error {
-	_, err := q.db.Exec(ctx, ensureBatchExists, arg.ID, arg.SourceType, arg.TraceID)
+	_, err := q.db.Exec(ctx, ensureBatchExists,
+		arg.ID,
+		arg.SourceType,
+		arg.TraceID,
+		arg.ParentID,
+	)
 	return err
 }
 

@@ -38,9 +38,10 @@ WHERE source_abbr = sqlc.arg(source_abbr)
 LIMIT 1;
 
 -- name: EnsureBatchExists :exec
-INSERT INTO batches (id, source_type, trace_id)
-VALUES ($1, $2, $3)
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO batches (id, source_type, trace_id, parent_id)
+VALUES ($1, $2, $3, sqlc.narg(parent_id))
+ON CONFLICT (id) DO UPDATE
+SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id);
 
 -- name: CreateTask :one
 -- Single-round-trip insert-or-recover. On unique-violation against either

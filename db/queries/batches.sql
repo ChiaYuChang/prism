@@ -61,3 +61,15 @@ SET last_publish_attempt_at = NOW(),
     publish_error = $2,
     updated_at = NOW()
 WHERE id = $1;
+
+-- name: GetBatchByID :one
+SELECT *
+FROM batches
+WHERE id = $1;
+
+-- name: ListChildBatchesByParentID :many
+SELECT *
+FROM batches
+WHERE parent_id = $1
+ORDER BY created_at ASC;
+
