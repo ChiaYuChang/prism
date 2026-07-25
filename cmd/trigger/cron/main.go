@@ -15,7 +15,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 )
 
-const TracerName = "prism.trigger.schedule"
+const TracerName = "prism.trigger.cron"
 
 func main() {
 	config, err := LoadConfig(os.Args[1:])
@@ -97,7 +97,7 @@ func main() {
 	}
 
 	monitor := obs.NewHealthMonitor()
-	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	obs.StartHealthServer(ctx, config.Health, monitor)
 	go func() {
 		<-ctx.Done()
 		monitor.SetStatus(obs.LevelWarn, "shutting down")
@@ -106,12 +106,12 @@ func main() {
 	materialize(ctx)
 	ticker := time.NewTicker(config.Interval)
 	defer ticker.Stop()
-	logger.Info("schedule trigger started", "interval", config.Interval, "batch_size", config.BatchSize)
+	logger.Info("cron trigger started", "interval", config.Interval, "batch_size", config.BatchSize)
 
 	for {
 		select {
 		case <-ctx.Done():
-			logger.Info("shutting down schedule trigger")
+			logger.Info("shutting down cron trigger")
 			return
 		case <-ticker.C:
 			if ctx.Err() != nil {

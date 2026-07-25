@@ -87,7 +87,7 @@ func main() {
 		return
 	}
 
-	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	obs.StartHealthServer(ctx, config.Health, monitor)
 	ticker := time.NewTicker(config.Interval)
 	defer ticker.Stop()
 	monitor.OK()

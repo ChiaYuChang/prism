@@ -22,7 +22,7 @@ type EmbedderSettings struct {
 }
 
 type Config struct {
-	HealthPort      int                       `mapstructure:"health-port"      validate:"required,min=1024,max=65535"`
+	Health          obs.HealthConfig          `mapstructure:"health"`
 	ShutdownTimeout time.Duration             `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
 	Embedder        EmbedderSettings          `mapstructure:"embedder"`
 	Logger          obs.LoggingConfig         `mapstructure:"logger"`
@@ -40,7 +40,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs := pflag.NewFlagSet("worker-embedder", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
-	fs.Int("health-port", 8095, "The port for the health check server")
+	obs.RegisterHealthFlags(fs, obs.DefaultHealthConfig(8095))
 	fs.Duration("shutdown-timeout", 2*time.Minute, "Graceful shutdown drain timeout")
 	fs.Int("retry-max", repo.DefaultTaskRetryMax, "Maximum total task attempts before terminal failure")
 	fs.Int("embedding-dimension", defaultEmbeddingDimension, "Expected vector dimension")
@@ -73,6 +73,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
 	}
+	if err := obs.BindHealthFlags(v, fs); err != nil {
+		return nil, fmt.Errorf("failed to bind health flags: %w", err)
+	}
 	_ = v.BindPFlag("embedder.dimension", fs.Lookup("embedding-dimension"))
 	_ = v.BindPFlag("embedder.retry-max", fs.Lookup("retry-max"))
 
@@ -80,7 +83,7 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := config.Postgres.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
-	if err := config.Embedder.LLMConfig.BindFlags(v, fs); err != nil {
+	if err := config.Embedder.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
 	if err := obs.BindLoggingFlags(v, fs); err != nil {
@@ -105,7 +108,7 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := config.Postgres.ResolveSecrets(); err != nil {
 		return nil, fmt.Errorf("resolve Postgres secrets: %w", err)
 	}
-	if err := config.Embedder.LLMConfig.ResolveSecrets(); err != nil {
+	if err := config.Embedder.ResolveSecrets(); err != nil {
 		return nil, fmt.Errorf("resolve LLM secrets: %w", err)
 	}
 

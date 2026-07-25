@@ -79,7 +79,7 @@ func main() {
 
 	monitor := obs.NewHealthMonitor()
 
-	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	obs.StartHealthServer(ctx, config.Health, monitor)
 	go func() {
 		<-ctx.Done()
 		monitor.SetStatus(obs.LevelWarn, "shutting down")
@@ -232,25 +232,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler, err := NewHandler(
-		logger,
-		tracer,
-		dispatcher,
-		errSaver,
-		msgr, // archivePublisher wired up to send messages to the archive topic
-		dbRepo.Pipeline(),
-		dbRepo.Scheduler(),
-		metrics,
-		config.RetryMax,
-	)
+	handler, err := NewHandler(HandlerConfig{
+		Logger:           logger,
+		Tracer:           tracer,
+		Dispatcher:       dispatcher,
+		ErrorSaver:       errSaver,
+		ArchivePublisher: msgr, // archivePublisher wired up to send messages to the archive topic
+		Pipeline:         dbRepo.Pipeline(),
+		Reporter:         dbRepo.Scheduler(),
+		TaskReader:       dbRepo.Tasks(),
+		Tasks:            dbRepo.Tasks(),
+		Metrics:          metrics,
+		RetryMax:         config.RetryMax,
+	})
 	if err != nil {
 		logger.Error("failed to build collector handler", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to build collector handler")
 		os.Exit(1)
 	}
-	handler.taskReader = dbRepo.Tasks()
-	handler.tasks = dbRepo.Tasks()
-
 	messages, err := msgr.Subscribe(ctx, message.TaskTopic)
 	if err != nil {
 		logger.Error("failed to subscribe topic", "topic", message.TaskTopic, "error", err)
@@ -262,7 +261,7 @@ func main() {
 	logger.Info("collector worker started",
 		"topic", message.TaskTopic,
 		"messenger", config.MessengerType,
-		"health_port", config.HealthPort,
+		"health_port", config.Health.Port,
 		"http_timeout", config.HTTPTimeout,
 		"started", started,
 	)

@@ -27,7 +27,12 @@ func TestHandlerHandleMessagePlansMediaTasks(t *testing.T) {
 		},
 	}
 	targets := []discovery.PlannerTarget{{SourceAbbr: "yahoo", URL: "https://tw.news.yahoo.com", Site: "tw.news.yahoo.com"}}
-	h, err := NewHandler(testPlannerWorkerLogger(), noop.NewTracerProvider().Tracer("test"), planner, targets)
+	h, err := NewHandler(HandlerConfig{
+		Logger:  testPlannerWorkerLogger(),
+		Tracer:  noop.NewTracerProvider().Tracer("test"),
+		Planner: planner,
+		Targets: targets,
+	})
 	require.NoError(t, err)
 
 	payload, err := (&message.BatchCompletedSignal{
@@ -44,7 +49,11 @@ func TestHandlerHandleMessagePlansMediaTasks(t *testing.T) {
 
 func TestHandlerHandleMessageReturnsNoTargets(t *testing.T) {
 	planner := &stubPlanner{}
-	_, err := NewHandler(testPlannerWorkerLogger(), noop.NewTracerProvider().Tracer("test"), planner, nil)
+	_, err := NewHandler(HandlerConfig{
+		Logger:  testPlannerWorkerLogger(),
+		Tracer:  noop.NewTracerProvider().Tracer("test"),
+		Planner: planner,
+	})
 	require.ErrorIs(t, err, ErrNoPlannerTargets)
 }
 

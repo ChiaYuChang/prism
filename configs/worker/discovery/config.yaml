@@ -1,9 +1,13 @@
-health-port: 8092
+health:
+  enabled: true
+  port: 8092
 shutdown-timeout: 30s
-http-timeout: 30s
 retry-max: 3
-scout-config: /app/configs/worker/discovery/scouts.yaml
-fixture-base: '{{ env "FIXTURE_BASE" "" }}'
+scout:
+  config-path: /app/configs/worker/discovery/scouts.yaml
+  http-timeout: 30s
+sink:
+  fixture-base: '{{ env "FIXTURE_BASE" "" }}'
 messenger-type: nats
 nats-host: nats
 nats-port: 4222

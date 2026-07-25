@@ -28,7 +28,8 @@ import (
 )
 
 const (
-	TracerName = "prism.worker.discovery"
+	WorkerTracerName    = "prism.worker.discovery"
+	MessagingTracerName = "prism.messaging"
 )
 
 func main() {
@@ -72,8 +73,8 @@ func main() {
 			logger.Error("failed to shutdown telemetry", "error", err)
 		}
 	}()
-	tracer := telemetry.Tracer(TracerName)
-	metrics, err := newMetrics(telemetry.Meter(TracerName))
+	tracer := telemetry.Tracer(WorkerTracerName)
+	metrics, err := newMetrics(telemetry.Meter(WorkerTracerName))
 	if err != nil {
 		logger.Error("failed to initialize discovery metrics", "error", err)
 		os.Exit(1)
@@ -81,15 +82,15 @@ func main() {
 	infra.SetTracer(tracer)
 
 	monitor := obs.NewHealthMonitor()
-	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	obs.StartHealthServer(ctx, config.Health, monitor)
 	go func() {
 		<-ctx.Done()
 		monitor.SetStatus(obs.LevelWarn, "shutting down")
 	}()
 
 	msgr, err := config.Messenger.NewMessenger(logger, &infra.MessagingTelemetry{
-		Tracer: telemetry.Tracer("prism.messaging"),
-		Meter:  telemetry.Meter("prism.messaging"),
+		Tracer: telemetry.Tracer(MessagingTracerName),
+		Meter:  telemetry.Meter(MessagingTracerName),
 	})
 	if err != nil {
 		logger.Error("failed to initialize messenger", "type", config.MessengerType, "error", err)
@@ -114,9 +115,9 @@ func main() {
 		}
 	}()
 
-	scoutCfg, err := scoutconfig.ReadFile(config.ScoutConfigPath)
+	scoutCfg, err := scoutconfig.ReadFile(config.Scout.ConfigPath)
 	if err != nil {
-		logger.Error("failed to read scout config", "path", config.ScoutConfigPath, "error", err)
+		logger.Error("failed to read scout config", "path", config.Scout.ConfigPath, "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to read scout config")
 		os.Exit(1)
 	}
@@ -128,12 +129,12 @@ func main() {
 	}
 
 	httpClientOptions := []httpclient.Option(nil)
-	if config.FixtureBase != "" {
+	if config.Sink.FixtureBase != "" {
 		httpClientOptions = append(httpClientOptions, httpclient.WithPrivateNetworks())
 	}
 	httpClient, err := dev.WrapClientReplay(
-		dev.WrapClient(httpclient.NewPublicClient(config.HTTPTimeout, httpClientOptions...), config.CaptureDir, logger),
-		config.FixtureBase,
+		dev.WrapClient(httpclient.NewPublicClient(config.Scout.HTTPTimeout, httpClientOptions...), config.Sink.CaptureDir, logger),
+		config.Sink.FixtureBase,
 	)
 	if err != nil {
 		logger.Error("failed to wrap http client for replay", "error", err)
@@ -162,24 +163,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	handler, err := NewHandler(
-		logger,
-		tracer,
-		scoutRegistry,
-		searchProviders,
-		sink,
-		dbRepo.Scout(),
-		dbRepo.Scheduler(),
-		metrics,
-		config.RetryMax,
-	)
+	handler, err := NewHandler(HandlerConfig{
+		Logger:          logger,
+		Tracer:          tracer,
+		Scout:           scoutRegistry,
+		SearchProviders: searchProviders,
+		Sink:            sink,
+		ScoutRepo:       dbRepo.Scout(),
+		Reporter:        dbRepo.Scheduler(),
+		TaskReader:      dbRepo.Tasks(),
+		Metrics:         metrics,
+		RetryMax:        config.RetryMax,
+	})
 	if err != nil {
 		logger.Error("failed to build discovery handler", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to build discovery handler")
 		os.Exit(1)
 	}
-	handler.taskReader = dbRepo.Tasks()
-
 	messages, err := msgr.Subscribe(ctx, message.TaskTopic)
 	if err != nil {
 		logger.Error("failed to subscribe topic", "topic", message.TaskTopic, "error", err)
@@ -192,8 +192,8 @@ func main() {
 		"discovery worker started",
 		"topic", message.TaskTopic,
 		"messenger", config.MessengerType,
-		"scout_config", config.ScoutConfigPath,
-		"http_timeout", config.HTTPTimeout,
+		"scout_config", config.Scout.ConfigPath,
+		"http_timeout", config.Scout.HTTPTimeout,
 		"started_at", started,
 	)
 	defer func() {

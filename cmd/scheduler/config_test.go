@@ -62,7 +62,7 @@ func TestLoadConfig_ShippedConfigs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg, err := LoadConfig([]string{"--config", tt.path})
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantHealth, cfg.HealthPort)
+			assert.Equal(t, tt.wantHealth, cfg.Health.Port)
 			assert.Equal(t, tt.wantKinds, cfg.Kinds)
 			assert.Equal(t, 3, cfg.RetryMax)
 			assert.Equal(t, tt.schedulerName, cfg.SchedulerName)

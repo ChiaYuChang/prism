@@ -21,7 +21,7 @@ const (
 )
 
 type Config struct {
-	HealthPort       int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
+	Health           obs.HealthConfig    `mapstructure:"health"`
 	ShutdownTimeout  time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
 	Logger           obs.LoggingConfig   `mapstructure:"logger"`
 	Telemetry        obs.TelemetryConfig `mapstructure:"telemetry"`
@@ -45,7 +45,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs := pflag.NewFlagSet("worker-planner", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
-	fs.Int("health-port", 8094, "The port for the health check server")
+	obs.RegisterHealthFlags(fs, obs.DefaultHealthConfig(8094))
 	fs.Duration("shutdown-timeout", 3*time.Minute, "Graceful shutdown drain timeout")
 	fs.Int("max-search-tasks", planner.DefaultMaxSearchTasks, "Maximum keyword-search tasks created per completed batch")
 
@@ -91,6 +91,9 @@ func LoadConfig(args []string) (*Config, error) {
 
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
+	}
+	if err := obs.BindHealthFlags(v, fs); err != nil {
+		return nil, fmt.Errorf("failed to bind health flags: %w", err)
 	}
 	if err := bindSearchFlags(v, fs); err != nil {
 		return nil, err

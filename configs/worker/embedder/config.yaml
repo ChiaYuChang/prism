@@ -1,4 +1,6 @@
-health-port: 8095
+health:
+  enabled: true
+  port: 8095
 shutdown-timeout: 2m
 retry-max: 3
 embedding-dimension: 768

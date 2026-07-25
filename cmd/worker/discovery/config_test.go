@@ -15,9 +15,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	cfg, err := LoadConfig([]string{})
 	require.NoError(t, err)
 
-	assert.Equal(t, 8092, cfg.HealthPort)
-	assert.Equal(t, DefaultScoutConfigPath, cfg.ScoutConfigPath)
-	assert.Equal(t, 30*time.Second, cfg.HTTPTimeout)
+	assert.Equal(t, 8092, cfg.Health.Port)
+	assert.Equal(t, DefaultScoutConfigPath, cfg.Scout.ConfigPath)
+	assert.Equal(t, 30*time.Second, cfg.Scout.HTTPTimeout)
 	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "localhost", cfg.Postgres.Host)
 	assert.Equal(t, "nats", cfg.MessengerType)
@@ -30,8 +30,8 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "discovery", "config.yaml")})
 	require.NoError(t, err)
 
-	assert.Equal(t, 8092, cfg.HealthPort)
-	assert.Equal(t, "/app/configs/worker/discovery/scouts.yaml", cfg.ScoutConfigPath)
+	assert.Equal(t, 8092, cfg.Health.Port)
+	assert.Equal(t, "/app/configs/worker/discovery/scouts.yaml", cfg.Scout.ConfigPath)
 	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
 	natsCfg, ok := cfg.Messenger.(*app.NatsConfig)
@@ -116,10 +116,10 @@ func TestLoadConfigFromFlags(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, 9091, cfg.HealthPort)
-	assert.Equal(t, 45*time.Second, cfg.HTTPTimeout)
+	assert.Equal(t, 9091, cfg.Health.Port)
+	assert.Equal(t, 45*time.Second, cfg.Scout.HTTPTimeout)
 	assert.Equal(t, 2, cfg.RetryMax)
-	assert.Equal(t, "/tmp/scouts.yaml", cfg.ScoutConfigPath)
+	assert.Equal(t, "/tmp/scouts.yaml", cfg.Scout.ConfigPath)
 	assert.Equal(t, "127.0.0.1", cfg.Postgres.Host)
 	assert.Equal(t, 5433, cfg.Postgres.Port)
 	assert.Equal(t, "gochannel", cfg.MessengerType)
@@ -148,17 +148,17 @@ func TestLoadConfigTelemetryFlags(t *testing.T) {
 }
 
 func TestLoadConfigFromEnvironment(t *testing.T) {
-	require.NoError(t, os.Setenv("PRISM_DISCOVERY_WORKER_HTTP_TIMEOUT", "40s"))
+	require.NoError(t, os.Setenv("PRISM_DISCOVERY_WORKER_SCOUT_HTTP_TIMEOUT", "40s"))
 	require.NoError(t, os.Setenv("PRISM_DISCOVERY_WORKER_POSTGRES_USERNAME", "tester"))
 	defer func() {
-		_ = os.Unsetenv("PRISM_DISCOVERY_WORKER_HTTP_TIMEOUT")
+		_ = os.Unsetenv("PRISM_DISCOVERY_WORKER_SCOUT_HTTP_TIMEOUT")
 		_ = os.Unsetenv("PRISM_DISCOVERY_WORKER_POSTGRES_USERNAME")
 	}()
 
 	cfg, err := LoadConfig([]string{})
 	require.NoError(t, err)
 
-	assert.Equal(t, 40*time.Second, cfg.HTTPTimeout)
+	assert.Equal(t, 40*time.Second, cfg.Scout.HTTPTimeout)
 	assert.Equal(t, "tester", cfg.Postgres.Username)
 }
 

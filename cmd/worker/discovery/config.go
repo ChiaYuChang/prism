@@ -18,19 +18,12 @@ const (
 	DefaultScoutConfigPath = "configs/worker/discovery/scouts.yaml"
 )
 
-type Config struct {
-	HealthPort      int                       `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	ShutdownTimeout time.Duration             `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
-	Logger          obs.LoggingConfig         `mapstructure:"logger"`
-	Telemetry       obs.TelemetryConfig       `mapstructure:"telemetry"`
-	ScoutConfigPath string                    `mapstructure:"scout-config"   validate:"required"`
-	HTTPTimeout     time.Duration             `mapstructure:"http-timeout"   validate:"required,min=1s"`
-	RetryMax        int                       `mapstructure:"retry-max"      validate:"required,min=1"`
-	Postgres        appconfig.PostgresConfig  `mapstructure:"postgres"`
-	MessengerType   string                    `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
-	Messenger       appconfig.MessengerConfig `mapstructure:"-"`
-	Search          searchconfig.Config       `mapstructure:"search"`
+type ScoutSettings struct {
+	ConfigPath  string        `mapstructure:"config-path"  validate:"required"`
+	HTTPTimeout time.Duration `mapstructure:"http-timeout" validate:"required,min=1s"`
+}
 
+type SinkSettings struct {
 	// CaptureDir, when non-empty, tees successful HTTP response bodies into
 	// <dir>/<host>/<path>. Dev-only; used to build local fixtures during
 	// the integration test plan Phase 1 real-site run.
@@ -43,6 +36,21 @@ type Config struct {
 	FixtureBase string `mapstructure:"fixture-base"`
 }
 
+type Config struct {
+	Health          obs.HealthConfig          `mapstructure:"health"`
+	ShutdownTimeout time.Duration             `mapstructure:"shutdown-timeout"   validate:"required,min=1s"`
+	RetryMax        int                       `mapstructure:"retry-max"          validate:"required,min=1"`
+	Logger          obs.LoggingConfig         `mapstructure:"logger"`
+	Telemetry       obs.TelemetryConfig       `mapstructure:"telemetry"`
+	Postgres        appconfig.PostgresConfig  `mapstructure:"postgres"`
+	MessengerType   string                    `mapstructure:"messenger-type"     validate:"oneof=nats gochannel"`
+	Messenger       appconfig.MessengerConfig `mapstructure:"-"`
+
+	Scout  ScoutSettings       `mapstructure:"scout"`
+	Search searchconfig.Config `mapstructure:"search"`
+	Sink   SinkSettings        `mapstructure:"sink"`
+}
+
 func LoadConfig(args []string) (*Config, error) {
 	v := viper.New()
 	v.SetEnvPrefix("PRISM_DISCOVERY_WORKER")
@@ -51,7 +59,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs := pflag.NewFlagSet("worker-discovery", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
-	fs.Int("health-port", 8092, "The port for the health check server")
+	obs.RegisterHealthFlags(fs, obs.DefaultHealthConfig(8092))
 	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.worker.discovery"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.worker.discovery"))
@@ -126,6 +134,13 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
 	}
+	if err := obs.BindHealthFlags(v, fs); err != nil {
+		return nil, fmt.Errorf("failed to bind health flags: %w", err)
+	}
+	_ = v.BindPFlag("scout.config-path", fs.Lookup("scout-config"))
+	_ = v.BindPFlag("scout.http-timeout", fs.Lookup("http-timeout"))
+	_ = v.BindPFlag("sink.capture-dir", fs.Lookup("capture-dir"))
+	_ = v.BindPFlag("sink.fixture-base", fs.Lookup("fixture-base"))
 	if err := bindSearchFlags(v, fs); err != nil {
 		return nil, err
 	}
@@ -166,7 +181,7 @@ func LoadConfig(args []string) (*Config, error) {
 	}
 	config.Messenger = msgrCfg
 
-	if config.CaptureDir != "" && config.FixtureBase != "" {
+	if config.Sink.CaptureDir != "" && config.Sink.FixtureBase != "" {
 		return nil, fmt.Errorf("--capture-dir and --fixture-base are mutually exclusive")
 	}
 

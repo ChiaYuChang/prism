@@ -70,7 +70,7 @@ func main() {
 	infra.SetTracer(tracer)
 
 	monitor := obs.NewHealthMonitor()
-	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	obs.StartHealthServer(ctx, config.Health, monitor)
 	go func() {
 		<-ctx.Done()
 		monitor.SetStatus(obs.LevelWarn, "shutting down")
@@ -144,7 +144,12 @@ func main() {
 	}
 
 	targets := config.Search.EnabledTargets()
-	handler, err := NewHandler(logger, tracer, plan, targets)
+	handler, err := NewHandler(HandlerConfig{
+		Logger:  logger,
+		Tracer:  tracer,
+		Planner: plan,
+		Targets: targets,
+	})
 	if err != nil {
 		logger.Error("failed to initialize handler", "error", err)
 		monitor.SetStatus(obs.LevelError, "Failed to initialize handler")

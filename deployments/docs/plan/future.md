@@ -29,7 +29,7 @@ Deferred refactors, dual-mode deployment plans, archive catalog refactor, and cl
   * TUI: `cmd/tui` (2.8) — Bubble Tea, single Go binary for operator use.
   * Web: Alpine.js + server-side Go templates, static assets `//go:embed`-ed into `cmd/api-server`. Keep the API JSON-only; Alpine consumes the same `/api/v1/*` endpoints as TUI — no separate HTML-fragment endpoints (would be the HTMX alternative). One API surface, two renderers.
 * [ ] **Admin schedule API v2.**
-  * **When:** after `cmd/trigger/schedule` is deployed and recurring `DIRECTORY_FETCH` is stable.
+  * **When:** after `cmd/trigger/cron` is deployed and recurring `DIRECTORY_FETCH` is stable.
   * **Why:** schedule creation and run-now are admin/control-plane behavior, not public user API behavior. v1 should keep schedule identity in YAML using operator-provided UUIDv7 values.
   * **What:** add authenticated admin endpoints for listing schedules, fuzzy lookup, run-now, pause/resume, and controlled edits: `GET /admin/schedules`, `GET /admin/schedules/search?q=...`, `POST /admin/schedules/{id}/run-now`, `POST /admin/schedules/{id}/pause`, `POST /admin/schedules/{id}/resume`, and eventually `PATCH /admin/schedules/{id}`.
   * **Fuzzy lookup:** search by UUID exact/prefix, name, `source_abbr`, `kind`, `source_type`, and URL fragment so operators can recover schedule IDs from human-known fields. Start with simple `ILIKE`; add `pg_trgm` only if schedule count makes it necessary.

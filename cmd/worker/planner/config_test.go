@@ -20,7 +20,7 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "planner", "config.yaml")})
 	require.NoError(t, err)
 
-	require.Equal(t, 8094, cfg.HealthPort)
+	require.Equal(t, 8094, cfg.Health.Port)
 	require.Equal(t, "/app/assets/worker/planner/extractor_v2.md", cfg.PromptPath)
 	require.Equal(t, 20, cfg.MaxSearchTasks)
 	require.Equal(t, "postgres", cfg.Postgres.Host)

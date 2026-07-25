@@ -15,7 +15,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	cfg, err := LoadConfig(nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, 8093, cfg.HealthPort)
+	assert.Equal(t, 8093, cfg.Health.Port)
 	assert.Equal(t, 30*time.Second, cfg.HTTPTimeout)
 	assert.Equal(t, 2*time.Minute, cfg.MaxProcessingTime)
 	assert.Equal(t, 3, cfg.RetryMax)
@@ -31,7 +31,7 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "collector", "config.yaml")})
 	require.NoError(t, err)
 
-	assert.Equal(t, 8093, cfg.HealthPort)
+	assert.Equal(t, 8093, cfg.Health.Port)
 	assert.Equal(t, "/app/configs/worker/collector/parsers.yaml", cfg.ParsersConfigPath)
 	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "s3://prism-archives/errors", cfg.Archive)
@@ -71,7 +71,7 @@ func TestLoadConfigFromFlags(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, 9092, cfg.HealthPort)
+	assert.Equal(t, 9092, cfg.Health.Port)
 	assert.Equal(t, 45*time.Second, cfg.HTTPTimeout)
 	assert.Equal(t, 90*time.Second, cfg.MaxProcessingTime)
 	assert.Equal(t, 2, cfg.RetryMax)

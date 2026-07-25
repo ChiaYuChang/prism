@@ -4,7 +4,7 @@ tasks:
   all:
     desc: build all microservice binaries
     deps:
-      - for: [api-server, prismctl-cli, prismctl-root, backfiller, scheduler, discovery, collector, archive, planner, embedder, schedule-trigger, batch-detector, batch-publisher, dev-downloader, dev-fixture-server, dev-mock-server, dev-parse-probe, recover, rss]
+      - for: [api-server, prismctl-cli, prismctl-root, backfiller, scheduler, discovery, collector, archive, planner, embedder, cron-trigger, batch-detector, batch-publisher, dev-downloader, dev-fixture-server, dev-mock-server, dev-parse-probe, recover, rss]
         task: '{{.ITEM}}'
 
   api-server:
@@ -58,11 +58,11 @@ tasks:
       - go build -o {{.BUILD_DIR}}/batch/detector
         ./{{.CMD_DIR}}/batch/detector/*.go
 
-  schedule-trigger:
-    desc: build schedule trigger binary
+  cron-trigger:
+    desc: build cron trigger binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/trigger/schedule
-        ./{{.CMD_DIR}}/trigger/schedule/*.go
+      - go build -o {{.BUILD_DIR}}/trigger/cron
+        ./{{.CMD_DIR}}/trigger/cron/*.go
 
   batch-publisher:
     desc: build batch publisher binary

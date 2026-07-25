@@ -63,6 +63,20 @@ type taskCreator interface {
 	CreateTask(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error)
 }
 
+type HandlerConfig struct {
+	Logger           *slog.Logger
+	Tracer           trace.Tracer
+	Dispatcher       *collector.Dispatcher
+	ErrorSaver       collector.Saver
+	ArchivePublisher ArchivePublisher
+	Pipeline         repo.Pipeline
+	Reporter         repo.TaskReporter
+	TaskReader       taskReader
+	Tasks            taskCreator
+	Metrics          *metrics
+	RetryMax         int
+}
+
 type metrics struct {
 	tasks        metric.Int64Counter
 	taskDuration metric.Float64Histogram
@@ -111,48 +125,40 @@ func (m *metrics) recordTask(ctx context.Context, sig message.TaskSignal, result
 	m.taskDuration.Record(ctx, time.Since(started).Seconds(), attrs)
 }
 
-func NewHandler(
-	logger *slog.Logger,
-	tracer trace.Tracer,
-	dispatcher *collector.Dispatcher,
-	errorSaver collector.Saver,
-	archivePublisher ArchivePublisher,
-	pipeline repo.Pipeline,
-	reporter repo.TaskReporter,
-	metrics *metrics,
-	retryMax ...int,
-) (*Handler, error) {
-	if logger == nil {
+func NewHandler(cfg HandlerConfig) (*Handler, error) {
+	if cfg.Logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
 	}
-	if tracer == nil {
+	if cfg.Tracer == nil {
 		return nil, fmt.Errorf("%w: tracer", ErrParamMissing)
 	}
-	if dispatcher == nil {
+	if cfg.Dispatcher == nil {
 		return nil, fmt.Errorf("%w: dispatcher", ErrParamMissing)
 	}
-	if pipeline == nil {
+	if cfg.Pipeline == nil {
 		return nil, fmt.Errorf("%w: pipeline", ErrParamMissing)
 	}
-	if reporter == nil {
+	if cfg.Reporter == nil {
 		return nil, fmt.Errorf("%w: reporter", ErrParamMissing)
 	}
 	maxAttempts := repo.DefaultTaskRetryMax
-	if len(retryMax) > 0 {
-		maxAttempts = retryMax[0]
+	if cfg.RetryMax != 0 {
+		maxAttempts = cfg.RetryMax
 	}
 	if maxAttempts < 1 {
 		return nil, fmt.Errorf("%w: retry_max", ErrParamMissing)
 	}
 	return &Handler{
-		logger:           logger,
-		tracer:           tracer,
-		dispatcher:       dispatcher,
-		errorSaver:       errorSaver,
-		archivePublisher: archivePublisher,
-		pipeline:         pipeline,
-		reporter:         reporter,
-		metrics:          metrics,
+		logger:           cfg.Logger,
+		tracer:           cfg.Tracer,
+		dispatcher:       cfg.Dispatcher,
+		errorSaver:       cfg.ErrorSaver,
+		archivePublisher: cfg.ArchivePublisher,
+		pipeline:         cfg.Pipeline,
+		reporter:         cfg.Reporter,
+		taskReader:       cfg.TaskReader,
+		tasks:            cfg.Tasks,
+		metrics:          cfg.Metrics,
 		retryMax:         maxAttempts,
 	}, nil
 }

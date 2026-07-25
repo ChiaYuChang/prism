@@ -57,7 +57,7 @@ func main() {
 	}
 
 	monitor := obs.NewHealthMonitor()
-	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	obs.StartHealthServer(ctx, config.Health, monitor)
 	go func() {
 		<-ctx.Done()
 		monitor.SetStatus(obs.LevelWarn, "shutting down")
