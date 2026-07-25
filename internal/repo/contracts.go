@@ -45,6 +45,7 @@ type FailedTaskSummary struct {
 
 type Batch struct {
 	ID                   uuid.UUID
+	ParentID             *uuid.UUID
 	SourceType           string
 	TraceID              *string
 	CreatedAt            time.Time

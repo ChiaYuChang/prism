@@ -537,6 +537,7 @@ func AllTaskStatusValues() []TaskStatus {
 // Groups one cron/trigger run so planner can detect completion. id used in tasks.batch_id and copied into candidates/contents.
 type Batch struct {
 	ID                   uuid.UUID          `db:"id" json:"id"`
+	ParentID             pgtype.UUID        `db:"parent_id" json:"parent_id"`
 	SourceType           SourceType         `db:"source_type" json:"source_type"`
 	TraceID              pgtype.Text        `db:"trace_id" json:"trace_id"`
 	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`

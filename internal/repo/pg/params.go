@@ -19,6 +19,7 @@ func repoListCandidatesParamsToDB(arg repo.ListCandidatesParams) ListCandidatesP
 func repoCreateTaskParamsToEnsureBatchExists(arg repo.CreateTaskParams) EnsureBatchExistsParams {
 	return EnsureBatchExistsParams{
 		ID:         arg.BatchID,
+		ParentID:   pgconv.UUIDPtrToPgUUID(arg.ParentBatchID),
 		SourceType: SourceType(arg.SourceType),
 		TraceID:    pgconv.StringPtrToPgText(&arg.TraceID),
 	}

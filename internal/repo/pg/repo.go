@@ -584,6 +584,7 @@ func (r *PGOperator) ListBatches(ctx context.Context, params repo.ListOperatorPa
 	for i, row := range rows {
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
+			pgconv.PgUUIDToUUIDPtr(row.ParentID),
 			string(row.SourceType),
 			pgconv.PgTextToStringPtr(row.TraceID),
 			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
@@ -966,6 +967,7 @@ func (r *PGBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit
 	for i, row := range rows {
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
+			pgconv.PgUUIDToUUIDPtr(row.ParentID),
 			string(row.SourceType),
 			pgconv.PgTextToStringPtr(row.TraceID),
 			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
@@ -1021,6 +1023,7 @@ func (r *PGBatchTrigger) ListReadyToPublishBatches(ctx context.Context, limit in
 	for i, row := range rows {
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
+			pgconv.PgUUIDToUUIDPtr(row.ParentID),
 			string(row.SourceType),
 			pgconv.PgTextToStringPtr(row.TraceID),
 			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),

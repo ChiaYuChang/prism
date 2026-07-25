@@ -45,6 +45,7 @@ type Querier interface {
 	// Finds batches where all tasks are completed and all candidates are promoted to contents.
 	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
 	GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error)
+	GetBatchByID(ctx context.Context, id uuid.UUID) (Batch, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
 	GetCandidateEmbeddingInputHash(ctx context.Context, arg GetCandidateEmbeddingInputHashParams) (string, error)
@@ -75,6 +76,7 @@ type Querier interface {
 	ListCandidateEmbeddingsGemma2025(ctx context.Context, arg ListCandidateEmbeddingsGemma2025Params) ([]ListCandidateEmbeddingsGemma2025Row, error)
 	ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error)
 	ListCandidatesForAnalysis(ctx context.Context, arg ListCandidatesForAnalysisParams) ([]Candidate, error)
+	ListChildBatchesByParentID(ctx context.Context, parentID pgtype.UUID) ([]Batch, error)
 	ListContentEmbeddingsByContentID(ctx context.Context, contentID uuid.UUID) ([]ContentEmbeddingsGemma2025, error)
 	ListContentEmbeddingsGemma2025(ctx context.Context, arg ListContentEmbeddingsGemma2025Params) ([]ListContentEmbeddingsGemma2025Row, error)
 	ListContentsByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Content, error)
