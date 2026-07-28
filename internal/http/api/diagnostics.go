@@ -11,11 +11,19 @@ import (
 )
 
 type AdminDiagnostics struct {
-	Services    map[string]obs.HealthStatus `json:"services"`
-	NATS        *natsdiag.Snapshot          `json:"nats,omitempty"`
-	NATSError   string                      `json:"nats_error,omitempty"`
-	TaskSummary []AdminTaskStatusSummary    `json:"task_summary"`
-	Failures    []AdminFailedTaskSummary    `json:"recent_failures"`
+	Services        map[string]obs.HealthStatus `json:"services"`
+	ServiceMetadata map[string]ServiceMetadata  `json:"service_metadata,omitempty"`
+	NATS            *natsdiag.Snapshot          `json:"nats,omitempty"`
+	NATSError       string                      `json:"nats_error,omitempty"`
+	TaskSummary     []AdminTaskStatusSummary    `json:"task_summary"`
+	Failures        []AdminFailedTaskSummary    `json:"recent_failures"`
+}
+
+// ServiceMetadata describes how a monitored service is presented in the UI.
+// It intentionally excludes the internal health-check URL.
+type ServiceMetadata struct {
+	Group       string `json:"group,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 type AdminTaskStatusSummary struct {
@@ -82,7 +90,12 @@ func (s *Server) GetAdminDiagnostics(w http.ResponseWriter, r *http.Request) {
 			UpdatedAt: item.UpdatedAt.UTC().Format("2006-01-02T15:04:05.999999999Z07:00"),
 		}
 	}
-	result := AdminDiagnostics{Services: services, TaskSummary: taskItems, Failures: failureItems}
+	result := AdminDiagnostics{
+		Services:        services,
+		ServiceMetadata: s.ServiceMetadata,
+		TaskSummary:     taskItems,
+		Failures:        failureItems,
+	}
 	if s.NATSInspector != nil {
 		snapshot, natsErr := s.NATSInspector.Snapshot(r.Context())
 		if natsErr != nil {

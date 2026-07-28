@@ -27,7 +27,7 @@ var (
 // html/jsonld rule once selectors look stable.
 //
 // The system instruction is supplied by the caller (typically loaded from
-// assets/prompts/collector/article_parser.md). Keeping the prompt out of
+// assets/runtime/worker/collector/worker/parser.md). Keeping the prompt out of
 // the binary lets operators iterate on extraction quality without
 // rebuilding the worker image.
 type Parser struct {
@@ -42,7 +42,7 @@ var _ collector.Parser = (*Parser)(nil)
 // NewParser returns an LLM-backed parser. model is the provider-specific
 // model identifier (e.g. "gemini-2.0-flash"); prompt is the system
 // instruction text — load it from disk (see
-// assets/prompts/collector/article_parser.md) and pass through unchanged.
+	// assets/runtime/worker/collector/worker/parser.md) and pass through unchanged.
 func NewParser(generator llm.Generator, logger *slog.Logger, model, prompt string) (*Parser, error) {
 	if generator == nil {
 		return nil, fmt.Errorf("%w: generator", ErrParamMissing)

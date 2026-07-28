@@ -23,10 +23,6 @@ services:
   valkey:
     restart: unless-stopped
 
-  prismctl-web:
-    ports:
-      - "127.0.0.1:${PRISMCTL_WEB_PORT:-8088}:8080"
-
   prismctl-user-gateway:
     environment:
       PRISM_PUBLIC_SITE_ADDRESS: ${PRISM_PUBLIC_SITE_ADDRESS}

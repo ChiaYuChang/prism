@@ -151,7 +151,7 @@ cmd/trigger/cron
 ```
 cmd/batch/detector detects completed PARTY batch
  └─► publishes BatchCompletedSignal → [prism.batch.completed] via cmd/batch/publisher
-      └─► cmd/worker/planner: loads batch contents
+       └─► cmd/worker/discovery/planner: loads batch contents
            └─► LLM extracts keyword phrases
                 └─► CreateTask(MEDIA + KEYWORD_SEARCH) per phrase per MEDIA source
                      └─► scheduler-slow claims → publishes TaskSignal → [prism.task]

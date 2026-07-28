@@ -317,7 +317,7 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 	}
 
 	fs.StringVar(&opts.archiveURI, "archive", "", "archive URI (file:///path or bare path)")
-	fs.StringVar(&opts.parsersConfig, "parsers-config", "configs/worker/collector/parsers.yaml", "path to parsers.yaml (used by run subcommand)")
+	fs.StringVar(&opts.parsersConfig, "parsers-config", "configs/worker/collector/worker/parsers.yaml", "path to parsers.yaml (used by run subcommand)")
 	fs.StringVar(&opts.prompt, "prompt", "", "override path to the LLM fallback system-instruction file (defaults to fallback.prompt_file in parsers.yaml)")
 
 	var sinceRaw, untilRaw string

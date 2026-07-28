@@ -36,7 +36,7 @@ Flags:
 | `-s, --source` | `dpp` | Source name (must exist in `scouts.yaml`) |
 | `-n, --max-pages` | `1` | Directory pages to crawl |
 | `-o, --output` | `testdata/real` | Base directory for local-only mirrored files |
-| `-c, --config` | `configs/worker/discovery/scouts.yaml` | Scout config |
+| `-c, --config` | `configs/worker/discovery/candidate/scouts.yaml` | Scout config |
 | `--start-url` | (per-source) | Override start URL template |
 | `--step` / `--first` | (per-source) | Pager step and first index |
 

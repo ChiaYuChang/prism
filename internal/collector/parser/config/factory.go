@@ -20,7 +20,7 @@ var ErrFallbackEnabledNoFactory = errors.New("fallback enabled but no llm factor
 
 // LLMFactory builds the fallback collector.Parser used when no host-specific
 // entry matches. Returning a func keeps this package free of an llm import;
-// the call site (cmd/worker/collector / cmd/recover / parse-probe) wires
+// the call site (cmd/worker/collector/worker / cmd/recover / parse-probe) wires
 // the actual provider. May be nil when fallback is disabled in config.
 type LLMFactory func() (collector.Parser, error)
 

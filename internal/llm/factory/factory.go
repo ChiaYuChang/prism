@@ -34,7 +34,7 @@ var providerDecoders = map[string]llm.ProviderConfigDecoder{
 }
 
 // NewGenerator instantiates an llm.Generator from the supplied LLMConfig.
-// Promoted from cmd/worker/planner so the same construction path is shared
+// Promoted from cmd/worker/discovery/planner so the same construction path is shared
 // by every command that needs a generator (planner, collector fallback,
 // recover, parse-probe).
 func NewGenerator(ctx context.Context, cfg appconfig.LLMConfig, logger *slog.Logger) (llm.Generator, error) {

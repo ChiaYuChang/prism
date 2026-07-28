@@ -30,27 +30,27 @@ tasks:
   discovery:
     desc: build discovery worker binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/*.go
+      - go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/candidate/*.go
 
   collector:
     desc: build collector worker binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/collector ./{{.CMD_DIR}}/worker/collector
+      - go build -o {{.BUILD_DIR}}/collector ./{{.CMD_DIR}}/worker/collector/worker
 
   archive:
     desc: build archive worker binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/archive ./{{.CMD_DIR}}/worker/archive
+      - go build -o {{.BUILD_DIR}}/archive ./{{.CMD_DIR}}/worker/collector/archive
 
   planner:
     desc: build planner worker binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/planner ./{{.CMD_DIR}}/worker/planner
+      - go build -o {{.BUILD_DIR}}/planner ./{{.CMD_DIR}}/worker/discovery/planner
 
   embedder:
     desc: build embedder worker binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/embedder ./{{.CMD_DIR}}/worker/embedder
+      - go build -o {{.BUILD_DIR}}/embedder ./{{.CMD_DIR}}/worker/analyzer/embedder
 
   batch-detector:
     desc: build batch detector binary

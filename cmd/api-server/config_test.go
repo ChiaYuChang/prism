@@ -37,6 +37,8 @@ func TestLoadConfig_ShippedConfig(t *testing.T) {
 	assert.True(t, cfg.Cache.Enabled)
 	assert.True(t, cfg.SchedulerControl.Enabled)
 	assert.True(t, cfg.RateLimit.Enabled)
+	assert.True(t, cfg.Web.Enabled)
+	assert.Equal(t, "/app/assets/static/prismctl-web", cfg.Web.StaticDir)
 	assert.Equal(t, "prism.api", cfg.Telemetry.ServiceName)
 
 	assert.Equal(t, "pull", cfg.Monitoring.Mode)
@@ -47,8 +49,8 @@ func TestLoadConfig_ShippedConfig(t *testing.T) {
 	require.NotNil(t, target.Enabled)
 	assert.True(t, *target.Enabled)
 	assert.Equal(t, "http://batch-detector:8083/healthz", target.URL)
-	assert.Equal(t, "Batch Detector", target.DisplayName)
-	assert.Equal(t, "batch", target.Group)
+	assert.Empty(t, target.DisplayName)
+	assert.Equal(t, "batch.detector", target.Group)
 }
 
 func TestLoadConfig_Monitoring(t *testing.T) {

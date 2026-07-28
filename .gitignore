@@ -91,8 +91,9 @@ NOTE.md
 
 review_report.md
 
-runtime
+/runtime/
 
 # web dependencies and build output
 web/prismctl-web/node_modules/
 web/prismctl-web/dist/
+assets/static/prismctl-web/

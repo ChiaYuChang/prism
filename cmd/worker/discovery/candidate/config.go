@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	DefaultScoutConfigPath = "configs/worker/discovery/scouts.yaml"
+	DefaultScoutConfigPath = "configs/worker/discovery/candidate/scouts.yaml"
 )
 
 type ScoutSettings struct {

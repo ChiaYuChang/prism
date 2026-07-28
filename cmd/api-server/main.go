@@ -220,6 +220,17 @@ func main() {
 	}
 	serverOpts = append(serverOpts, api.WithPrompts(repository.Prompts(), promptStore))
 
+	serviceMetadata := make(map[string]api.ServiceMetadata)
+	for name, target := range config.Monitoring.Targets {
+		if target.IsEnabled() {
+			serviceMetadata[name] = api.ServiceMetadata{
+				Group:       target.Group,
+				DisplayName: target.DisplayName,
+			}
+		}
+	}
+	serverOpts = append(serverOpts, api.WithServiceMetadata(serviceMetadata))
+
 	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches(), serverOpts...)
 	if err != nil {
 		logger.Error("failed to construct api server", "error", err)
@@ -231,9 +242,6 @@ func main() {
 	for name, target := range config.Monitoring.Targets {
 		if target.IsEnabled() {
 			expectedServices = append(expectedServices, name)
-			if target.DisplayName == "" {
-				target.DisplayName = name
-			}
 			targets[name] = target.MonitorTarget
 		}
 	}
@@ -295,6 +303,14 @@ func main() {
 		)
 		adminRouter.HandleFunc("GET /healthz", livenessHandler(monitor))
 		adminRouter.HandleFunc("GET /readyz", readinessHandler(monitor))
+		if config.Web.Enabled {
+			staticHandler, staticErr := prismhttp.NewSPAHandler(config.Web.StaticDir)
+			if staticErr != nil {
+				logger.Error("failed to configure control room", "error", staticErr)
+				os.Exit(1)
+			}
+			adminRouter.Handle("/{path...}", staticHandler)
+		}
 		adminRouter.Route("/api/v1", func(apiV1Router *prismhttp.Router) {
 			apiV1Router.Route("/admin", func(admin *prismhttp.Router) {
 				apiServer.RegisterV1Admin(admin)

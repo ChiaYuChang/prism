@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1.7
+
+ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot
+
+FROM node:22.14.0-alpine AS web-build
+
+WORKDIR /web
+COPY web/prismctl-web/package.json web/prismctl-web/package-lock.json ./
+RUN npm ci
+COPY web/prismctl-web ./
+RUN npm run build
+
+FROM golang:1.26-alpine AS build
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+COPY . .
+COPY --from=web-build /web/dist ./assets/static/prismctl-web
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    mkdir -p /out/app/configs/api-server && \
+    CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -ldflags="-s -w" \
+        -o /out/app/worker \
+        ./cmd/api-server && \
+    CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -ldflags="-s -w" \
+        -o /out/app/healthcheck \
+        ./cmd/healthcheck && \
+    cp -r configs/api-server/. /out/app/configs/api-server/ && \
+    mkdir -p /out/app/assets/static && \
+    cp -r assets/static/prismctl-web /out/app/assets/static/prismctl-web
+
+FROM ${RUNTIME_IMAGE} AS runtime
+
+WORKDIR /app
+COPY --from=build /out/app /app
+
+ENTRYPOINT ["/app/worker"]

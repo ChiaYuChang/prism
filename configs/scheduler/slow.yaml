@@ -13,7 +13,7 @@ kinds:
   - EMBED_CONTENT
 lock-key: prism:scheduler:DIRECTORY_FETCH+EMBED_CANDIDATE+EMBED_CONTENT+KEYWORD_SEARCH:lock
 buffer: 10
-rate-limit-config: /app/assets/scheduler/ratelimits/scheduler.yaml
+rate-limit-config: /app/assets/runtime/scheduler/ratelimits/scheduler.yaml
 messenger-type: nats
 nats-host: nats
 nats-port: 4222

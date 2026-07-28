@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	DefaultScoutConfigPath      = "configs/worker/discovery/scouts.yaml"
+	DefaultScoutConfigPath      = "configs/worker/discovery/candidate/scouts.yaml"
 	DefaultBackfillerConfigPath = "configs/backfiller/backfillers.yaml"
 	DefaultHTTPTimeout          = 30 * time.Second
 	CommandName                 = "backfiller"

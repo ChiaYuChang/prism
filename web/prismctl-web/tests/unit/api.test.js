@@ -20,4 +20,12 @@ describe("API client", () => {
     await expect(api.request("/admin/whoami")).rejects.toBeInstanceOf(ApiError);
     expect(onUnauthorized).toHaveBeenCalledOnce();
   });
+
+  it("generates a request ID when randomUUID is unavailable", async () => {
+    vi.stubGlobal("crypto", { getRandomValues: (bytes) => bytes.fill(171) });
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => new Response(JSON.stringify({ ok: true }), { status: 200, ...init })));
+    const api = createApi({ tokenStore: { getItem: () => "token" } });
+    await api.request("/admin/whoami");
+    expect(fetch.mock.calls[0][1].headers.get("X-Request-Id")).toBe("ab".repeat(16));
+  });
 });

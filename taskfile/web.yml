@@ -5,9 +5,9 @@ vars:
 
 tasks:
   build:
-    desc: build the Prism control room container
+    desc: build the Prism API container with the Control Room
     cmds:
-      - docker build --target runtime -t prism/prismctl-web:local {{.WEB_DIR}}
+      - docker build --target runtime -f deployments/Dockerfile.api -t prism/api-server:local .
 
   test:
     desc: run web unit tests in the pinned Node container
@@ -30,12 +30,13 @@ tasks:
   dev:down:
     desc: stop the containerized Vite development server
     cmds:
-      - docker compose -f .{{.ENV}}-web-dev.docker-compose.merged.yaml down
+      - docker compose -f .{{.ENV}}-web-dev.docker-compose.merged.yaml stop prismctl-web-dev
+      - docker compose -f .{{.ENV}}-web-dev.docker-compose.merged.yaml rm -f prismctl-web-dev
 
   logs:
     desc: follow control room logs
     cmds:
-      - docker compose -f .{{.ENV}}-web.docker-compose.merged.yaml logs -f prismctl-web
+      - docker compose -f .{{.ENV}}-dev_obs_app.docker-compose.merged.yaml logs -f prism-api
 
   npm:
     desc: run an npm command in the pinned dependency container
@@ -47,11 +48,6 @@ tasks:
     desc: refresh the committed web lockfile in the pinned Node container
     cmds:
       - docker build --target deps -t prism/prismctl-web-deps:local {{.WEB_DIR}}
-
-  nginx:test:
-    desc: validate nginx configuration through the built runtime image
-    cmds:
-      - docker run --rm --add-host prism-api:127.0.0.1 prism/prismctl-web:local nginx -t
 
   gateway:caddy:validate:
     desc: validate the pinned Caddy gateway configuration
