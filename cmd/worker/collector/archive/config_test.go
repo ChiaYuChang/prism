@@ -13,7 +13,7 @@ func TestLoadConfigShippedConfig(t *testing.T) {
 	t.Setenv("PRISM_WORKER_OTEL_ENABLED", "true")
 	t.Setenv("OTEL_COLLECTOR_ENDPOINT", "otel-collector:4317")
 
-	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "archive", "config.yaml")})
+	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "..", "configs", "worker", "collector", "archive", "config.yaml")})
 	require.NoError(t, err)
 	natsCfg, ok := cfg.Messenger.(*app.NatsConfig)
 	require.True(t, ok)

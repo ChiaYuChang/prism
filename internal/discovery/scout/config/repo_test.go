@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoad(t *testing.T) {
-	cfg, err := scoutconfig.ReadFile(filepath.Join("..", "..", "..", "..", "configs", "worker", "discovery", "scouts.yaml"))
+	cfg, err := scoutconfig.ReadFile(filepath.Join("..", "..", "..", "..", "configs", "worker", "discovery", "candidate", "scouts.yaml"))
 	require.NoError(t, err)
 
 	repo, err := scoutconfig.New(cfg)

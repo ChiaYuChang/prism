@@ -74,7 +74,7 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Duration("max-processing-time", 2*time.Minute, "Maximum wall-clock time for handling a single message (ctx timeout passed to handler)")
 	fs.Int("retry-max", repo.DefaultTaskRetryMax, "Maximum total task attempts before terminal failure")
 	fs.String("archive", "", "Archive URI for error payloads (file:///path or s3://bucket/prefix); empty disables archiving")
-	fs.String("parsers-config", "configs/worker/collector/parsers.yaml", "Path to the parsers configuration file (YAML)")
+	fs.String("parsers-config", "configs/worker/collector/worker/parsers.yaml", "Path to the parsers configuration file (YAML)")
 	fs.String("prompt", "", "Override path to the LLM fallback system-instruction file (defaults to fallback.prompt_file in parsers.yaml)")
 	fs.String("prompt-storage", "file://runtime/prompts", "Storage URI for DB-managed fallback prompt objects")
 	fs.String("capture-dir", "", "Dev-only: tee successful response bodies to <dir>/<host>/<path> for fixture capture")

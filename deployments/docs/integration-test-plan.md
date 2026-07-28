@@ -67,7 +67,7 @@ Code committed in `322a012`; end-to-end run not yet verified.
 
 - [x] Add `--force-minify-error` dev flag to collector
   - `internal/dev/failing_minifier.go` — `FailingMinifier{}` always returns `ErrInjectedMinifyFailure`.
-  - `cmd/worker/collector/main.go` swaps `minifier.New()` for `dev.FailingMinifier{}` when flag set; warns at startup.
+  - `cmd/worker/collector/worker/main.go` swaps `minifier.New()` for `dev.FailingMinifier{}` when flag set; warns at startup.
 - [x] `task worker:start:replay:fail-minify` wires the flag through the existing replay task via `FORCE_MINIFY_FLAG` var.
 - [x] Re-run pipeline on fixtures with the flag enabled (2026-05-01)
 - [x] Verify after run:

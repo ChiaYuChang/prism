@@ -105,10 +105,10 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        TARGET: worker/discovery
+        TARGET: worker/discovery/candidate
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --config=/app/configs/worker/discovery/config.yaml
+      - --config=/app/configs/worker/discovery/candidate/config.yaml
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -151,10 +151,10 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        TARGET: worker/collector
+        TARGET: worker/collector/worker
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --config=/app/configs/worker/collector/config.yaml
+      - --config=/app/configs/worker/collector/worker/config.yaml
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -200,10 +200,10 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        TARGET: worker/archive
+        TARGET: worker/collector/archive
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --config=/app/configs/worker/archive/config.yaml
+      - --config=/app/configs/worker/collector/archive/config.yaml
     environment:
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
       PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
@@ -237,10 +237,10 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        TARGET: worker/planner
+        TARGET: worker/discovery/planner
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --config=/app/configs/worker/planner/config.yaml
+      - --config=/app/configs/worker/discovery/planner/config.yaml
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -286,10 +286,10 @@ services:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        TARGET: worker/embedder
+        TARGET: worker/analyzer/embedder
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --config=/app/configs/worker/embedder/config.yaml
+      - --config=/app/configs/worker/analyzer/embedder/config.yaml
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432

@@ -28,11 +28,11 @@ func TestLoadConfigDefaults(t *testing.T) {
 func TestLoadConfigShippedConfig(t *testing.T) {
 	setShippedConfigEnv(t)
 
-	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "collector", "config.yaml")})
+	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "..", "configs", "worker", "collector", "worker", "config.yaml")})
 	require.NoError(t, err)
 
 	assert.Equal(t, 8093, cfg.Health.Port)
-	assert.Equal(t, "/app/configs/worker/collector/parsers.yaml", cfg.ParsersConfigPath)
+	assert.Equal(t, "/app/configs/worker/collector/worker/parsers.yaml", cfg.ParsersConfigPath)
 	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "s3://prism-archives/errors", cfg.Archive)
 	assert.Equal(t, "http://seaweedfs:8333", cfg.S3.Endpoint)

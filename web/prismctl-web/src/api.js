@@ -7,11 +7,21 @@ export class ApiError extends Error {
   }
 }
 
+function createRequestId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function createApi({ baseURL = "/api/v1", tokenStore = sessionStorage, timeoutMs = 15000, onUnauthorized = () => {} } = {}) {
   async function request(path, options = {}) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const requestId = crypto.randomUUID();
+    const requestId = createRequestId();
     const headers = new Headers(options.headers || {});
     headers.set("Accept", "application/json");
     headers.set("X-Request-Id", requestId);

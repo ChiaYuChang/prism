@@ -14,7 +14,7 @@ tasks:
   discovery:
     desc: run discovery worker on host
     cmds:
-      - go run cmd/worker/discovery/main.go
+      - go run ./cmd/worker/discovery/candidate
 
   pipeline:
     desc: run pipeline worker on host

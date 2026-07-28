@@ -1,19 +1,4 @@
 services:
-  prismctl-web:
-    profiles: [ web ]
-    image: prism/prismctl-web:latest
-    build:
-      context: ../web/prismctl-web
-      dockerfile: Dockerfile
-      target: runtime
-    networks:
-      - prism-admin-net
-    healthcheck:
-      test: [ "CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/healthz >/dev/null" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   prismctl-web-dev:
     profiles: [ web-dev ]
     image: prism/prismctl-web-dev:latest

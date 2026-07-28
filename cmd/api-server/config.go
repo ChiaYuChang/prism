@@ -45,6 +45,11 @@ type PromptConfig struct {
 	StorageURI string `mapstructure:"storage-uri" validate:"required"`
 }
 
+type WebConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
+	StaticDir string `mapstructure:"static-dir" validate:"required_if=Enabled true"`
+}
+
 // Config is the runtime configuration for the API server.
 type Config struct {
 	Port             int                    `mapstructure:"port"              validate:"required,min=1024,max=65535"`
@@ -63,6 +68,7 @@ type Config struct {
 	RateLimit        RateLimitConfig        `mapstructure:"rate-limit"`
 	Auth             AuthConfig             `mapstructure:"auth"`
 	Prompts          PromptConfig           `mapstructure:"prompts"`
+	Web              WebConfig              `mapstructure:"web"`
 	Monitoring       MonitoringConfig       `mapstructure:"monitoring"`
 	SchedulerControl SchedulerControlConfig `mapstructure:"scheduler-control"`
 }
@@ -123,6 +129,8 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetDefault("admin.enabled", true)
 	v.SetDefault("admin.port", 8091)
 	v.SetDefault("prompts.storage-uri", "file://runtime/prompts")
+	v.SetDefault("web.enabled", false)
+	v.SetDefault("web.static-dir", "assets/static/prismctl-web")
 	v.SetDefault("nats.nats-host", "nats")
 	v.SetDefault("nats.nats-port", 4222)
 	v.SetDefault("auth.hash-algorithm", "sha256")

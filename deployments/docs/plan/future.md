@@ -87,8 +87,8 @@ Deferred refactors, dual-mode deployment plans, archive catalog refactor, and cl
   * **Why:** prism's actual workload is per-page (per-message) and bursty — not stream (no <1s SLA, no time ordering) and not batch (not a periodic large chunk). The AWS-canonical pattern for this shape is **SQS + Lambda Event Source Mapping** with `batch_size` + `maximum_batching_window` tuning. The platform handles queue-depth-driven autoscaling and micro-batching; we keep one handler implementation that runs as a long-lived worker locally and as a Lambda in the cloud.
   * **Component-by-component target:**
     * `cmd/scheduler` (cron-triggered, runs-and-exits): EventBridge + Lambda
-    * `cmd/worker/discovery`, `cmd/worker/collector`, `cmd/worker/archiver`: SQS + Lambda (`batch_size=5–20`, `window=30s`)
-    * `cmd/worker/planner` (LLM call may exceed Lambda 15-min limit): SQS + ECS Fargate service with queue-depth autoscaling
+    * `cmd/worker/discovery/candidate`, `cmd/worker/collector/worker`, `cmd/worker/collector/archive`: SQS + Lambda (`batch_size=5–20`, `window=30s`)
+    * `cmd/worker/discovery/planner` (LLM call may exceed Lambda 15-min limit): SQS + ECS Fargate service with queue-depth autoscaling
     * `cmd/trigger/batch` (cron-triggered): EventBridge + Lambda
   * **Required handler-side changes (must be done before either mode can switch):**
     * **`--mode={worker,lambda}` flag dispatch** in each `cmd/worker/*` `main.go` — same handler, different runtime shell. `worker` = current `msgr.Subscribe + for-select`; `lambda` = `lambda.Start(adapter)` where adapter decodes SQS event and calls `HandleMessage` per record.
@@ -168,7 +168,7 @@ Deferred refactors, dual-mode deployment plans, archive catalog refactor, and cl
     * Schedule the actual cutover for the week before promoting S3 to production (the migration cost is zero only while no real data exists at scale, and that window will not stay open forever). Bundle it with the SQS+Lambda dual-mode rollout above.
 * [ ] **Integrating JSON/XML parsing into the collector.**
   * **Design & Config pattern:** Following the **Option 4 (Implicit Format Selection)** model, adding JSON or XML parsing in the future should follow these steps:
-    1. **YAML Schema Design (`configs/worker/collector/parsers.yaml`)**:
+    1. **YAML Schema Design (`configs/worker/collector/worker/parsers.yaml`)**:
        Format is implicitly selected by the presence of a format-specific config block (e.g., `html:`, `json:`, or `xml:`).
        ```yaml
        parsers:

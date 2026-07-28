@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	DefaultConfigPath = "configs/worker/planner/config.yaml"
-	DefaultPromptPath = "assets/worker/planner/extractor_v2.md"
+	DefaultConfigPath = "configs/worker/discovery/planner/config.yaml"
+DefaultPromptPath = "assets/runtime/worker/discovery/planner/extractor_v2.md"
 )
 
 type Config struct {

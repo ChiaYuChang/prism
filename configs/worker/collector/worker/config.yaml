@@ -1,21 +1,29 @@
 health:
   enabled: true
-  port: 8092
-shutdown-timeout: 30s
+  port: 8093
+shutdown-timeout: 2m
+http-timeout: 30s
+max-processing-time: 2m
 retry-max: 3
-scout:
-  config-path: /app/configs/worker/discovery/scouts.yaml
-  http-timeout: 30s
-sink:
-  fixture-base: '{{ env "FIXTURE_BASE" "" }}'
+archive: s3://prism-archives/errors
+s3:
+  endpoint: http://seaweedfs:8333
+  region: '{{ env "SEAWEEDFS_S3_REGION" "us-east-1" }}'
+  access-key: '{{ env "PRISM_COLLECTOR_WORKER_S3_ACCESS_KEY" "" }}'
+  secret-key-file: '{{ env "PRISM_COLLECTOR_WORKER_S3_SECRET_KEY_FILE" "" }}'
+  use-path-style: true
+parsers-config: /app/configs/worker/collector/worker/parsers.yaml
+prompt-storage: '{{ env "PRISM_PROMPT_STORAGE_URI" "file:///app/runtime/prompts" }}'
+fixture-base: '{{ env "FIXTURE_BASE" "" }}'
+force-minify-error: false
 messenger-type: nats
 nats-host: nats
 nats-port: 4222
-queue-group: discovery-worker
+queue-group: collector-worker
 subscribers-count: 1
 ack-wait-timeout: 30s
 nats-stream: prism_task
-nats-consumer: discovery-worker
+nats-consumer: collector-worker
 nats-auto-provision: false
 postgres:
   host: '{{ env "POSTGRES_HOST" "postgres" }}'
@@ -24,30 +32,9 @@ postgres:
   db: '{{ env "POSTGRES_APP_DB" "prism" }}'
   sslmode: disable
   metrics-enabled: true
-search:
-  provider:
-    brave:
-      enable: true
-      api_key_file: '{{ env "PRISM_DISCOVERY_WORKER_SEARCH_PROVIDER_BRAVE_API_KEY_FILE" "" }}'
-      ui_lang: zh-TW
-      search_lang: zh-hant
-      country: TW
-      safesearch: off
-      count: 20
-      freshness: pw
-    serpapi:
-      enable: false
-      api_key_file: '{{ env "PRISM_DISCOVERY_WORKER_SERPAPI_API_KEY_FILE" "" }}'
-      google_news:
-        enable: false
-        params:
-          tw:
-            enable: false
-            geolocation: tw
-            host_language: zh-TW
 telemetry:
   enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
-  service-name: prism.discovery
+  service-name: prism.collector
   environment: local
   endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
   insecure: true

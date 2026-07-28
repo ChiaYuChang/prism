@@ -208,6 +208,11 @@ func WithNATSAdmin(admin NATSAdmin) ServerOption {
 	return func(s *Server) { s.NATSAdmin = admin }
 }
 
+// WithServiceMetadata attaches display metadata for monitored services.
+func WithServiceMetadata(metadata map[string]ServiceMetadata) ServerOption {
+	return func(s *Server) { s.ServiceMetadata = metadata }
+}
+
 type NATSInspector interface {
 	Snapshot(context.Context) (natsdiag.Snapshot, error)
 }
@@ -240,6 +245,7 @@ type Server struct {
 	SchedulerToggles *infra.SchedulerToggleStore
 	NATSInspector    NATSInspector
 	NATSAdmin        NATSAdmin
+	ServiceMetadata  map[string]ServiceMetadata
 }
 
 // NewServer validates dependencies and returns a ready-to-register Server.

@@ -125,7 +125,7 @@ require manual Grafana setup.
 - `internal/model/`: domain data structures
 - `internal/repo/`: repository abstractions
 - `internal/repo/pg/`: PostgreSQL implementations
-- `assets/prompts/`: prompt assets used by analysis components
+- `assets/runtime/worker/`: prompt assets used by analysis components
 - `pkg/schema/`: structured output schema contract helpers
 - `db/migrations/`: database schema history
 - `docs/`: design and query planning documents

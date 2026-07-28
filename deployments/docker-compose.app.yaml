@@ -133,7 +133,7 @@ services:
     image: prism/api-server:latest
     build:
       context: ..
-      dockerfile: deployments/Dockerfile.worker
+      dockerfile: deployments/Dockerfile.api
       args:
         TARGET: api-server
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}

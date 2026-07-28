@@ -47,6 +47,9 @@ auth:
       max-ttl: 168h
 prompts:
   storage-uri: '{{ env "PRISM_PROMPT_STORAGE_URI" "file:///app/runtime/prompts" }}'
+web:
+  enabled: true
+  static-dir: /app/assets/static/prismctl-web
 s3:
   endpoint: '{{ env "PRISM_API_S3_ENDPOINT" "" }}'
   region: '{{ env "PRISM_API_S3_REGION" "us-east-1" }}'
@@ -86,42 +89,35 @@ monitoring:
     batch-detector:
       enabled: true
       url: http://batch-detector:8083/healthz
-      display-name: Batch Detector
       description: Detects completed batches of party press releases
-      group: batch
+      group: batch.detector
     batch-publisher:
       enabled: true
       url: http://batch-publisher:8084/healthz
-      display-name: Batch Publisher
       description: Publishes batch completed events
-      group: batch
+      group: batch.publisher
     scheduler-slow:
       enabled: true
       url: http://scheduler-slow:8090/healthz
-      display-name: Scheduler (Slow)
       description: Schedules and dispatches low-priority tasks
-      group: scheduler
+      group: scheduler.slow
     scheduler-fast:
       enabled: true
       url: http://scheduler-fast:8091/healthz
-      display-name: Scheduler (Fast)
       description: Schedules and dispatches high-priority tasks
-      group: scheduler
+      group: scheduler.fast
     discovery:
       enabled: true
       url: http://discovery:8092/healthz
-      display-name: Discovery Worker
       description: Crawls and discovers candidate briefs
-      group: worker
+      group: discovery.candidate
     collector:
       enabled: true
       url: http://collector:8093/healthz
-      display-name: Collector Worker
       description: Fetches and parses full press releases
-      group: worker
+      group: collector.worker
     planner:
       enabled: true
       url: http://planner:8094/healthz
-      display-name: Planner Worker
       description: Plans and schedules media tasks
-      group: worker
+      group: discovery.planner

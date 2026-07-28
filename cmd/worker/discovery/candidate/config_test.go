@@ -27,11 +27,11 @@ func TestLoadConfigDefaults(t *testing.T) {
 func TestLoadConfigShippedConfig(t *testing.T) {
 	setShippedConfigEnv(t)
 
-	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "configs", "worker", "discovery", "config.yaml")})
+	cfg, err := LoadConfig([]string{"--config", filepath.Join("..", "..", "..", "..", "configs", "worker", "discovery", "candidate", "config.yaml")})
 	require.NoError(t, err)
 
 	assert.Equal(t, 8092, cfg.Health.Port)
-	assert.Equal(t, "/app/configs/worker/discovery/scouts.yaml", cfg.Scout.ConfigPath)
+	assert.Equal(t, "/app/configs/worker/discovery/candidate/scouts.yaml", cfg.Scout.ConfigPath)
 	assert.Equal(t, 3, cfg.RetryMax)
 	assert.Equal(t, "postgres", cfg.Postgres.Host)
 	natsCfg, ok := cfg.Messenger.(*app.NatsConfig)

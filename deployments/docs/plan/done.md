@@ -20,7 +20,7 @@ Append-only history of completed work, grouped by phase. Carved from `plan.md` P
 
 * [x] Polymorphic LLM clients (Gemini, OpenAI, Ollama).
 * [x] Shared structured-response decoding via `llm.DecodeJsonSchema(...)`.
-* [x] Prompt contract externalized into `assets/prompts/analysis/extractor.md`.
+* [x] Prompt contract externalized into `assets/runtime/worker/discovery/planner/extractor.md`.
 * [x] Extractor moved under `internal/discovery/extractor`.
 * [x] Extraction I/O contracts in `internal/model/extraction.go`.
 * [x] Focused `internal/llm` unit tests.
@@ -33,13 +33,13 @@ Append-only history of completed work, grouped by phase. Carved from `plan.md` P
 * [x] Add `scheduler-fast` and `scheduler-slow` Taskfile entries.
 * [x] Add source-type priority split: MEDIA PAGE_FETCH claimed first (user-waiting), PARTY fills remainder via two-step ClaimTasks.
 * [x] Add `source_types` optional filter to `ClaimTasks`; add `ReleaseTasks :exec` for over-claim release.
-* [x] Add in-memory token-bucket rate limiter (`InMemoryRateLimiter`) with per-source config (`assets/ratelimits/scheduler.yaml`).
+* [x] Add in-memory token-bucket rate limiter (`InMemoryRateLimiter`) with per-source config (`assets/runtime/scheduler/ratelimits/scheduler.yaml`).
 * [x] Refactor free functions into `Scheduler` struct methods; dispatch tests updated.
 
 ## Phase 2.4 — Discovery Worker, KEYWORD_SEARCH execution path (2026-03)
 
-* [x] Implement `cmd/worker/discovery`.
-* [x] Add command-level config and handler tests for `cmd/worker/discovery`.
+* [x] Implement `cmd/worker/discovery/candidate`.
+* [x] Add command-level config and handler tests for `cmd/worker/discovery/candidate`.
 * [x] Route `PARTY + DIRECTORY_FETCH` tasks by `source_type` / `base_url`.
 * [x] Establish scout core packages under `internal/discovery/scout/{html,rss,atom}`.
 * [x] Implement config-driven `HTMLScout` for party directory pages.
@@ -52,12 +52,12 @@ Append-only history of completed work, grouped by phase. Carved from `plan.md` P
 * [x] Implement config-driven backfiller that reuses scouts + a generic `IndexPager`.
 * [x] Add `CandidateSink` contract and first persistence implementation for discovered briefs.
 * [x] Consume runnable `tasks`.
-* [x] Persist discovered article briefs into `candidates` from `cmd/worker/discovery`.
+* [x] Persist discovered article briefs into `candidates` from `cmd/worker/discovery/candidate`.
 * [x] Replace direct `prism.page_fetch` MQ publish with `CreateTask(PAGE_FETCH, PARTY)` after PARTY candidate persistence.
 * [x] Remove `PageFetchSignal` and `PageFetchTopic` from `internal/message` once Collector Worker uses `prism.task`.
 * [x] Load scout instances from runtime app config instead of package-local test config.
 * [x] Establish `internal/discovery/planner` with tests for seed-content extraction and MEDIA task creation.
-* [x] Connect planner to a concrete executable worker / trigger path (`cmd/worker/planner`).
+* [x] Connect planner to a concrete executable worker / trigger path (`cmd/worker/discovery/planner`).
 * [x] Seed `brave` source row in `000003_seed_sources.up.sql` (`MEDIA`, `https://api.search.brave.com`).
 * [x] Implement `internal/discovery/search/brave/client.go` — `SearchClient` calling Brave News Search API (POST `/res/v1/news/search`).
 * [x] Add `searchClients map[string]discovery.SearchClient` to discovery `Handler`; update `NewHandler` signature.
@@ -77,7 +77,7 @@ Append-only history of completed work, grouped by phase. Carved from `plan.md` P
 * [x] `parser/config/parsers.yaml` defines per-host parser rules (DPP, TPP, Yahoo).
 * [x] JSON-LD extraction via regex (not goquery); handles multi-block and `@graph` structures.
 * [x] LLM parser (`parser/llm`) generates `ToConfigSnippet()` YAML for human review; no automatic promotion to registry.
-* [x] Prompt updated to `assets/prompts/collector/article_parser.md` (primary: extract content; secondary: record CSS selectors).
+* [x] Prompt updated to `assets/runtime/worker/collector/worker/parser.md` (primary: extract content; secondary: record CSS selectors).
 * [x] Avoid refetch when content already exists by URL or candidate ID (`GetContentByCandidateID` + `GetContentByURL` checks).
 * [x] Handle PARTY PAGE_FETCH (automatic) and MEDIA PAGE_FETCH (user-triggered) via same worker; `sourceTypeToContentType()` maps to `PARTY_RELEASE` / `ARTICLE`.
 * [x] Wire error Saver for Minify failures: `errorSaver collector.Saver` added to Handler; `saveOnMinifyError()` archives raw content with `stage:"raw"` metadata; `--archive=<uri>` flag enables it (URI dispatches to `LocalArchiver` for `file://` or `S3Archiver` for `s3://`).
@@ -129,7 +129,7 @@ Phase B of Immediate Next Steps #11. LLM-backed `collector.Parser` activates via
 # parsers.yaml
 fallback:
   enable: true
-  prompt_file: /app/assets/prompts/collector/article_parser.md
+  prompt_file: /app/assets/runtime/worker/collector/worker/parser.md
   llm:
     provider: gemini      # gemini | openai | ollama
     model: gemini-2.0-flash
@@ -139,11 +139,11 @@ parsers:
   www.example.com: { ... }
 ```
 
-The system instruction lives in `assets/prompts/collector/article_parser.md` (already shipped) and is loaded at startup via `parserconfig.LoadFallbackPrompt`. Keeping the prompt out of the binary lets operators iterate on extraction quality without rebuilding worker images.
+The system instruction lives in `assets/runtime/worker/collector/worker/parser.md` (already shipped) and is loaded at startup via `parserconfig.LoadFallbackPrompt`. Keeping the prompt out of the binary lets operators iterate on extraction quality without rebuilding worker images.
 
 Plumbing:
 
-* [x] `internal/collector/parser/llm/parser.go` — `Parser` (`collector.Parser` impl) using `llm.Generator` + `ParserConfigJSONSchema`. Constructor takes the system instruction as a parameter (loaded from `assets/prompts/collector/article_parser.md` at startup) so prompt iteration does not require a rebuild. Tests use a stub generator returning canned JSON; nil-generator / nil-logger / empty-prompt constructor checks; generator-error and decode-error paths covered.
+* [x] `internal/collector/parser/llm/parser.go` — `Parser` (`collector.Parser` impl) using `llm.Generator` + `ParserConfigJSONSchema`. Constructor takes the system instruction as a parameter (loaded from `assets/runtime/worker/collector/worker/parser.md` at startup) so prompt iteration does not require a rebuild. Tests use a stub generator returning canned JSON; nil-generator / nil-logger / empty-prompt constructor checks; generator-error and decode-error paths covered.
 * [x] `internal/collector/parser/llm/schema.go` — `ParserConfigJSONSchema` was reusing one `*jsonschema.Schema` pointer across multiple property paths, which violates the validator's tree requirement (`schemas at <anonymous schema> do not form a tree`). Replaced with a `newTargetNodeSchema()` factory so each property path gets a fresh subschema. Latent bug — only surfaced once the schema was actually run through `DecodeJsonSchema`.
 * [x] `internal/collector/parser/registry.go` — `NewRegistry` accepts an optional fallback parser. `Parse` routes host-miss to fallback (info log) when set; `ErrNoMatchingParser` when not (existing behavior). Registry tests cover both fallback-used and fallback-not-invoked-on-host-match paths.
 * [x] `internal/collector/parser/config/config.go` — added `FallbackConfig{Enable bool; PromptFile string; LLM appconfig.LLMConfig}` and `Config.Fallback`. `LoadConfig` requires `prompt_file` when `Enable=true`, runs `cfg.Fallback.LLM.ResolveSecrets()`, and validates the LLM block only when `Enable=true` — disabled fallback does not require dummy provider/model/key fields. Helper `LoadFallbackPrompt(cfg)` reads the prompt file and trims trailing whitespace.
@@ -152,9 +152,9 @@ Plumbing:
 Provider wiring:
 
 * [x] `internal/appconfig/llm.go` — added `KeyFile string` (yaml: `key_file`, mapstructure: `key-file`); `ResolveSecrets()` reads `KeyFile` and overrides `Key`; `String()` and `LogValue()` redact the API key. YAML tags added alongside existing mapstructure tags so the same `LLMConfig` can be loaded via direct yaml.v3 decoding (when embedded under `fallback.llm:` in parsers.yaml) or via viper (when bound to `--llm-*` flags). `validate:"required"` dropped from `Key` since `KeyFile` is the alternative path.
-* [x] `internal/llm/factory/factory.go` (new subpackage) — `NewGenerator(ctx, cfg, logger) → llm.Generator` promoted from `cmd/worker/planner/main.go` so collector / recover / parse-probe share one provider-construction path. Subpackage avoids the `internal/llm` ↔ `internal/llm/{gemini,openai,ollama}` import cycle that would arise if the helper lived in the parent package.
-* [x] `cmd/worker/planner/main.go` — replaced local `newGenerator` with `llmfactory.NewGenerator`; pruned unused imports.
-* [x] `cmd/worker/collector/main.go` — when `cfg.Fallback.Enable`, builds generator via `llmfactory.NewGenerator`, builds factory `func() (collector.Parser, error) { return parserllm.NewParser(gen, logger, model) }`, passes to `BuildRegistry`. Logs the active provider/model at startup.
+* [x] `internal/llm/factory/factory.go` (new subpackage) — `NewGenerator(ctx, cfg, logger) → llm.Generator` promoted from `cmd/worker/discovery/planner/main.go` so collector / recover / parse-probe share one provider-construction path. Subpackage avoids the `internal/llm` ↔ `internal/llm/{gemini,openai,ollama}` import cycle that would arise if the helper lived in the parent package.
+* [x] `cmd/worker/discovery/planner/main.go` — replaced local `newGenerator` with `llmfactory.NewGenerator`; pruned unused imports.
+* [x] `cmd/worker/collector/worker/main.go` — when `cfg.Fallback.Enable`, builds generator via `llmfactory.NewGenerator`, builds factory `func() (collector.Parser, error) { return parserllm.NewParser(gen, logger, model) }`, passes to `BuildRegistry`. Logs the active provider/model at startup.
 * [x] `cmd/recover/main.go` — same pattern (uses noop tracer).
 * [x] `cmd/dev/parse-probe/main.go` — same pattern; `--all-parsers` mode includes `__llm__` in the result map when fallback is enabled.
 
@@ -192,7 +192,7 @@ Out of scope (still deferred): `internal/collector/archiver/s3_test.go` testcont
 
 ## Integration test plan — Phase 2 + 3 (2026-05-01)
 
-Phases 2 (replay) and 3 (fail-minify recover) of `docs/integration-test-plan.md`. Phase 2 verified 26/26; Phase 3 verified 3/3 (path proven; 23/26 lost to known archive-key collision — see `future.md` Archive Catalog refactor). Recover gained dual-path replay (raw → M+T+P, minified → T+P, canonical → P). Archiver `Scan` / `Remove` / sidecar `meta.json` / YYYY/MM/DD path layout annotated as deprecated. Replay schedulers tick at 5s/3s with permissive `assets/ratelimits/replay.yaml`.
+Phases 2 (replay) and 3 (fail-minify recover) of `docs/integration-test-plan.md`. Phase 2 verified 26/26; Phase 3 verified 3/3 (path proven; 23/26 lost to known archive-key collision — see `future.md` Archive Catalog refactor). Recover gained dual-path replay (raw → M+T+P, minified → T+P, canonical → P). Archiver `Scan` / `Remove` / sidecar `meta.json` / YYYY/MM/DD path layout annotated as deprecated. Replay schedulers tick at 5s/3s with permissive `assets/runtime/scheduler/ratelimits/replay.yaml`.
 
 Commits:
 - `0a54e23` fix(taskfile): add NATS auth flags to worker:start:replay
@@ -248,7 +248,7 @@ secret handling formalized via `script/secrets-bake.sh` +
 * [x] `fix(discovery): ignore unsupported task kinds to prevent
       erroneous failures` — discovery worker ignores PAGE_FETCH it
       does not own; regression test in
-      `cmd/worker/discovery/handler_test.go`.
+      `cmd/worker/discovery/candidate/handler_test.go`.
 * [x] `fix(db): restrict task status updates to prevent late status
       clobbering` — `CompleteTask` / `FailTask` only flip rows still
       in `RUNNING`.
@@ -260,7 +260,7 @@ secret handling formalized via `script/secrets-bake.sh` +
 * [x] **Phase 4 acceptance gate verified 2026-05-05**: e2e drain
       through containers — DIRECTORY_FETCH=3 COMPLETED,
       PAGE_FETCH=26 COMPLETED, contents dpp=10 / kmt=10 / tpp=6.
-      `rtk go test ./cmd/worker/discovery` green. e2e stack fully
+      `rtk go test ./cmd/worker/discovery/candidate` green. e2e stack fully
       torn down post-verification (no leaked `prism-e2e-*`
       containers).
 
@@ -274,14 +274,14 @@ secret handling formalized via `script/secrets-bake.sh` +
 
 Commit `5315cd4 feat(discovery): add configurable search providers` shipped the search-provider layer as a separate concern from persisted `sources`. Search providers find candidate URLs; real PARTY/MEDIA sources own the resulting candidates.
 
-* [x] `cmd/worker/discovery` now routes `KEYWORD_SEARCH + MEDIA` through enabled search-provider clients while preserving `DIRECTORY_FETCH + MEDIA` for direct media feeds.
-* [x] `cmd/worker/planner` now generates search tasks from configured search targets instead of assuming all MEDIA sources are search targets.
+* [x] `cmd/worker/discovery/candidate` now routes `KEYWORD_SEARCH + MEDIA` through enabled search-provider clients while preserving `DIRECTORY_FETCH + MEDIA` for direct media feeds.
+* [x] `cmd/worker/discovery/planner` now generates search tasks from configured search targets instead of assuming all MEDIA sources are search targets.
 * [x] `internal/discovery/search/config` centralizes provider config, search targets, secret resolution from `api_key_file`, and inline-key warnings.
 * [x] Brave News Search, Google Custom Search JSON API, and SerpAPI clients are implemented with focused request/response tests.
 * [x] SerpAPI supports provider-level shared credentials plus top-level `google_news`, `duckduckgo_news`, and `bing_news` engine blocks with named params maps.
 * [x] Discovery worker registers SerpAPI named variants as provider IDs such as `serpapi-google-news-recent` and `serpapi-duckduckgo-news-weekly`.
 * [x] Developer smoke capture was hardened: non-2xx bodies are captured, shared smoke harness lives in `internal/discovery/search/smoke_test.go`, and fixture paths redact API-key query params.
-* [x] Verified with `rtk go test -short -count=1 ./...`: 497 tests passed across 71 packages. Focused lint was clean for `./internal/dev ./internal/discovery/search/... ./cmd/worker/discovery ./cmd/worker/planner`.
+* [x] Verified with `rtk go test -short -count=1 ./...`: 497 tests passed across 71 packages. Focused lint was clean for `./internal/dev ./internal/discovery/search/... ./cmd/worker/discovery/candidate ./cmd/worker/discovery/planner`.
 
 Deferred follow-ups: normalize Brave and Google CSE to named params maps only if multiple variants are needed; turn selected smoke captures into tracked replay tests if stable provider regression coverage is worth the fixture maintenance; resolve Google CSE `403 PERMISSION_DENIED` as a credential/project-access issue unless fixed credentials prove request params need adjustment.
 
@@ -334,7 +334,7 @@ Shipped HTTP security/observability middlewares, unified auth headers, templated
   * Added HTTP metrics middleware to capture API request stats (total requests, duration, outcomes).
   * Updated HTTP fetcher to parse and honor `Retry-After` headers and handle request cancellations properly.
 * [x] **Config Modularization, Templating, and Compose Split**:
-  * Promoted deploy runtime configurations to target-aligned paths under `configs/` and `assets/`.
+  * Promoted deploy runtime configurations to target-aligned paths under `configs/` and `assets/runtime/`.
   * Supported Go template rendering in configuration files before parsing via Viper to enable env-based defaults.
   * Split monolithic `Taskfile.yml` into modular taskfiles under `taskfile/`.
   * Split application (API, batch trigger) and worker containers into distinct Docker Compose stacks.
@@ -394,5 +394,3 @@ Shipped input-type validation for the LLM fallback parser (rejecting non-HTML in
   * Enforced validation at startup (`BuildRegistry`) rejecting configurations missing the `HTML` block or specifying unsupported formats.
 * [x] **Future Integration Documentation**:
   * Added detailed implementation notes in `docs/plan/future.md` detailing the YAML schema design, configuration structures, and registry wiring required for introducing concrete JSON/XML parsers in the future.
-
-
