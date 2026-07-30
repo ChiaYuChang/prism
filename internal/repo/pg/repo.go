@@ -669,6 +669,17 @@ func (r *PGPrompts) GetPromptVersionByID(ctx context.Context, id uuid.UUID) (rep
 	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.Key, row.Version, row.Hash, row.SizeBytes, row.CreatedAt), nil
 }
 
+func (r *PGPrompts) GetPromptVersionByNameAndVersion(ctx context.Context, name string, version int32) (repo.PromptVersion, error) {
+	row, err := r.q.GetPromptVersionByNameAndVersion(ctx, GetPromptVersionByNameAndVersionParams{
+		Name:    name,
+		Version: version,
+	})
+	if err != nil {
+		return repo.PromptVersion{}, err
+	}
+	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.Key, row.Version, row.Hash, row.SizeBytes, row.CreatedAt), nil
+}
+
 func (r *PGPrompts) GetLatestPromptVersionByName(ctx context.Context, name string) (repo.PromptVersion, error) {
 	row, err := r.q.GetLatestPromptVersionByName(ctx, name)
 	if err != nil {

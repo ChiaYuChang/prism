@@ -27,6 +27,13 @@ WHERE name = sqlc.arg(name)
 ORDER BY version DESC
 LIMIT 1;
 
+-- name: GetPromptVersionByNameAndVersion :one
+SELECT id, name AS key, version, hash, size_bytes, created_at
+FROM prompts
+WHERE name = sqlc.arg(name)
+  AND version = sqlc.arg(version)
+LIMIT 1;
+
 -- name: ListPromptVersions :many
 SELECT
     id,
