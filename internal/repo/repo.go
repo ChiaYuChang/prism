@@ -107,6 +107,7 @@ type Operator interface {
 type Prompts interface {
 	CreatePromptVersion(ctx context.Context, arg CreatePromptVersionParams) (PromptVersion, error)
 	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (PromptVersion, error)
+	GetPromptVersionByNameAndVersion(ctx context.Context, name string, version int32) (PromptVersion, error)
 	GetLatestPromptVersionByName(ctx context.Context, name string) (PromptVersion, error)
 	ListPromptVersions(ctx context.Context, params ListOperatorParams) ([]PromptVersion, error)
 	ListPromptVersionsByKey(ctx context.Context, key string, params ListOperatorParams) ([]PromptVersion, error)

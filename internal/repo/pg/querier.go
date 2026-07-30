@@ -61,6 +61,7 @@ type Querier interface {
 	GetModelByID(ctx context.Context, id int16) (Model, error)
 	GetModelByNameAndType(ctx context.Context, arg GetModelByNameAndTypeParams) (Model, error)
 	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPromptVersionByIDRow, error)
+	GetPromptVersionByNameAndVersion(ctx context.Context, arg GetPromptVersionByNameAndVersionParams) (GetPromptVersionByNameAndVersionRow, error)
 	GetRootToken(ctx context.Context) (Token, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)

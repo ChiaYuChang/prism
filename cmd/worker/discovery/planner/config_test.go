@@ -1,16 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	app "github.com/ChiaYuChang/prism/internal/appconfig"
+	"github.com/ChiaYuChang/prism/internal/prompt"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/mocks"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,6 +71,26 @@ func TestEnsurePlannerModelMissing(t *testing.T) {
 	err := ensurePlannerModel(context.Background(), models, "missing")
 
 	require.Error(t, err)
+}
+
+func TestPlannerPromptUsesLatest(t *testing.T) {
+	require.True(t, plannerPromptUsesLatest(prompt.Ref{Key: "worker/planner/analysis/extractor"}))
+	require.False(t, plannerPromptUsesLatest(prompt.Ref{Key: "worker/planner/analysis/extractor", Version: 2}))
+	require.False(t, plannerPromptUsesLatest(prompt.Ref{ID: uuid.New(), Key: "worker/planner/analysis/extractor"}))
+	require.False(t, plannerPromptUsesLatest(prompt.Ref{}))
+}
+
+func TestWarnIfPlannerPromptUnpinned(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	warnIfPlannerPromptUnpinned(logger, prompt.Ref{Key: "worker/planner/analysis/extractor"})
+	require.Contains(t, logs.String(), "planner prompt is not pinned")
+	require.Contains(t, logs.String(), "prompt_key=worker/planner/analysis/extractor")
+	require.NotContains(t, logs.String(), "prompt body")
+
+	logs.Reset()
+	warnIfPlannerPromptUnpinned(logger, prompt.Ref{Key: "worker/planner/analysis/extractor", Version: 2})
+	require.Empty(t, logs.String())
 }
 
 func TestLoadConfigSearchTargetsFromYAML(t *testing.T) {
