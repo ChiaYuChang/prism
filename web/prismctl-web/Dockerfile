@@ -12,7 +12,7 @@ CMD ["npm", "run", "dev"]
 
 FROM deps AS test
 COPY . .
-CMD ["npm", "test"]
+CMD ["sh", "-c", "npm run build && npm test"]
 
 FROM deps AS build
 COPY . .
