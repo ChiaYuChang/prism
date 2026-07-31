@@ -43,6 +43,15 @@ func (h *Handler) HandleTaskSignal(ctx context.Context, signal message.TaskSigna
 		return false, fmt.Errorf("get pipeline task %s: %w", signal.TaskID, err)
 	}
 	if task.Status != repo.TaskStatusRunning {
+		if task.Status == repo.TaskStatusFailed {
+			reason := "pipeline task failed"
+			if task.FailureMessage != nil {
+				reason = *task.FailureMessage
+			}
+			if err := h.runtime.ConvergePipelineFailure(ctx, task.ID, task.BatchID, reason); err != nil {
+				return false, fmt.Errorf("retry convergence for failed pipeline task %s: %w", task.ID, err)
+			}
+		}
 		return true, nil
 	}
 	if err := h.handleTask(ctx, task, signal.Kind, spec); err != nil {
@@ -68,11 +77,19 @@ func (h *Handler) handleTask(ctx context.Context, task repo.Task, kind string, s
 	case repo.TaskKindPipelineInit:
 		return h.coord.Initialize(ctx, task, spec)
 	case repo.TaskKindPipelineStage:
-		candidates, err := h.scout.ListCandidatesByBatchID(ctx, task.BatchID)
+		inputBatchID := task.BatchID
+		root, err := h.runtime.GetPipelineBatch(ctx, task.BatchID)
+		if err != nil {
+			return fmt.Errorf("get pipeline root batch: %w", err)
+		}
+		if root.ParentID != nil {
+			inputBatchID = *root.ParentID
+		}
+		candidates, err := h.scout.ListCandidatesByBatchID(ctx, inputBatchID)
 		if err != nil {
 			return fmt.Errorf("list pipeline candidates: %w", err)
 		}
-		contents, err := h.pipeline.ListContentsByBatchID(ctx, task.BatchID)
+		contents, err := h.pipeline.ListContentsByBatchID(ctx, inputBatchID)
 		if err != nil {
 			return fmt.Errorf("list pipeline contents: %w", err)
 		}
