@@ -29,6 +29,8 @@ func TestInitializePipelineConcurrentIsAtomicAndIdempotent(t *testing.T) {
 	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'PARTY', 'https://example.test')`, abbr, abbr)
 	require.NoError(t, err)
 	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE batch_id IN (SELECT id FROM batches WHERE parent_id = $1)`, rootID)
+		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE parent_id = $1`, rootID)
 		_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE batch_id = $1`, rootID)
 		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id = $1`, rootID)
 		_, _ = pool.Exec(ctx, `DELETE FROM sources WHERE abbr = $1`, abbr)
@@ -95,7 +97,9 @@ func TestInitializePipelineConcurrentIsAtomicAndIdempotent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			childID, stageErr := r.PipelineRuntime().InitializePipelineStage(ctx, stageArg)
+			attempt := stageArg
+			attempt.ChildBatchID = uuid.New()
+			childID, stageErr := r.PipelineRuntime().InitializePipelineStage(ctx, attempt)
 			if stageErr != nil {
 				stageErrs <- stageErr
 				return
@@ -123,6 +127,14 @@ func TestInitializePipelineConcurrentIsAtomicAndIdempotent(t *testing.T) {
 	var workCount int
 	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM tasks WHERE batch_id = $1`, childID).Scan(&workCount))
 	require.Equal(t, 2, workCount)
+	var predecessorCount int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM tasks WHERE batch_id = $1 AND previous_task_id IS NOT NULL`, childID).Scan(&predecessorCount))
+	require.Zero(t, predecessorCount)
+	_, err = pool.Exec(ctx, `UPDATE batches SET completed_at = NOW(), succeeded = TRUE WHERE id = $1`, childID)
+	require.NoError(t, err)
+	recoveredID, err := r.PipelineRuntime().InitializePipelineStage(ctx, stageArg)
+	require.NoError(t, err)
+	require.Equal(t, childID, recoveredID)
 }
 
 func stringPtr(value string) *string { return &value }
@@ -206,10 +218,64 @@ func TestPipelinePublishFailureRemainsRetryable(t *testing.T) {
 	require.NoError(t, runtime.RecordPipelinePublishFailure(ctx, batchID, "publisher unavailable"))
 	ready, err := runtime.ListReadyPipelineBatches(ctx, 10)
 	require.NoError(t, err)
-	require.Len(t, ready, 1)
-	require.Equal(t, batchID, ready[0].ID)
+	found := false
+	for _, batch := range ready {
+		if batch.ID == batchID {
+			found = true
+		}
+	}
+	require.True(t, found)
 	require.NoError(t, runtime.MarkPipelinePublished(ctx, batchID))
 	ready, err = runtime.ListReadyPipelineBatches(ctx, 10)
 	require.NoError(t, err)
-	require.Empty(t, ready)
+	for _, batch := range ready {
+		require.NotEqual(t, batchID, batch.ID)
+	}
+}
+
+func TestPipelineRootFailureConvergesAndFinalizes(t *testing.T) {
+	url := os.Getenv("PRISM_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set PRISM_TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	require.NoError(t, err)
+	defer pool.Close()
+	require.NoError(t, pool.Ping(ctx))
+	abbr := "it" + uuid.NewString()[:12]
+	rootID := uuid.New()
+	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'PARTY', 'https://example.test')`, abbr, abbr)
+	require.NoError(t, err)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE batch_id = $1`, rootID)
+		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id = $1`, rootID)
+		_, _ = pool.Exec(ctx, `DELETE FROM sources WHERE abbr = $1`, abbr)
+	}()
+	r := NewPostgresRepository(pool)
+	tasks := r.Tasks()
+	require.NoError(t, tasks.EnsureBatch(ctx, repo.EnsureBatchParams{BatchID: rootID, SourceType: repo.SourceTypeParty, TraceID: "failure-test"}))
+	initTask, err := tasks.CreateTask(ctx, repo.CreateTaskParams{
+		BatchID: rootID, Kind: repo.TaskKindPipelineInit, SourceType: repo.SourceTypeParty, SourceAbbr: abbr,
+		URL: "https://pipeline.test/failure/" + rootID.String(), TraceID: "failure-test",
+	})
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE tasks SET status = 'FAILED', failure_message = 'invalid pipeline' WHERE id = $1`, initTask.ID)
+	require.NoError(t, err)
+	runtime := r.PipelineRuntime()
+	require.NoError(t, runtime.ConvergePipelineFailure(ctx, initTask.ID, rootID, "invalid pipeline"))
+	var nSubtasks int32
+	require.NoError(t, pool.QueryRow(ctx, `SELECT n_subtasks FROM batches WHERE id = $1`, rootID).Scan(&nSubtasks))
+	require.Equal(t, int32(1), nSubtasks)
+	roots, err := runtime.FindFinishedRootBatches(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, roots, 1)
+	require.Equal(t, int64(1), mustMarkRoot(t, runtime, rootID))
+}
+
+func mustMarkRoot(t *testing.T, runtime repo.PipelineRuntime, batchID uuid.UUID) int64 {
+	t.Helper()
+	rows, err := runtime.MarkRootBatchFinished(context.Background(), batchID, false, "failure-test")
+	require.NoError(t, err)
+	return rows
 }

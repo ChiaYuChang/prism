@@ -17,18 +17,19 @@ type Handler struct {
 	scout    repo.Scout
 	pipeline repo.Pipeline
 	reporter repo.TaskReporter
+	runtime  repo.PipelineRuntime
 	coord    *Coordinator
 	retryMax int
 }
 
-func NewHandler(tasks repo.Tasks, scout repo.Scout, pipeline repo.Pipeline, reporter repo.TaskReporter, coord *Coordinator, retryMax int) (*Handler, error) {
-	if tasks == nil || scout == nil || pipeline == nil || reporter == nil || coord == nil {
+func NewHandler(tasks repo.Tasks, scout repo.Scout, pipeline repo.Pipeline, reporter repo.TaskReporter, runtime repo.PipelineRuntime, coord *Coordinator, retryMax int) (*Handler, error) {
+	if tasks == nil || scout == nil || pipeline == nil || reporter == nil || runtime == nil || coord == nil {
 		return nil, fmt.Errorf("pipeline handler dependencies are required")
 	}
 	if retryMax < 1 {
 		return nil, fmt.Errorf("retry max must be positive")
 	}
-	return &Handler{tasks: tasks, scout: scout, pipeline: pipeline, reporter: reporter, coord: coord, retryMax: retryMax}, nil
+	return &Handler{tasks: tasks, scout: scout, pipeline: pipeline, reporter: reporter, runtime: runtime, coord: coord, retryMax: retryMax}, nil
 }
 
 // HandleTaskSignal handles only pipeline task kinds. The boolean indicates
@@ -47,6 +48,15 @@ func (h *Handler) HandleTaskSignal(ctx context.Context, signal message.TaskSigna
 	if err := h.handleTask(ctx, task, signal.Kind, spec); err != nil {
 		if failErr := h.reporter.FailTask(ctx, task.ID, h.retryMax, err.Error()); failErr != nil {
 			return false, fmt.Errorf("handle pipeline task %s: %w; mark failed: %w", task.ID, err, failErr)
+		}
+		failedTask, getErr := h.tasks.GetTaskByID(ctx, task.ID)
+		if getErr != nil {
+			return false, fmt.Errorf("refresh failed pipeline task %s: %w", task.ID, getErr)
+		}
+		if failedTask.Status == repo.TaskStatusFailed {
+			if convergeErr := h.runtime.ConvergePipelineFailure(ctx, task.ID, task.BatchID, err.Error()); convergeErr != nil {
+				return false, fmt.Errorf("converge failed pipeline task %s: %w", task.ID, convergeErr)
+			}
 		}
 		return true, err
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/batch"
 	"github.com/ChiaYuChang/prism/internal/infra"
+	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 )
@@ -58,6 +59,14 @@ func main() {
 	}()
 	tracer := telemetry.Tracer(TracerName)
 	infra.SetTracer(tracer)
+	msgr, err := config.Messenger.NewMessenger(logger, &infra.MessagingTelemetry{
+		Tracer: telemetry.Tracer("prism.messaging"), Meter: telemetry.Meter("prism.messaging"),
+	})
+	if err != nil {
+		logger.Error("failed to initialize messenger", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = msgr.Close() }()
 
 	monitor := obs.NewHealthMonitor()
 	go func() {
@@ -77,11 +86,25 @@ func main() {
 		logger.Error("failed to build batch detector", "error", err)
 		os.Exit(1)
 	}
+	pipelinePublisher, err := message.NewWatermillPipelineBatchFinishedPublisher(msgr)
+	if err != nil {
+		logger.Error("failed to build pipeline completion publisher", "error", err)
+		os.Exit(1)
+	}
+	finisher, err := batch.NewFinisher(logger, tracer, repository.PipelineRuntime(), pipelinePublisher)
+	if err != nil {
+		logger.Error("failed to build pipeline finisher", "error", err)
+		os.Exit(1)
+	}
 
 	if config.Once {
 		logger.Info("running batch detector once")
 		if _, err := detector.Detect(ctx, config.RecentLimit); err != nil {
 			logger.Error("batch detector failed", "error", err)
+			os.Exit(1)
+		}
+		if _, err := finisher.Detect(ctx, config.RecentLimit); err != nil {
+			logger.Error("pipeline finisher failed", "error", err)
 			os.Exit(1)
 		}
 		return
@@ -106,6 +129,9 @@ func main() {
 			tickCtx, cancelTick := infra.NewDrainContext(config.ShutdownTimeout)
 			if _, err := detector.Detect(tickCtx, config.RecentLimit); err != nil {
 				logger.Error("batch detector tick failed", "error", err)
+			}
+			if _, err := finisher.Detect(tickCtx, config.RecentLimit); err != nil {
+				logger.Error("pipeline finisher tick failed", "error", err)
 			}
 			cancelTick()
 		}

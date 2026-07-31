@@ -231,6 +231,7 @@ func main() {
 	}
 	serverOpts = append(serverOpts, api.WithServiceMetadata(serviceMetadata))
 
+	serverOpts = append(serverOpts, api.WithPipelineRuntime(repository.PipelineRuntime()))
 	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches(), serverOpts...)
 	if err != nil {
 		logger.Error("failed to construct api server", "error", err)
