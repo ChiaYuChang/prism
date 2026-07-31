@@ -119,6 +119,42 @@ func (q *Queries) GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPr
 	return i, err
 }
 
+const getPromptVersionByNameAndVersion = `-- name: GetPromptVersionByNameAndVersion :one
+SELECT id, name AS key, version, hash, size_bytes, created_at
+FROM prompts
+WHERE name = $1
+  AND version = $2
+LIMIT 1
+`
+
+type GetPromptVersionByNameAndVersionParams struct {
+	Name    string `db:"name" json:"name"`
+	Version int32  `db:"version" json:"version"`
+}
+
+type GetPromptVersionByNameAndVersionRow struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	Key       string             `db:"key" json:"key"`
+	Version   int32              `db:"version" json:"version"`
+	Hash      string             `db:"hash" json:"hash"`
+	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) GetPromptVersionByNameAndVersion(ctx context.Context, arg GetPromptVersionByNameAndVersionParams) (GetPromptVersionByNameAndVersionRow, error) {
+	row := q.db.QueryRow(ctx, getPromptVersionByNameAndVersion, arg.Name, arg.Version)
+	var i GetPromptVersionByNameAndVersionRow
+	err := row.Scan(
+		&i.ID,
+		&i.Key,
+		&i.Version,
+		&i.Hash,
+		&i.SizeBytes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listPromptVersions = `-- name: ListPromptVersions :many
 SELECT
     id,

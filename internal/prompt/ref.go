@@ -30,15 +30,23 @@ func Resolve(ctx context.Context, prompts repo.Prompts, store storage.Store, ref
 	if store == nil {
 		return nil, repo.PromptVersion{}, fmt.Errorf("prompt storage is nil")
 	}
-	if !ref.Enabled() {
+	ref.Key = strings.ReplaceAll(strings.Trim(strings.TrimSpace(ref.Key), "."), "/", ".")
+	if ref.Version < 0 {
+		return nil, repo.PromptVersion{}, fmt.Errorf("prompt version must be positive")
+	}
+	if ref.ID == uuid.Nil && ref.Key == "" {
 		return nil, repo.PromptVersion{}, fmt.Errorf("prompt name or id is required")
 	}
+	if ref.ID == uuid.Nil && ref.Version == 0 && ref.Hash != "" {
+		return nil, repo.PromptVersion{}, fmt.Errorf("prompt hash requires a version or id")
+	}
 
-	ref.Key = strings.ReplaceAll(strings.Trim(strings.TrimSpace(ref.Key), "."), "/", ".")
 	var version repo.PromptVersion
 	var err error
 	if ref.ID != uuid.Nil {
 		version, err = prompts.GetPromptVersionByID(ctx, ref.ID)
+	} else if ref.Version > 0 {
+		version, err = prompts.GetPromptVersionByNameAndVersion(ctx, ref.Key, ref.Version)
 	} else {
 		version, err = prompts.GetLatestPromptVersionByName(ctx, ref.Key)
 	}

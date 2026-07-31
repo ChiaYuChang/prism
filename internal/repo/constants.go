@@ -7,6 +7,7 @@ const (
 	TaskStatusRunning   TaskStatus = "RUNNING"
 	TaskStatusFailed    TaskStatus = "FAILED"
 	TaskStatusCompleted TaskStatus = "COMPLETED"
+	TaskStatusCancelled TaskStatus = "CANCELLED"
 )
 
 const (
@@ -16,6 +17,8 @@ const (
 	TaskKindPageFetch      = "PAGE_FETCH"
 	TaskKindEmbedCandidate = "EMBED_CANDIDATE"
 	TaskKindEmbedContent   = "EMBED_CONTENT"
+	TaskKindPipelineInit   = "PIPELINE_INIT"
+	TaskKindPipelineStage  = "PIPELINE_STAGE"
 
 	// Source Types
 	SourceTypeParty = "PARTY"

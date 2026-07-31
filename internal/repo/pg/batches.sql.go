@@ -12,6 +12,76 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const findFinishedPipelineBatches = `-- name: FindFinishedPipelineBatches :many
+SELECT b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded,
+       COUNT(t.id) FILTER (WHERE t.status IN ('FAILED', 'CANCELLED')) = 0 AS completion_succeeded
+FROM batches b
+LEFT JOIN tasks t ON t.batch_id = b.id
+WHERE b.completed_at IS NULL
+  AND b.n_subtasks IS NOT NULL
+GROUP BY b.id
+HAVING COUNT(t.id) = b.n_subtasks
+   AND COUNT(t.id) FILTER (WHERE t.status IN ('COMPLETED', 'FAILED', 'CANCELLED')) = b.n_subtasks
+ORDER BY b.created_at ASC
+LIMIT $1
+`
+
+type FindFinishedPipelineBatchesRow struct {
+	ID                   uuid.UUID          `db:"id" json:"id"`
+	SourceType           SourceType         `db:"source_type" json:"source_type"`
+	TraceID              pgtype.Text        `db:"trace_id" json:"trace_id"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CompletedAt          pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	PublishedAt          pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	LastPublishAttemptAt pgtype.Timestamptz `db:"last_publish_attempt_at" json:"last_publish_attempt_at"`
+	PublishRetryCount    int32              `db:"publish_retry_count" json:"publish_retry_count"`
+	PublishError         pgtype.Text        `db:"publish_error" json:"publish_error"`
+	StalledAt            pgtype.Timestamptz `db:"stalled_at" json:"stalled_at"`
+	NSubtasks            pgtype.Int4        `db:"n_subtasks" json:"n_subtasks"`
+	ParentID             pgtype.UUID        `db:"parent_id" json:"parent_id"`
+	ParentTaskID         pgtype.UUID        `db:"parent_task_id" json:"parent_task_id"`
+	Succeeded            pgtype.Bool        `db:"succeeded" json:"succeeded"`
+	CompletionSucceeded  bool               `db:"completion_succeeded" json:"completion_succeeded"`
+}
+
+func (q *Queries) FindFinishedPipelineBatches(ctx context.Context, limit int32) ([]FindFinishedPipelineBatchesRow, error) {
+	rows, err := q.db.Query(ctx, findFinishedPipelineBatches, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FindFinishedPipelineBatchesRow
+	for rows.Next() {
+		var i FindFinishedPipelineBatchesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceType,
+			&i.TraceID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+			&i.PublishedAt,
+			&i.LastPublishAttemptAt,
+			&i.PublishRetryCount,
+			&i.PublishError,
+			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
+			&i.Succeeded,
+			&i.CompletionSucceeded,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findNewlyCompletedBatches = `-- name: FindNewlyCompletedBatches :many
 SELECT id, source_type, trace_id
 FROM batches b
@@ -58,7 +128,7 @@ func (q *Queries) FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCo
 }
 
 const getBatchByID = `-- name: GetBatchByID :one
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded
 FROM batches
 WHERE id = $1
 `
@@ -68,7 +138,6 @@ func (q *Queries) GetBatchByID(ctx context.Context, id uuid.UUID) (Batch, error)
 	var i Batch
 	err := row.Scan(
 		&i.ID,
-		&i.ParentID,
 		&i.SourceType,
 		&i.TraceID,
 		&i.CreatedAt,
@@ -79,12 +148,16 @@ func (q *Queries) GetBatchByID(ctx context.Context, id uuid.UUID) (Batch, error)
 		&i.PublishRetryCount,
 		&i.PublishError,
 		&i.StalledAt,
+		&i.NSubtasks,
+		&i.ParentID,
+		&i.ParentTaskID,
+		&i.Succeeded,
 	)
 	return i, err
 }
 
 const listBatches = `-- name: ListBatches :many
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded
 FROM batches
 ORDER BY created_at DESC, id DESC
 LIMIT $2
@@ -107,7 +180,6 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Bat
 		var i Batch
 		if err := rows.Scan(
 			&i.ID,
-			&i.ParentID,
 			&i.SourceType,
 			&i.TraceID,
 			&i.CreatedAt,
@@ -118,6 +190,10 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Bat
 			&i.PublishRetryCount,
 			&i.PublishError,
 			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
+			&i.Succeeded,
 		); err != nil {
 			return nil, err
 		}
@@ -130,7 +206,7 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Bat
 }
 
 const listChildBatchesByParentID = `-- name: ListChildBatchesByParentID :many
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded
 FROM batches
 WHERE parent_id = $1
 ORDER BY created_at ASC
@@ -147,7 +223,6 @@ func (q *Queries) ListChildBatchesByParentID(ctx context.Context, parentID pgtyp
 		var i Batch
 		if err := rows.Scan(
 			&i.ID,
-			&i.ParentID,
 			&i.SourceType,
 			&i.TraceID,
 			&i.CreatedAt,
@@ -158,6 +233,10 @@ func (q *Queries) ListChildBatchesByParentID(ctx context.Context, parentID pgtyp
 			&i.PublishRetryCount,
 			&i.PublishError,
 			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
+			&i.Succeeded,
 		); err != nil {
 			return nil, err
 		}
@@ -170,7 +249,7 @@ func (q *Queries) ListChildBatchesByParentID(ctx context.Context, parentID pgtyp
 }
 
 const listPendingCompletionBatches = `-- name: ListPendingCompletionBatches :many
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded
 FROM batches
 WHERE completed_at IS NULL
   AND source_type = $1
@@ -194,7 +273,6 @@ func (q *Queries) ListPendingCompletionBatches(ctx context.Context, arg ListPend
 		var i Batch
 		if err := rows.Scan(
 			&i.ID,
-			&i.ParentID,
 			&i.SourceType,
 			&i.TraceID,
 			&i.CreatedAt,
@@ -205,6 +283,10 @@ func (q *Queries) ListPendingCompletionBatches(ctx context.Context, arg ListPend
 			&i.PublishRetryCount,
 			&i.PublishError,
 			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
+			&i.Succeeded,
 		); err != nil {
 			return nil, err
 		}
@@ -217,7 +299,7 @@ func (q *Queries) ListPendingCompletionBatches(ctx context.Context, arg ListPend
 }
 
 const listReadyToPublishBatches = `-- name: ListReadyToPublishBatches :many
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded
 FROM batches
 WHERE completed_at IS NOT NULL
   AND published_at IS NULL
@@ -242,7 +324,6 @@ func (q *Queries) ListReadyToPublishBatches(ctx context.Context, arg ListReadyTo
 		var i Batch
 		if err := rows.Scan(
 			&i.ID,
-			&i.ParentID,
 			&i.SourceType,
 			&i.TraceID,
 			&i.CreatedAt,
@@ -253,6 +334,10 @@ func (q *Queries) ListReadyToPublishBatches(ctx context.Context, arg ListReadyTo
 			&i.PublishRetryCount,
 			&i.PublishError,
 			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
+			&i.Succeeded,
 		); err != nil {
 			return nil, err
 		}
@@ -303,6 +388,30 @@ func (q *Queries) MarkBatchPublished(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const markPipelineBatchFinished = `-- name: MarkPipelineBatchFinished :execrows
+UPDATE batches
+SET completed_at = NOW(),
+    succeeded = $1,
+    updated_at = NOW(),
+    trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF($2, ''))
+WHERE id = $3
+  AND completed_at IS NULL
+`
+
+type MarkPipelineBatchFinishedParams struct {
+	Succeeded pgtype.Bool `db:"succeeded" json:"succeeded"`
+	TraceID   interface{} `db:"trace_id" json:"trace_id"`
+	BatchID   uuid.UUID   `db:"batch_id" json:"batch_id"`
+}
+
+func (q *Queries) MarkPipelineBatchFinished(ctx context.Context, arg MarkPipelineBatchFinishedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markPipelineBatchFinished, arg.Succeeded, arg.TraceID, arg.BatchID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const recordBatchPublishFailure = `-- name: RecordBatchPublishFailure :exec
 UPDATE batches
 SET last_publish_attempt_at = NOW(),
@@ -320,4 +429,69 @@ type RecordBatchPublishFailureParams struct {
 func (q *Queries) RecordBatchPublishFailure(ctx context.Context, arg RecordBatchPublishFailureParams) error {
 	_, err := q.db.Exec(ctx, recordBatchPublishFailure, arg.ID, arg.PublishError)
 	return err
+}
+
+const setBatchNSubtasks = `-- name: SetBatchNSubtasks :one
+WITH locked AS (
+    SELECT id, n_subtasks, completed_at
+    FROM batches
+    WHERE batches.id = $1
+    FOR UPDATE
+), updated AS (
+    UPDATE batches b
+    SET n_subtasks = $2, updated_at = NOW()
+    FROM locked
+    WHERE b.id = locked.id
+      AND locked.completed_at IS NULL
+      AND (locked.n_subtasks IS NULL OR locked.n_subtasks = $2)
+      AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = b.id) <= $2
+    RETURNING b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded
+)
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded FROM updated
+`
+
+type SetBatchNSubtasksParams struct {
+	BatchID   uuid.UUID   `db:"batch_id" json:"batch_id"`
+	NSubtasks pgtype.Int4 `db:"n_subtasks" json:"n_subtasks"`
+}
+
+type SetBatchNSubtasksRow struct {
+	ID                   uuid.UUID          `db:"id" json:"id"`
+	SourceType           SourceType         `db:"source_type" json:"source_type"`
+	TraceID              pgtype.Text        `db:"trace_id" json:"trace_id"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CompletedAt          pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	PublishedAt          pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	LastPublishAttemptAt pgtype.Timestamptz `db:"last_publish_attempt_at" json:"last_publish_attempt_at"`
+	PublishRetryCount    int32              `db:"publish_retry_count" json:"publish_retry_count"`
+	PublishError         pgtype.Text        `db:"publish_error" json:"publish_error"`
+	StalledAt            pgtype.Timestamptz `db:"stalled_at" json:"stalled_at"`
+	NSubtasks            pgtype.Int4        `db:"n_subtasks" json:"n_subtasks"`
+	ParentID             pgtype.UUID        `db:"parent_id" json:"parent_id"`
+	ParentTaskID         pgtype.UUID        `db:"parent_task_id" json:"parent_task_id"`
+	Succeeded            pgtype.Bool        `db:"succeeded" json:"succeeded"`
+}
+
+func (q *Queries) SetBatchNSubtasks(ctx context.Context, arg SetBatchNSubtasksParams) (SetBatchNSubtasksRow, error) {
+	row := q.db.QueryRow(ctx, setBatchNSubtasks, arg.BatchID, arg.NSubtasks)
+	var i SetBatchNSubtasksRow
+	err := row.Scan(
+		&i.ID,
+		&i.SourceType,
+		&i.TraceID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+		&i.PublishedAt,
+		&i.LastPublishAttemptAt,
+		&i.PublishRetryCount,
+		&i.PublishError,
+		&i.StalledAt,
+		&i.NSubtasks,
+		&i.ParentID,
+		&i.ParentTaskID,
+		&i.Succeeded,
+	)
+	return i, err
 }
