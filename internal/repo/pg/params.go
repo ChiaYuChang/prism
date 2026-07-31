@@ -20,6 +20,7 @@ func repoCreateTaskParamsToEnsureBatchExists(arg repo.CreateTaskParams) EnsureBa
 	return EnsureBatchExistsParams{
 		ID:         arg.BatchID,
 		ParentID:   pgconv.UUIDPtrToPgUUID(arg.ParentBatchID),
+		ParentTaskID: pgconv.UUIDPtrToPgUUID(arg.ParentTaskID),
 		SourceType: SourceType(arg.SourceType),
 		TraceID:    pgconv.StringPtrToPgText(&arg.TraceID),
 	}

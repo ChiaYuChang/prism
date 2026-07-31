@@ -94,11 +94,25 @@ func main() {
 		logger.Error("failed to build batch publisher", "error", err)
 		os.Exit(1)
 	}
+	pipelinePublisher, err := message.NewWatermillPipelineBatchFinishedPublisher(msgr)
+	if err != nil {
+		logger.Error("failed to build pipeline batch finished publisher", "error", err)
+		os.Exit(1)
+	}
+	pipelineRetry, err := batch.NewPipelinePublisher(repository.PipelineRuntime(), pipelinePublisher)
+	if err != nil {
+		logger.Error("failed to build pipeline publisher", "error", err)
+		os.Exit(1)
+	}
 
 	if config.Once {
 		logger.Info("running batch publisher once")
 		if _, err := publisher.Publish(ctx, config.RecentLimit); err != nil {
 			logger.Error("batch publisher failed", "error", err)
+			os.Exit(1)
+		}
+		if _, err := pipelineRetry.PublishPending(ctx, config.RecentLimit); err != nil {
+			logger.Error("pipeline batch publisher failed", "error", err)
 			os.Exit(1)
 		}
 		return
@@ -123,6 +137,9 @@ func main() {
 			tickCtx, cancelTick := infra.NewDrainContext(config.ShutdownTimeout)
 			if _, err := publisher.Publish(tickCtx, config.RecentLimit); err != nil {
 				logger.Error("batch publisher tick failed", "error", err)
+			}
+			if _, err := pipelineRetry.PublishPending(tickCtx, config.RecentLimit); err != nil {
+				logger.Error("pipeline batch publisher tick failed", "error", err)
 			}
 			cancelTick()
 		}

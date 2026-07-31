@@ -67,6 +67,19 @@ SELECT *
 FROM batches
 WHERE id = $1;
 
+-- name: LockBatchForTaskInsert :one
+SELECT id, n_subtasks, completed_at
+FROM batches
+WHERE id = $1
+FOR UPDATE;
+
+-- name: EnsurePipelineChildBatch :one
+INSERT INTO batches (id, source_type, trace_id, parent_id, parent_task_id)
+VALUES (sqlc.arg(id), sqlc.arg(source_type), sqlc.arg(trace_id), sqlc.arg(parent_id), sqlc.arg(parent_task_id))
+ON CONFLICT (parent_task_id) WHERE parent_task_id IS NOT NULL DO UPDATE
+SET updated_at = batches.updated_at
+RETURNING id;
+
 -- name: FindFinishedPipelineBatches :many
 SELECT b.*,
        COUNT(t.id) FILTER (WHERE t.status IN ('FAILED', 'CANCELLED')) = 0 AS completion_succeeded
@@ -106,6 +119,30 @@ SET completed_at = NOW(),
     trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF(sqlc.arg(trace_id), ''))
 WHERE id = sqlc.arg(batch_id)
   AND completed_at IS NULL;
+
+-- name: ListReadyPipelineBatches :many
+SELECT *
+FROM batches
+WHERE completed_at IS NOT NULL
+  AND n_subtasks IS NOT NULL
+  AND pipeline_published_at IS NULL
+ORDER BY completed_at ASC, created_at ASC
+LIMIT $1;
+
+-- name: MarkPipelinePublished :exec
+UPDATE batches
+SET pipeline_published_at = NOW(),
+    pipeline_publish_error = NULL,
+    updated_at = NOW()
+WHERE id = $1
+  AND pipeline_published_at IS NULL;
+
+-- name: RecordPipelinePublishFailure :exec
+UPDATE batches
+SET pipeline_publish_retry_count = pipeline_publish_retry_count + 1,
+    pipeline_publish_error = $2,
+    updated_at = NOW()
+WHERE id = $1;
 
 -- name: ListChildBatchesByParentID :many
 SELECT *
