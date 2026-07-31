@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/ChiaYuChang/prism/internal/message"
@@ -50,5 +51,26 @@ func TestCoordinatorCancelsRootAfterFailedChild(t *testing.T) {
 	tasks.EXPECT().CancelPendingTasksByBatchID(mock.Anything, rootID, "upstream pipeline stage failed").Return(int64(1), nil)
 
 	err = coordinator.HandleBatchFinished(context.Background(), messageSignal(rootID, ownerID, false))
+	require.NoError(t, err)
+}
+
+func TestCoordinatorRunStageUsesOwnedAtomicChildBatch(t *testing.T) {
+	tasks := mocks.NewMockTasks(t)
+	runtime := mocks.NewMockPipelineRuntime(t)
+	reporter := mocks.NewMockTaskReporter(t)
+	registry, err := NewRegistry(EmbedCandidateBuilder{})
+	require.NoError(t, err)
+	coordinator, err := NewCoordinator(tasks, runtime, reporter, registry)
+	require.NoError(t, err)
+	stagePayload, err := json.Marshal(StageSpec{Name: "embed", Config: map[string]any{"task_type": repo.TaskKindEmbedCandidate, "fan_out": "candidate_ids"}})
+	require.NoError(t, err)
+	rootID, ownerID, candidateID, childID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	runtime.EXPECT().InitializePipelineStage(mock.Anything, mock.MatchedBy(func(arg repo.InitializePipelineStageParams) bool {
+		return arg.ParentBatchID == rootID && arg.ParentTaskID == ownerID && arg.NSubtasks == 1 && len(arg.Tasks) == 1 && arg.Tasks[0].SourceAbbr == "dpp"
+	})).Return(childID, nil)
+
+	err = coordinator.RunStage(context.Background(), repo.Task{
+		ID: ownerID, BatchID: rootID, SourceType: repo.SourceTypeParty, SourceAbbr: "dpp", TraceID: "trace", Payload: stagePayload,
+	}, WorkSetInput{CandidateIDs: []uuid.UUID{candidateID}, CandidateSourceAbbr: map[uuid.UUID]string{candidateID: "dpp"}})
 	require.NoError(t, err)
 }

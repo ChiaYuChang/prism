@@ -147,6 +147,7 @@ type Pipeline interface {
 
 type PipelineRuntime interface {
 	InitializePipeline(ctx context.Context, arg InitializePipelineParams) error
+	InitializePipelineStage(ctx context.Context, arg InitializePipelineStageParams) (uuid.UUID, error)
 	FindFinishedBatches(ctx context.Context, limit int32) ([]Batch, error)
 	SetNSubtasks(ctx context.Context, batchID uuid.UUID, count int32) (Batch, error)
 	MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)

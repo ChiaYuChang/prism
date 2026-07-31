@@ -12,6 +12,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const ensurePipelineChildBatch = `-- name: EnsurePipelineChildBatch :one
+INSERT INTO batches (id, source_type, trace_id, parent_id, parent_task_id)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (parent_task_id) WHERE parent_task_id IS NOT NULL DO UPDATE
+SET updated_at = batches.updated_at
+RETURNING id
+`
+
+type EnsurePipelineChildBatchParams struct {
+	ID           uuid.UUID   `db:"id" json:"id"`
+	SourceType   SourceType  `db:"source_type" json:"source_type"`
+	TraceID      pgtype.Text `db:"trace_id" json:"trace_id"`
+	ParentID     pgtype.UUID `db:"parent_id" json:"parent_id"`
+	ParentTaskID pgtype.UUID `db:"parent_task_id" json:"parent_task_id"`
+}
+
+func (q *Queries) EnsurePipelineChildBatch(ctx context.Context, arg EnsurePipelineChildBatchParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, ensurePipelineChildBatch,
+		arg.ID,
+		arg.SourceType,
+		arg.TraceID,
+		arg.ParentID,
+		arg.ParentTaskID,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const findFinishedPipelineBatches = `-- name: FindFinishedPipelineBatches :many
 SELECT b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded, b.pipeline_published_at, b.pipeline_publish_retry_count, b.pipeline_publish_error,
        COUNT(t.id) FILTER (WHERE t.status IN ('FAILED', 'CANCELLED')) = 0 AS completion_succeeded

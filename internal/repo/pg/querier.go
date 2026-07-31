@@ -38,6 +38,7 @@ type Querier interface {
 	CreateUserFetchItem(ctx context.Context, arg CreateUserFetchItemParams) (FetchItem, error)
 	DeleteSource(ctx context.Context, abbr string) (Source, error)
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
+	EnsurePipelineChildBatch(ctx context.Context, arg EnsurePipelineChildBatchParams) (uuid.UUID, error)
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error

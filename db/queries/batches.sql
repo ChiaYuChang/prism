@@ -73,6 +73,13 @@ FROM batches
 WHERE id = $1
 FOR UPDATE;
 
+-- name: EnsurePipelineChildBatch :one
+INSERT INTO batches (id, source_type, trace_id, parent_id, parent_task_id)
+VALUES (sqlc.arg(id), sqlc.arg(source_type), sqlc.arg(trace_id), sqlc.arg(parent_id), sqlc.arg(parent_task_id))
+ON CONFLICT (parent_task_id) WHERE parent_task_id IS NOT NULL DO UPDATE
+SET updated_at = batches.updated_at
+RETURNING id;
+
 -- name: FindFinishedPipelineBatches :many
 SELECT b.*,
        COUNT(t.id) FILTER (WHERE t.status IN ('FAILED', 'CANCELLED')) = 0 AS completion_succeeded

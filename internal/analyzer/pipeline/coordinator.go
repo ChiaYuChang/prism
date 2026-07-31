@@ -82,31 +82,20 @@ func (c *Coordinator) RunStage(ctx context.Context, stageTask repo.Task, input W
 	if err != nil {
 		return fmt.Errorf("create child batch id: %w", err)
 	}
-	if err := c.tasks.EnsureBatch(ctx, repo.EnsureBatchParams{
-		BatchID: childBatchID, ParentBatchID: &stageTask.BatchID, ParentTaskID: &stageTask.ID,
-		SourceType: stageTask.SourceType, TraceID: stageTask.TraceID,
-	}); err != nil {
-		return fmt.Errorf("create child batch: %w", err)
-	}
-	previousID := uuid.Nil
-	for i, item := range work {
+	workTasks := make([]repo.CreateTaskParams, 0, len(work))
+	for _, item := range work {
 		logicalKey := item.LogicalKey
-		params := repo.CreateTaskParams{
-			BatchID: childBatchID, ParentBatchID: &stageTask.BatchID, ParentTaskID: &stageTask.ID,
+		workTasks = append(workTasks, repo.CreateTaskParams{
+			ParentBatchID: &stageTask.BatchID, ParentTaskID: &stageTask.ID,
 			LogicalKey: &logicalKey, Kind: item.Kind, SourceType: item.SourceType, SourceAbbr: item.SourceAbbr,
 			URL: item.URL, Payload: item.Payload, Meta: item.Meta, TraceID: stageTask.TraceID,
-		}
-		if i > 0 {
-			params.PreviousTaskID = &previousID
-		}
-		created, createErr := c.tasks.CreateTask(ctx, params)
-		if createErr != nil && !errors.Is(createErr, repo.ErrTaskAlreadyActive) {
-			return fmt.Errorf("create stage work task %s: %w", item.LogicalKey, createErr)
-		}
-		previousID = created.ID
+		})
 	}
-	if _, err := c.runtime.SetNSubtasks(ctx, childBatchID, int32(len(work))); err != nil {
-		return fmt.Errorf("set child batch subtasks: %w", err)
+	if _, err := c.runtime.InitializePipelineStage(ctx, repo.InitializePipelineStageParams{
+		ChildBatchID: childBatchID, ParentBatchID: stageTask.BatchID, ParentTaskID: stageTask.ID,
+		SourceType: stageTask.SourceType, TraceID: stageTask.TraceID, NSubtasks: int32(len(work)), Tasks: workTasks,
+	}); err != nil {
+		return fmt.Errorf("initialize pipeline stage %s: %w", stage.Name, err)
 	}
 	return nil
 }

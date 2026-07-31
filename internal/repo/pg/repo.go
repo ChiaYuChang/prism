@@ -170,6 +170,50 @@ func (r *PGPipelineRuntime) InitializePipeline(ctx context.Context, arg repo.Ini
 	return nil
 }
 
+func (r *PGPipelineRuntime) InitializePipelineStage(ctx context.Context, arg repo.InitializePipelineStageParams) (uuid.UUID, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := r.q.WithTx(tx)
+	childBatchID, err := qtx.EnsurePipelineChildBatch(ctx, EnsurePipelineChildBatchParams{
+		ID: arg.ChildBatchID, SourceType: SourceType(arg.SourceType), TraceID: pgconv.StringPtrToPgText(&arg.TraceID),
+		ParentID: pgconv.UUIDToPgUUID(arg.ParentBatchID), ParentTaskID: pgconv.UUIDToPgUUID(arg.ParentTaskID),
+	})
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("ensure pipeline child batch: %w", err)
+	}
+	if _, err := qtx.LockBatchForTaskInsert(ctx, childBatchID); err != nil {
+		return uuid.Nil, fmt.Errorf("lock pipeline child batch %s: %w", childBatchID, err)
+	}
+	previousID := uuid.Nil
+	for i, task := range arg.Tasks {
+		task.BatchID = childBatchID
+		if i > 0 {
+			task.PreviousTaskID = &previousID
+		}
+		created, err := qtx.CreateTask(ctx, repoCreateTaskParamsToDB(task))
+		if err != nil {
+			return uuid.Nil, fmt.Errorf("create pipeline stage task: %w", err)
+		}
+		previousID = created.ID
+	}
+	if _, err := qtx.SetBatchNSubtasks(ctx, SetBatchNSubtasksParams{
+		BatchID: childBatchID, NSubtasks: pgconv.Int32PtrToPgInt4(&arg.NSubtasks),
+	}); err != nil {
+		return uuid.Nil, fmt.Errorf("set pipeline child subtasks: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, fmt.Errorf("commit pipeline stage initialization: %w", err)
+	}
+	return childBatchID, nil
+}
+
 func (r *PGRepository) Embedding() repo.Embeddings {
 	return &PGEmbeddings{q: r.q}
 }

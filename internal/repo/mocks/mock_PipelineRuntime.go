@@ -164,6 +164,74 @@ func (_c *MockPipelineRuntime_InitializePipeline_Call) RunAndReturn(run func(ctx
 	return _c
 }
 
+// InitializePipelineStage provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) InitializePipelineStage(ctx context.Context, arg repo.InitializePipelineStageParams) (uuid.UUID, error) {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for InitializePipelineStage")
+	}
+
+	var r0 uuid.UUID
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.InitializePipelineStageParams) (uuid.UUID, error)); ok {
+		return returnFunc(ctx, arg)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.InitializePipelineStageParams) uuid.UUID); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(uuid.UUID)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.InitializePipelineStageParams) error); ok {
+		r1 = returnFunc(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPipelineRuntime_InitializePipelineStage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InitializePipelineStage'
+type MockPipelineRuntime_InitializePipelineStage_Call struct {
+	*mock.Call
+}
+
+// InitializePipelineStage is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.InitializePipelineStageParams
+func (_e *MockPipelineRuntime_Expecter) InitializePipelineStage(ctx interface{}, arg interface{}) *MockPipelineRuntime_InitializePipelineStage_Call {
+	return &MockPipelineRuntime_InitializePipelineStage_Call{Call: _e.mock.On("InitializePipelineStage", ctx, arg)}
+}
+
+func (_c *MockPipelineRuntime_InitializePipelineStage_Call) Run(run func(ctx context.Context, arg repo.InitializePipelineStageParams)) *MockPipelineRuntime_InitializePipelineStage_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.InitializePipelineStageParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.InitializePipelineStageParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_InitializePipelineStage_Call) Return(uUID uuid.UUID, err error) *MockPipelineRuntime_InitializePipelineStage_Call {
+	_c.Call.Return(uUID, err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_InitializePipelineStage_Call) RunAndReturn(run func(ctx context.Context, arg repo.InitializePipelineStageParams) (uuid.UUID, error)) *MockPipelineRuntime_InitializePipelineStage_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListReadyPipelineBatches provides a mock function for the type MockPipelineRuntime
 func (_mock *MockPipelineRuntime) ListReadyPipelineBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
 	ret := _mock.Called(ctx, limit)
