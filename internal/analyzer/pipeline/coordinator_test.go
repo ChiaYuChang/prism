@@ -25,13 +25,11 @@ func TestCoordinatorInitializesIdempotentControlChain(t *testing.T) {
 	coordinator, err := NewCoordinator(tasks, runtime, reporter, registry)
 	require.NoError(t, err)
 
-	rootBatchID, initID, stageID := uuid.New(), uuid.New(), uuid.New()
+	rootBatchID, initID := uuid.New(), uuid.New()
 	traceID := "trace"
-	tasks.EXPECT().CreateTask(mock.Anything, mock.MatchedBy(func(arg repo.CreateTaskParams) bool {
-		return arg.BatchID == rootBatchID && arg.Kind == repo.TaskKindPipelineStage && arg.SourceAbbr == "dpp"
-	})).Return(repo.Task{ID: stageID, BatchID: rootBatchID}, nil)
-	runtime.EXPECT().SetNSubtasks(mock.Anything, rootBatchID, int32(2)).Return(repo.Batch{ID: rootBatchID}, nil)
-	reporter.EXPECT().CompleteTask(mock.Anything, initID).Return(nil)
+	runtime.EXPECT().InitializePipeline(mock.Anything, mock.MatchedBy(func(arg repo.InitializePipelineParams) bool {
+		return arg.BatchID == rootBatchID && arg.InitTaskID == initID && arg.NSubtasks == 2 && len(arg.Tasks) == 1 && arg.Tasks[0].Kind == repo.TaskKindPipelineStage
+	})).Return(nil)
 
 	err = coordinator.Initialize(context.Background(), repo.Task{
 		ID: initID, BatchID: rootBatchID, SourceType: repo.SourceTypeParty, SourceAbbr: "dpp", TraceID: traceID,

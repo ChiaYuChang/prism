@@ -102,12 +102,16 @@ UNION ALL
 SELECT t.*, FALSE AS inserted
 FROM tasks t
 WHERE NOT EXISTS (SELECT 1 FROM ins)
-  AND t.status IN ('PENDING', 'RUNNING')
   AND t.kind = sqlc.arg(kind)
   AND (
-        (t.kind = 'PAGE_FETCH' AND t.url = sqlc.arg(url))
-     OR (
-            t.source_abbr  = sqlc.arg(source_abbr)
+         (t.status IN ('PENDING', 'RUNNING') AND t.kind = 'PAGE_FETCH' AND t.url = sqlc.arg(url))
+      OR (t.batch_id = sqlc.arg(batch_id)
+          AND t.logical_key IS NOT NULL
+          AND t.logical_key = sqlc.narg(logical_key))
+      OR (
+             t.status IN ('PENDING', 'RUNNING')
+         AND
+             t.source_abbr  = sqlc.arg(source_abbr)
         AND t.payload_hash IS NOT NULL
         AND t.payload_hash = sqlc.narg(payload_hash)
         )

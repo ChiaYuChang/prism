@@ -107,6 +107,63 @@ func (_c *MockPipelineRuntime_FindFinishedBatches_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// InitializePipeline provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) InitializePipeline(ctx context.Context, arg repo.InitializePipelineParams) error {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for InitializePipeline")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.InitializePipelineParams) error); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPipelineRuntime_InitializePipeline_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InitializePipeline'
+type MockPipelineRuntime_InitializePipeline_Call struct {
+	*mock.Call
+}
+
+// InitializePipeline is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.InitializePipelineParams
+func (_e *MockPipelineRuntime_Expecter) InitializePipeline(ctx interface{}, arg interface{}) *MockPipelineRuntime_InitializePipeline_Call {
+	return &MockPipelineRuntime_InitializePipeline_Call{Call: _e.mock.On("InitializePipeline", ctx, arg)}
+}
+
+func (_c *MockPipelineRuntime_InitializePipeline_Call) Run(run func(ctx context.Context, arg repo.InitializePipelineParams)) *MockPipelineRuntime_InitializePipeline_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.InitializePipelineParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.InitializePipelineParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_InitializePipeline_Call) Return(err error) *MockPipelineRuntime_InitializePipeline_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_InitializePipeline_Call) RunAndReturn(run func(ctx context.Context, arg repo.InitializePipelineParams) error) *MockPipelineRuntime_InitializePipeline_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListReadyPipelineBatches provides a mock function for the type MockPipelineRuntime
 func (_mock *MockPipelineRuntime) ListReadyPipelineBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
 	ret := _mock.Called(ctx, limit)

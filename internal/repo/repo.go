@@ -61,6 +61,7 @@ type Scout interface {
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
+	ListCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) ([]Candidate, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 }
@@ -145,6 +146,7 @@ type Pipeline interface {
 }
 
 type PipelineRuntime interface {
+	InitializePipeline(ctx context.Context, arg InitializePipelineParams) error
 	FindFinishedBatches(ctx context.Context, limit int32) ([]Batch, error)
 	SetNSubtasks(ctx context.Context, batchID uuid.UUID, count int32) (Batch, error)
 	MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
