@@ -107,6 +107,74 @@ func (_c *MockPipelineRuntime_FindFinishedBatches_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// ListReadyPipelineBatches provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) ListReadyPipelineBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	ret := _mock.Called(ctx, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListReadyPipelineBatches")
+	}
+
+	var r0 []repo.Batch
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) ([]repo.Batch, error)); ok {
+		return returnFunc(ctx, limit)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) []repo.Batch); ok {
+		r0 = returnFunc(ctx, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Batch)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32) error); ok {
+		r1 = returnFunc(ctx, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPipelineRuntime_ListReadyPipelineBatches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListReadyPipelineBatches'
+type MockPipelineRuntime_ListReadyPipelineBatches_Call struct {
+	*mock.Call
+}
+
+// ListReadyPipelineBatches is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int32
+func (_e *MockPipelineRuntime_Expecter) ListReadyPipelineBatches(ctx interface{}, limit interface{}) *MockPipelineRuntime_ListReadyPipelineBatches_Call {
+	return &MockPipelineRuntime_ListReadyPipelineBatches_Call{Call: _e.mock.On("ListReadyPipelineBatches", ctx, limit)}
+}
+
+func (_c *MockPipelineRuntime_ListReadyPipelineBatches_Call) Run(run func(ctx context.Context, limit int32)) *MockPipelineRuntime_ListReadyPipelineBatches_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int32
+		if args[1] != nil {
+			arg1 = args[1].(int32)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_ListReadyPipelineBatches_Call) Return(batchs []repo.Batch, err error) *MockPipelineRuntime_ListReadyPipelineBatches_Call {
+	_c.Call.Return(batchs, err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_ListReadyPipelineBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Batch, error)) *MockPipelineRuntime_ListReadyPipelineBatches_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // MarkBatchFinished provides a mock function for the type MockPipelineRuntime
 func (_mock *MockPipelineRuntime) MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error) {
 	ret := _mock.Called(ctx, batchID, succeeded, traceID)
@@ -181,6 +249,126 @@ func (_c *MockPipelineRuntime_MarkBatchFinished_Call) Return(n int64, err error)
 }
 
 func (_c *MockPipelineRuntime_MarkBatchFinished_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)) *MockPipelineRuntime_MarkBatchFinished_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// MarkPipelinePublished provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) MarkPipelinePublished(ctx context.Context, batchID uuid.UUID) error {
+	ret := _mock.Called(ctx, batchID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkPipelinePublished")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, batchID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPipelineRuntime_MarkPipelinePublished_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkPipelinePublished'
+type MockPipelineRuntime_MarkPipelinePublished_Call struct {
+	*mock.Call
+}
+
+// MarkPipelinePublished is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+func (_e *MockPipelineRuntime_Expecter) MarkPipelinePublished(ctx interface{}, batchID interface{}) *MockPipelineRuntime_MarkPipelinePublished_Call {
+	return &MockPipelineRuntime_MarkPipelinePublished_Call{Call: _e.mock.On("MarkPipelinePublished", ctx, batchID)}
+}
+
+func (_c *MockPipelineRuntime_MarkPipelinePublished_Call) Run(run func(ctx context.Context, batchID uuid.UUID)) *MockPipelineRuntime_MarkPipelinePublished_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_MarkPipelinePublished_Call) Return(err error) *MockPipelineRuntime_MarkPipelinePublished_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_MarkPipelinePublished_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID) error) *MockPipelineRuntime_MarkPipelinePublished_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RecordPipelinePublishFailure provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) RecordPipelinePublishFailure(ctx context.Context, batchID uuid.UUID, message string) error {
+	ret := _mock.Called(ctx, batchID, message)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RecordPipelinePublishFailure")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) error); ok {
+		r0 = returnFunc(ctx, batchID, message)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPipelineRuntime_RecordPipelinePublishFailure_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RecordPipelinePublishFailure'
+type MockPipelineRuntime_RecordPipelinePublishFailure_Call struct {
+	*mock.Call
+}
+
+// RecordPipelinePublishFailure is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+//   - message string
+func (_e *MockPipelineRuntime_Expecter) RecordPipelinePublishFailure(ctx interface{}, batchID interface{}, message interface{}) *MockPipelineRuntime_RecordPipelinePublishFailure_Call {
+	return &MockPipelineRuntime_RecordPipelinePublishFailure_Call{Call: _e.mock.On("RecordPipelinePublishFailure", ctx, batchID, message)}
+}
+
+func (_c *MockPipelineRuntime_RecordPipelinePublishFailure_Call) Run(run func(ctx context.Context, batchID uuid.UUID, message string)) *MockPipelineRuntime_RecordPipelinePublishFailure_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_RecordPipelinePublishFailure_Call) Return(err error) *MockPipelineRuntime_RecordPipelinePublishFailure_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_RecordPipelinePublishFailure_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID, message string) error) *MockPipelineRuntime_RecordPipelinePublishFailure_Call {
 	_c.Call.Return(run)
 	return _c
 }

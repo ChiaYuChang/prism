@@ -1,4 +1,4 @@
-package pipeline
+package batch
 
 import (
 	"context"
@@ -60,7 +60,13 @@ func (f *Finisher) Detect(ctx context.Context, limit int32) (int, error) {
 			BatchID: batch.ID, RootBatchID: rootID, OwnerTaskID: ownerID,
 			Succeeded: succeeded, TraceID: traceID,
 		}); err != nil {
+			if recordErr := f.runtime.RecordPipelinePublishFailure(ctx, batch.ID, err.Error()); recordErr != nil {
+				return count, fmt.Errorf("publish pipeline batch %s finished: %w; record failure: %w", batch.ID, err, recordErr)
+			}
 			return count, fmt.Errorf("publish pipeline batch %s finished: %w", batch.ID, err)
+		}
+		if err := f.runtime.MarkPipelinePublished(ctx, batch.ID); err != nil {
+			return count, fmt.Errorf("mark pipeline batch %s published: %w", batch.ID, err)
 		}
 		count++
 	}

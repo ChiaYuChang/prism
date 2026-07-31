@@ -73,6 +73,7 @@ type Sources interface {
 }
 
 type Tasks interface {
+	EnsureBatch(ctx context.Context, arg EnsureBatchParams) error
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
 	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
@@ -85,6 +86,7 @@ type Tasks interface {
 	// (e.g. the user-fetch handler) avoid a second round-trip.
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
+	CancelPendingTasksByBatchID(ctx context.Context, batchID uuid.UUID, reason string) (int64, error)
 }
 
 type Schedules interface {
@@ -146,6 +148,9 @@ type PipelineRuntime interface {
 	FindFinishedBatches(ctx context.Context, limit int32) ([]Batch, error)
 	SetNSubtasks(ctx context.Context, batchID uuid.UUID, count int32) (Batch, error)
 	MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
+	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
+	MarkPipelinePublished(ctx context.Context, batchID uuid.UUID) error
+	RecordPipelinePublishFailure(ctx context.Context, batchID uuid.UUID, message string) error
 }
 
 type BatchTrigger interface {

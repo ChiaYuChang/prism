@@ -265,6 +265,9 @@ CREATE TABLE public.batches (
     parent_id uuid,
     parent_task_id uuid,
     succeeded boolean,
+    pipeline_published_at timestamp with time zone,
+    pipeline_publish_retry_count integer DEFAULT 0 NOT NULL,
+    pipeline_publish_error text,
     CONSTRAINT batches_n_subtasks_check CHECK ((n_subtasks >= 0))
 );
 
@@ -297,6 +300,13 @@ COMMENT ON COLUMN public.batches.parent_task_id IS 'Stage-control task that owns
 --
 
 COMMENT ON COLUMN public.batches.succeeded IS 'Whether a finished batch completed without failed or cancelled direct tasks.';
+
+
+--
+-- Name: COLUMN batches.pipeline_published_at; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.batches.pipeline_published_at IS 'Pipeline completion notification publish timestamp.';
 
 
 --
@@ -1528,6 +1538,13 @@ CREATE INDEX schedules_due_idx ON public.schedules USING btree (next_fire_at, id
 --
 
 CREATE INDEX schedules_source_idx ON public.schedules USING btree (source_type, source_abbr);
+
+
+--
+-- Name: uq_batches_parent_task_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX uq_batches_parent_task_id ON public.batches USING btree (parent_task_id) WHERE (parent_task_id IS NOT NULL);
 
 
 --

@@ -1,4 +1,4 @@
-package pipeline
+package batch
 
 // Completion describes the direct-task state of a declared batch.
 type Completion struct {
