@@ -206,12 +206,16 @@ UNION ALL
 SELECT t.id, t.batch_id, t.kind, t.source_type, t.source_abbr, t.url, t.payload, t.payload_hash, t.meta, t.trace_id, t.frequency, t.next_run_at, t.expires_at, t.status, t.retry_count, t.failure_message, t.last_run_at, t.created_at, t.updated_at, t.previous_task_id, t.next_task_id, t.logical_key, FALSE AS inserted
 FROM tasks t
 WHERE NOT EXISTS (SELECT 1 FROM ins)
-  AND t.status IN ('PENDING', 'RUNNING')
   AND t.kind = $2
   AND (
-        (t.kind = 'PAGE_FETCH' AND t.url = $5)
-     OR (
-            t.source_abbr  = $4
+         (t.status IN ('PENDING', 'RUNNING') AND t.kind = 'PAGE_FETCH' AND t.url = $5)
+      OR (t.batch_id = $1
+          AND t.logical_key IS NOT NULL
+          AND t.logical_key = $12)
+      OR (
+             t.status IN ('PENDING', 'RUNNING')
+         AND
+             t.source_abbr  = $4
         AND t.payload_hash IS NOT NULL
         AND t.payload_hash = $7
         )

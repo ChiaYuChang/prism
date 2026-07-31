@@ -80,6 +80,7 @@ type Querier interface {
 	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
 	ListCandidateEmbeddingsGemma2025(ctx context.Context, arg ListCandidateEmbeddingsGemma2025Params) ([]ListCandidateEmbeddingsGemma2025Row, error)
 	ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error)
+	ListCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Candidate, error)
 	ListCandidatesForAnalysis(ctx context.Context, arg ListCandidatesForAnalysisParams) ([]Candidate, error)
 	ListChildBatchesByParentID(ctx context.Context, parentID pgtype.UUID) ([]Batch, error)
 	ListContentEmbeddingsByContentID(ctx context.Context, contentID uuid.UUID) ([]ContentEmbeddingsGemma2025, error)

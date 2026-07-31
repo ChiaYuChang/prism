@@ -47,26 +47,24 @@ func (c *Coordinator) Initialize(ctx context.Context, initTask repo.Task, spec P
 		return err
 	}
 	previousID := initTask.ID
+	controlTasks := make([]repo.CreateTaskParams, 0, len(control))
 	for _, item := range control {
 		payload, err := json.Marshal(item.Stage)
 		if err != nil {
 			return fmt.Errorf("marshal stage %s: %w", item.Stage.Name, err)
 		}
 		logicalKey := item.LogicalKey
-		created, createErr := c.tasks.CreateTask(ctx, repo.CreateTaskParams{
-			BatchID: initTask.BatchID, PreviousTaskID: &previousID, LogicalKey: &logicalKey,
+		previous := previousID
+		controlTasks = append(controlTasks, repo.CreateTaskParams{
+			BatchID: initTask.BatchID, PreviousTaskID: &previous, LogicalKey: &logicalKey,
 			Kind: repo.TaskKindPipelineStage, SourceType: initTask.SourceType, SourceAbbr: initTask.SourceAbbr,
 			URL: "pipeline://stage/" + item.Stage.Name, Payload: payload, TraceID: initTask.TraceID,
 		})
-		if createErr != nil && !errors.Is(createErr, repo.ErrTaskAlreadyActive) {
-			return fmt.Errorf("create stage %s: %w", item.Stage.Name, createErr)
-		}
-		previousID = created.ID
+		previousID = uuid.Nil
 	}
-	if _, err := c.runtime.SetNSubtasks(ctx, initTask.BatchID, int32(len(control)+1)); err != nil {
-		return fmt.Errorf("set root batch subtasks: %w", err)
-	}
-	return c.reporter.CompleteTask(ctx, initTask.ID)
+	return c.runtime.InitializePipeline(ctx, repo.InitializePipelineParams{
+		BatchID: initTask.BatchID, InitTaskID: initTask.ID, NSubtasks: int32(len(control) + 1), Tasks: controlTasks,
+	})
 }
 
 // RunStage creates a child batch and its fan-out work tasks. A replay of the

@@ -46,7 +46,8 @@ type PGPipeline struct {
 }
 
 type PGPipelineRuntime struct {
-	q *Queries
+	db DBTX
+	q  *Queries
 }
 
 type PGEmbeddings struct {
@@ -129,7 +130,44 @@ func (r *PGRepository) Pipeline() repo.Pipeline {
 }
 
 func (r *PGRepository) PipelineRuntime() repo.PipelineRuntime {
-	return &PGPipelineRuntime{q: r.q}
+	return &PGPipelineRuntime{db: r.db, q: r.q}
+}
+
+func (r *PGPipelineRuntime) InitializePipeline(ctx context.Context, arg repo.InitializePipelineParams) error {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := r.q.WithTx(tx)
+	if _, err := qtx.LockBatchForTaskInsert(ctx, arg.BatchID); err != nil {
+		return fmt.Errorf("lock pipeline root batch %s: %w", arg.BatchID, err)
+	}
+	previousID := arg.InitTaskID
+	for _, task := range arg.Tasks {
+		task.PreviousTaskID = &previousID
+		created, err := qtx.CreateTask(ctx, repoCreateTaskParamsToDB(task))
+		if err != nil {
+			return fmt.Errorf("create pipeline control task: %w", err)
+		}
+		previousID = created.ID
+	}
+	if _, err := qtx.SetBatchNSubtasks(ctx, SetBatchNSubtasksParams{
+		BatchID: arg.BatchID, NSubtasks: pgconv.Int32PtrToPgInt4(&arg.NSubtasks),
+	}); err != nil {
+		return fmt.Errorf("set pipeline root subtasks: %w", err)
+	}
+	if err := qtx.CompleteTask(ctx, arg.InitTaskID); err != nil {
+		return fmt.Errorf("complete pipeline init task: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit pipeline initialization: %w", err)
+	}
+	return nil
 }
 
 func (r *PGRepository) Embedding() repo.Embeddings {
@@ -380,6 +418,18 @@ func (r *PGScout) GetCandidateByFingerprint(ctx context.Context, fingerprint str
 
 func (r *PGScout) CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error) {
 	return r.q.CountCandidatesByBatchID(ctx, pgconv.UUIDToPgUUID(batchID))
+}
+
+func (r *PGScout) ListCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) ([]repo.Candidate, error) {
+	rows, err := r.q.ListCandidatesByBatchID(ctx, pgconv.UUIDToPgUUID(batchID))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Candidate, len(rows))
+	for i, row := range rows {
+		out[i] = dbCandidateToRepoCandidate(row)
+	}
+	return out, nil
 }
 
 func (r *PGScout) CreateCandidate(ctx context.Context, arg repo.CreateCandidateParams) (repo.Candidate, error) {

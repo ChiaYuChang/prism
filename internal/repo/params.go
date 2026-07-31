@@ -72,6 +72,13 @@ type EnsureBatchParams struct {
 	TraceID       string
 }
 
+type InitializePipelineParams struct {
+	BatchID    uuid.UUID
+	InitTaskID uuid.UUID
+	NSubtasks  int32
+	Tasks      []CreateTaskParams
+}
+
 type ExtendActiveTaskExpiryParams struct {
 	SourceAbbr  string     `validate:"required"`
 	Kind        string     `validate:"required"`
