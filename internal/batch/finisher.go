@@ -70,5 +70,23 @@ func (f *Finisher) Detect(ctx context.Context, limit int32) (int, error) {
 		}
 		count++
 	}
+	rootBatches, err := f.runtime.FindFinishedRootBatches(ctx, limit)
+	if err != nil {
+		return count, fmt.Errorf("find finished pipeline root batches: %w", err)
+	}
+	for _, batch := range rootBatches {
+		succeeded := batch.Succeeded != nil && *batch.Succeeded
+		traceID := ""
+		if batch.TraceID != nil {
+			traceID = *batch.TraceID
+		}
+		rows, err := f.runtime.MarkRootBatchFinished(ctx, batch.ID, succeeded, traceID)
+		if err != nil {
+			return count, fmt.Errorf("mark pipeline root %s finished: %w", batch.ID, err)
+		}
+		if rows == 1 {
+			count++
+		}
+	}
 	return count, nil
 }

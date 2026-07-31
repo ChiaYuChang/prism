@@ -48,6 +48,7 @@ FROM batches b
 LEFT JOIN tasks t ON t.batch_id = b.id
 WHERE b.completed_at IS NULL
   AND b.n_subtasks IS NOT NULL
+  AND b.parent_task_id IS NOT NULL
 GROUP BY b.id
 HAVING COUNT(t.id) = b.n_subtasks
    AND COUNT(t.id) FILTER (WHERE t.status IN ('COMPLETED', 'FAILED', 'CANCELLED')) = b.n_subtasks
@@ -86,6 +87,83 @@ func (q *Queries) FindFinishedPipelineBatches(ctx context.Context, limit int32) 
 	var items []FindFinishedPipelineBatchesRow
 	for rows.Next() {
 		var i FindFinishedPipelineBatchesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceType,
+			&i.TraceID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+			&i.PublishedAt,
+			&i.LastPublishAttemptAt,
+			&i.PublishRetryCount,
+			&i.PublishError,
+			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
+			&i.Succeeded,
+			&i.PipelinePublishedAt,
+			&i.PipelinePublishRetryCount,
+			&i.PipelinePublishError,
+			&i.CompletionSucceeded,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const findFinishedPipelineRootBatches = `-- name: FindFinishedPipelineRootBatches :many
+SELECT b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded, b.pipeline_published_at, b.pipeline_publish_retry_count, b.pipeline_publish_error,
+       COUNT(t.id) FILTER (WHERE t.status IN ('FAILED', 'CANCELLED')) = 0 AS completion_succeeded
+FROM batches b
+LEFT JOIN tasks t ON t.batch_id = b.id
+WHERE b.completed_at IS NULL
+  AND b.n_subtasks IS NOT NULL
+  AND b.parent_task_id IS NULL
+GROUP BY b.id
+HAVING COUNT(t.id) = b.n_subtasks
+   AND COUNT(t.id) FILTER (WHERE t.status IN ('COMPLETED', 'FAILED', 'CANCELLED')) = b.n_subtasks
+ORDER BY b.created_at ASC
+LIMIT $1
+`
+
+type FindFinishedPipelineRootBatchesRow struct {
+	ID                        uuid.UUID          `db:"id" json:"id"`
+	SourceType                SourceType         `db:"source_type" json:"source_type"`
+	TraceID                   pgtype.Text        `db:"trace_id" json:"trace_id"`
+	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CompletedAt               pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	PublishedAt               pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	LastPublishAttemptAt      pgtype.Timestamptz `db:"last_publish_attempt_at" json:"last_publish_attempt_at"`
+	PublishRetryCount         int32              `db:"publish_retry_count" json:"publish_retry_count"`
+	PublishError              pgtype.Text        `db:"publish_error" json:"publish_error"`
+	StalledAt                 pgtype.Timestamptz `db:"stalled_at" json:"stalled_at"`
+	NSubtasks                 pgtype.Int4        `db:"n_subtasks" json:"n_subtasks"`
+	ParentID                  pgtype.UUID        `db:"parent_id" json:"parent_id"`
+	ParentTaskID              pgtype.UUID        `db:"parent_task_id" json:"parent_task_id"`
+	Succeeded                 pgtype.Bool        `db:"succeeded" json:"succeeded"`
+	PipelinePublishedAt       pgtype.Timestamptz `db:"pipeline_published_at" json:"pipeline_published_at"`
+	PipelinePublishRetryCount int32              `db:"pipeline_publish_retry_count" json:"pipeline_publish_retry_count"`
+	PipelinePublishError      pgtype.Text        `db:"pipeline_publish_error" json:"pipeline_publish_error"`
+	CompletionSucceeded       bool               `db:"completion_succeeded" json:"completion_succeeded"`
+}
+
+func (q *Queries) FindFinishedPipelineRootBatches(ctx context.Context, limit int32) ([]FindFinishedPipelineRootBatchesRow, error) {
+	rows, err := q.db.Query(ctx, findFinishedPipelineRootBatches, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FindFinishedPipelineRootBatchesRow
+	for rows.Next() {
+		var i FindFinishedPipelineRootBatchesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.SourceType,
@@ -545,6 +623,31 @@ func (q *Queries) MarkPipelinePublished(ctx context.Context, id uuid.UUID) error
 	return err
 }
 
+const markPipelineRootFinished = `-- name: MarkPipelineRootFinished :execrows
+UPDATE batches
+SET completed_at = NOW(),
+    succeeded = $1,
+    updated_at = NOW(),
+    trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF($2, ''))
+WHERE id = $3
+  AND parent_task_id IS NULL
+  AND completed_at IS NULL
+`
+
+type MarkPipelineRootFinishedParams struct {
+	Succeeded pgtype.Bool `db:"succeeded" json:"succeeded"`
+	TraceID   interface{} `db:"trace_id" json:"trace_id"`
+	BatchID   uuid.UUID   `db:"batch_id" json:"batch_id"`
+}
+
+func (q *Queries) MarkPipelineRootFinished(ctx context.Context, arg MarkPipelineRootFinishedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markPipelineRootFinished, arg.Succeeded, arg.TraceID, arg.BatchID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const recordBatchPublishFailure = `-- name: RecordBatchPublishFailure :exec
 UPDATE batches
 SET last_publish_attempt_at = NOW(),
@@ -651,4 +754,17 @@ func (q *Queries) SetBatchNSubtasks(ctx context.Context, arg SetBatchNSubtasksPa
 		&i.PipelinePublishError,
 	)
 	return i, err
+}
+
+const setPipelineRootFailure = `-- name: SetPipelineRootFailure :exec
+UPDATE batches
+SET n_subtasks = COALESCE(n_subtasks, 1),
+    updated_at = NOW()
+WHERE id = $1
+  AND parent_task_id IS NULL
+`
+
+func (q *Queries) SetPipelineRootFailure(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, setPipelineRootFailure, id)
+	return err
 }

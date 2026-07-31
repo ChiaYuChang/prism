@@ -148,9 +148,13 @@ type Pipeline interface {
 type PipelineRuntime interface {
 	InitializePipeline(ctx context.Context, arg InitializePipelineParams) error
 	InitializePipelineStage(ctx context.Context, arg InitializePipelineStageParams) (uuid.UUID, error)
+	CreatePipelineRoot(ctx context.Context, arg CreateTaskParams) (Task, error)
 	FindFinishedBatches(ctx context.Context, limit int32) ([]Batch, error)
+	FindFinishedRootBatches(ctx context.Context, limit int32) ([]Batch, error)
 	SetNSubtasks(ctx context.Context, batchID uuid.UUID, count int32) (Batch, error)
 	MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
+	MarkRootBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
+	ConvergePipelineFailure(ctx context.Context, taskID, rootBatchID uuid.UUID, reason string) error
 	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
 	MarkPipelinePublished(ctx context.Context, batchID uuid.UUID) error
 	RecordPipelinePublishFailure(ctx context.Context, batchID uuid.UUID, message string) error

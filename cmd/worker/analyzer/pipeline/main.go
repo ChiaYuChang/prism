@@ -81,7 +81,7 @@ func main() {
 		logger.Error("failed to create pipeline coordinator", "error", err)
 		os.Exit(1)
 	}
-	handler, err := pipeline.NewHandler(dbRepo.Tasks(), dbRepo.Scout(), dbRepo.Pipeline(), dbRepo.Scheduler(), coordinator, config.RetryMax)
+	handler, err := pipeline.NewHandler(dbRepo.Tasks(), dbRepo.Scout(), dbRepo.Pipeline(), dbRepo.Scheduler(), dbRepo.PipelineRuntime(), coordinator, config.RetryMax)
 	if err != nil {
 		logger.Error("failed to create pipeline handler", "error", err)
 		os.Exit(1)
