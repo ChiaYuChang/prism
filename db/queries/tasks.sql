@@ -37,11 +37,32 @@ WHERE source_abbr = sqlc.arg(source_abbr)
   AND status IN ('PENDING', 'RUNNING')
 LIMIT 1;
 
+-- name: CountTasksByBatchID :one
+SELECT COUNT(*)::bigint
+FROM tasks
+WHERE batch_id = $1;
+
+-- name: GetTaskByBatchLogicalKey :one
+SELECT *
+FROM tasks
+WHERE batch_id = sqlc.arg(batch_id)
+  AND logical_key = sqlc.arg(logical_key)
+LIMIT 1;
+
+-- name: CancelPendingTasksByBatchID :execrows
+UPDATE tasks
+SET status = 'CANCELLED',
+    failure_message = $2,
+    updated_at = NOW()
+WHERE batch_id = $1
+  AND status = 'PENDING';
+
 -- name: EnsureBatchExists :exec
-INSERT INTO batches (id, source_type, trace_id, parent_id)
-VALUES ($1, $2, $3, sqlc.narg(parent_id))
+INSERT INTO batches (id, source_type, trace_id, parent_id, parent_task_id)
+VALUES ($1, $2, $3, sqlc.narg(parent_id), sqlc.narg(parent_task_id))
 ON CONFLICT (id) DO UPDATE
-SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id);
+SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id),
+    parent_task_id = COALESCE(batches.parent_task_id, EXCLUDED.parent_task_id);
 
 -- name: CreateTask :one
 -- Single-round-trip insert-or-recover. On unique-violation against either
@@ -81,12 +102,16 @@ UNION ALL
 SELECT t.*, FALSE AS inserted
 FROM tasks t
 WHERE NOT EXISTS (SELECT 1 FROM ins)
-  AND t.status IN ('PENDING', 'RUNNING')
   AND t.kind = sqlc.arg(kind)
   AND (
-        (t.kind = 'PAGE_FETCH' AND t.url = sqlc.arg(url))
-     OR (
-            t.source_abbr  = sqlc.arg(source_abbr)
+         (t.status IN ('PENDING', 'RUNNING') AND t.kind = 'PAGE_FETCH' AND t.url = sqlc.arg(url))
+      OR (t.batch_id = sqlc.arg(batch_id)
+          AND t.logical_key IS NOT NULL
+          AND t.logical_key = sqlc.narg(logical_key))
+      OR (
+             t.status IN ('PENDING', 'RUNNING')
+         AND
+             t.source_abbr  = sqlc.arg(source_abbr)
         AND t.payload_hash IS NOT NULL
         AND t.payload_hash = sqlc.narg(payload_hash)
         )

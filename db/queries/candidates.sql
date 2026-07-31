@@ -87,6 +87,12 @@ SELECT COUNT(*)
 FROM candidates
 WHERE batch_id = $1;
 
+-- name: ListCandidatesByBatchID :many
+SELECT *
+FROM candidates
+WHERE batch_id = $1
+ORDER BY id;
+
 -- name: ListCandidates :many
 SELECT *
 FROM candidates

@@ -1,4 +1,4 @@
-package pipeline
+package batch
 
 import (
 	"context"
@@ -35,6 +35,7 @@ func TestFinisherMarksAndPublishesOnlyWinningTransitions(t *testing.T) {
 		Succeeded: boolPtr(true), CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}}, nil)
 	runtime.EXPECT().MarkBatchFinished(mock.Anything, batchID, true, traceID).Return(int64(1), nil)
+	runtime.EXPECT().MarkPipelinePublished(mock.Anything, batchID).Return(nil)
 	publisher := &finishedPublisher{}
 	finisher, err := NewFinisher(slog.Default(), noop.NewTracerProvider().Tracer("test"), runtime, publisher)
 	require.NoError(t, err)

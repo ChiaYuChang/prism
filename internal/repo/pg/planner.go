@@ -71,7 +71,7 @@ func (r *PGPlanner) PersistPlannerResult(ctx context.Context, arg repo.PersistPl
 	}
 
 	for _, task := range arg.Tasks {
-		if _, err := createTaskRepo(ctx, qtx, task); err != nil {
+		if _, err := createTaskRepoInTx(ctx, qtx, task); err != nil {
 			if errors.Is(err, repo.ErrTaskAlreadyActive) {
 				if task.ExpiresAt != nil {
 					if extendErr := qtx.ExtendActiveTaskExpiry(ctx, ExtendActiveTaskExpiryParams{

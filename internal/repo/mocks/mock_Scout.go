@@ -505,6 +505,74 @@ func (_c *MockScout_ListCandidates_Call) RunAndReturn(run func(ctx context.Conte
 	return _c
 }
 
+// ListCandidatesByBatchID provides a mock function for the type MockScout
+func (_mock *MockScout) ListCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) ([]repo.Candidate, error) {
+	ret := _mock.Called(ctx, batchID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListCandidatesByBatchID")
+	}
+
+	var r0 []repo.Candidate
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) ([]repo.Candidate, error)); ok {
+		return returnFunc(ctx, batchID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) []repo.Candidate); ok {
+		r0 = returnFunc(ctx, batchID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Candidate)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, batchID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockScout_ListCandidatesByBatchID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListCandidatesByBatchID'
+type MockScout_ListCandidatesByBatchID_Call struct {
+	*mock.Call
+}
+
+// ListCandidatesByBatchID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+func (_e *MockScout_Expecter) ListCandidatesByBatchID(ctx interface{}, batchID interface{}) *MockScout_ListCandidatesByBatchID_Call {
+	return &MockScout_ListCandidatesByBatchID_Call{Call: _e.mock.On("ListCandidatesByBatchID", ctx, batchID)}
+}
+
+func (_c *MockScout_ListCandidatesByBatchID_Call) Run(run func(ctx context.Context, batchID uuid.UUID)) *MockScout_ListCandidatesByBatchID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockScout_ListCandidatesByBatchID_Call) Return(candidates []repo.Candidate, err error) *MockScout_ListCandidatesByBatchID_Call {
+	_c.Call.Return(candidates, err)
+	return _c
+}
+
+func (_c *MockScout_ListCandidatesByBatchID_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID) ([]repo.Candidate, error)) *MockScout_ListCandidatesByBatchID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListSourcesByType provides a mock function for the type MockScout
 func (_mock *MockScout) ListSourcesByType(ctx context.Context, sourceType string) ([]repo.Source, error) {
 	ret := _mock.Called(ctx, sourceType)

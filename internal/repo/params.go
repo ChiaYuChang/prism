@@ -47,6 +47,7 @@ type ListOperatorParams struct {
 type CreateTaskParams struct {
 	BatchID        uuid.UUID      `validate:"required"`
 	ParentBatchID  *uuid.UUID     `validate:"omitempty"`
+	ParentTaskID   *uuid.UUID     `validate:"omitempty"`
 	PreviousTaskID *uuid.UUID     `validate:"omitempty"`
 	NextTaskID     *uuid.UUID     `validate:"omitempty"`
 	LogicalKey     *string        `validate:"omitempty"`
@@ -61,6 +62,31 @@ type CreateTaskParams struct {
 	Frequency      *time.Duration `validate:"omitempty"`
 	NextRunAt      *time.Time     `validate:"omitempty"`
 	ExpiresAt      *time.Time     `validate:"omitempty"`
+}
+
+type EnsureBatchParams struct {
+	BatchID       uuid.UUID
+	ParentBatchID *uuid.UUID
+	ParentTaskID  *uuid.UUID
+	SourceType    string
+	TraceID       string
+}
+
+type InitializePipelineParams struct {
+	BatchID    uuid.UUID
+	InitTaskID uuid.UUID
+	NSubtasks  int32
+	Tasks      []CreateTaskParams
+}
+
+type InitializePipelineStageParams struct {
+	ChildBatchID  uuid.UUID
+	ParentBatchID uuid.UUID
+	ParentTaskID  uuid.UUID
+	SourceType    string
+	TraceID       string
+	NSubtasks     int32
+	Tasks         []CreateTaskParams
 }
 
 type ExtendActiveTaskExpiryParams struct {

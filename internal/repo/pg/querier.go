@@ -12,11 +12,13 @@ import (
 )
 
 type Querier interface {
+	CancelPendingTasksByBatchID(ctx context.Context, arg CancelPendingTasksByBatchIDParams) (int64, error)
 	ClaimDueSchedules(ctx context.Context, lim int32) ([]Schedule, error)
 	ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task, error)
 	CompleteTask(ctx context.Context, id uuid.UUID) error
 	CountActiveAdminTokensExcluding(ctx context.Context, id uuid.UUID) (int64, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) (int64, error)
+	CountTasksByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
 	CreateContent(ctx context.Context, arg CreateContentParams) (Content, error)
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
@@ -36,6 +38,7 @@ type Querier interface {
 	CreateUserFetchItem(ctx context.Context, arg CreateUserFetchItemParams) (FetchItem, error)
 	DeleteSource(ctx context.Context, abbr string) (Source, error)
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
+	EnsurePipelineChildBatch(ctx context.Context, arg EnsurePipelineChildBatchParams) (uuid.UUID, error)
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
@@ -65,6 +68,7 @@ type Querier interface {
 	GetPromptVersionByNameAndVersion(ctx context.Context, arg GetPromptVersionByNameAndVersionParams) (GetPromptVersionByNameAndVersionRow, error)
 	GetRootToken(ctx context.Context) (Token, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
+	GetTaskByBatchLogicalKey(ctx context.Context, arg GetTaskByBatchLogicalKeyParams) (Task, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
 	GetTokenByID(ctx context.Context, id uuid.UUID) (Token, error)
 	GetUserFetch(ctx context.Context, id uuid.UUID) (Fetch, error)
@@ -77,6 +81,7 @@ type Querier interface {
 	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
 	ListCandidateEmbeddingsGemma2025(ctx context.Context, arg ListCandidateEmbeddingsGemma2025Params) ([]ListCandidateEmbeddingsGemma2025Row, error)
 	ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error)
+	ListCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Candidate, error)
 	ListCandidatesForAnalysis(ctx context.Context, arg ListCandidatesForAnalysisParams) ([]Candidate, error)
 	ListChildBatchesByParentID(ctx context.Context, parentID pgtype.UUID) ([]Batch, error)
 	ListContentEmbeddingsByContentID(ctx context.Context, contentID uuid.UUID) ([]ContentEmbeddingsGemma2025, error)
@@ -87,6 +92,7 @@ type Querier interface {
 	ListPendingCompletionBatches(ctx context.Context, arg ListPendingCompletionBatchesParams) ([]Batch, error)
 	ListPromptVersions(ctx context.Context, arg ListPromptVersionsParams) ([]ListPromptVersionsRow, error)
 	ListPromptVersionsByKey(ctx context.Context, arg ListPromptVersionsByKeyParams) ([]ListPromptVersionsByKeyRow, error)
+	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
 	ListReadyToPublishBatches(ctx context.Context, arg ListReadyToPublishBatchesParams) ([]Batch, error)
 	ListRecentFailedTasks(ctx context.Context, limit int32) ([]ListRecentFailedTasksRow, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
@@ -98,12 +104,14 @@ type Querier interface {
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
 	ListTokens(ctx context.Context, arg ListTokensParams) ([]Token, error)
 	ListUserFetchItems(ctx context.Context, fetchID uuid.UUID) ([]ListUserFetchItemsRow, error)
+	LockBatchForTaskInsert(ctx context.Context, id uuid.UUID) (LockBatchForTaskInsertRow, error)
 	// Optimistic-concurrency claim: returns rows-affected so the caller can
 	// distinguish the winner (1) from a loser racing against another instance
 	// (0). Only the winner should publish the batch.completed signal.
 	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) (int64, error)
 	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
 	MarkPipelineBatchFinished(ctx context.Context, arg MarkPipelineBatchFinishedParams) (int64, error)
+	MarkPipelinePublished(ctx context.Context, id uuid.UUID) error
 	MarkScheduleError(ctx context.Context, arg MarkScheduleErrorParams) error
 	MarkScheduleMaterialized(ctx context.Context, arg MarkScheduleMaterializedParams) error
 	MarkSchedulesConfigAbsent(ctx context.Context) error
@@ -112,6 +120,7 @@ type Querier interface {
 	// computes terminal on-the-fly. Reserved for v2 notification dispatcher.
 	MarkUserFetchCompleted(ctx context.Context, id uuid.UUID) error
 	RecordBatchPublishFailure(ctx context.Context, arg RecordBatchPublishFailureParams) error
+	RecordPipelinePublishFailure(ctx context.Context, arg RecordPipelinePublishFailureParams) error
 	// Resets RUNNING tasks back to PENDING in bulk, undoing the ClaimTasks
 	// retry_count increment. Used when dispatch is skipped (e.g. rate-limited)
 	// so tasks are retried on the next scheduler tick without consuming retry slots.

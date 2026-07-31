@@ -563,6 +563,10 @@ type Batch struct {
 	ParentTaskID pgtype.UUID `db:"parent_task_id" json:"parent_task_id"`
 	// Whether a finished batch completed without failed or cancelled direct tasks.
 	Succeeded pgtype.Bool `db:"succeeded" json:"succeeded"`
+	// Pipeline completion notification publish timestamp.
+	PipelinePublishedAt       pgtype.Timestamptz `db:"pipeline_published_at" json:"pipeline_published_at"`
+	PipelinePublishRetryCount int32              `db:"pipeline_publish_retry_count" json:"pipeline_publish_retry_count"`
+	PipelinePublishError      pgtype.Text        `db:"pipeline_publish_error" json:"pipeline_publish_error"`
 }
 
 // Article briefs (title/url/desc) before full-page fetch. Discovery terminal asset.
