@@ -146,6 +146,7 @@ type Pipeline interface {
 }
 
 type PipelineRuntime interface {
+	GetPipelineBatch(ctx context.Context, batchID uuid.UUID) (Batch, error)
 	InitializePipeline(ctx context.Context, arg InitializePipelineParams) error
 	InitializePipelineStage(ctx context.Context, arg InitializePipelineStageParams) (uuid.UUID, error)
 	CreatePipelineRoot(ctx context.Context, arg CreateTaskParams) (Task, error)

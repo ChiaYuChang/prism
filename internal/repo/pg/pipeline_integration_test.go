@@ -137,6 +137,50 @@ func TestInitializePipelineConcurrentIsAtomicAndIdempotent(t *testing.T) {
 	require.Equal(t, childID, recoveredID)
 }
 
+func TestCreatePipelineRootRequiresCompletedInputAndStoresParent(t *testing.T) {
+	url := os.Getenv("PRISM_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set PRISM_TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	require.NoError(t, err)
+	defer pool.Close()
+	require.NoError(t, pool.Ping(ctx))
+
+	abbr := "it" + uuid.NewString()[:12]
+	inputID, rootID := uuid.New(), uuid.New()
+	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'PARTY', 'https://example.test')`, abbr, abbr)
+	require.NoError(t, err)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE batch_id = $1`, rootID)
+		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id IN ($1, $2)`, rootID, inputID)
+		_, _ = pool.Exec(ctx, `DELETE FROM sources WHERE abbr = $1`, abbr)
+	}()
+	_, err = pool.Exec(ctx, `INSERT INTO batches (id, source_type, trace_id) VALUES ($1, 'PARTY', 'input')`, inputID)
+	require.NoError(t, err)
+	runtime := NewPostgresRepository(pool).PipelineRuntime()
+	_, err = runtime.CreatePipelineRoot(ctx, repo.CreateTaskParams{
+		BatchID: rootID, ParentBatchID: &inputID, Kind: repo.TaskKindPipelineInit,
+		SourceType: repo.SourceTypeParty, SourceAbbr: abbr, URL: "https://pipeline.test/init/" + rootID.String(),
+		TraceID: "root",
+	})
+	require.ErrorIs(t, err, repo.ErrPipelineInputNotTerminal)
+
+	_, err = pool.Exec(ctx, `UPDATE batches SET completed_at = NOW() WHERE id = $1`, inputID)
+	require.NoError(t, err)
+	created, err := runtime.CreatePipelineRoot(ctx, repo.CreateTaskParams{
+		BatchID: rootID, ParentBatchID: &inputID, Kind: repo.TaskKindPipelineInit,
+		SourceType: repo.SourceTypeParty, SourceAbbr: abbr, URL: "https://pipeline.test/init/" + rootID.String(),
+		TraceID: "root",
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, uuid.Nil, created.ID)
+	var parentID uuid.UUID
+	require.NoError(t, pool.QueryRow(ctx, `SELECT parent_id FROM batches WHERE id = $1`, rootID).Scan(&parentID))
+	require.Equal(t, inputID, parentID)
+}
+
 func stringPtr(value string) *string { return &value }
 
 func TestMarkPipelineBatchFinishedHasSingleWinner(t *testing.T) {
@@ -215,13 +259,26 @@ func TestPipelinePublishFailureRemainsRetryable(t *testing.T) {
 	defer pool.Close()
 	require.NoError(t, pool.Ping(ctx))
 	batchID := uuid.New()
-	_, err = pool.Exec(ctx, `INSERT INTO batches (id, source_type, trace_id, n_subtasks, completed_at) VALUES ($1, 'PARTY', 'publish-test', 0, NOW())`, batchID)
+	parentID, ownerID := uuid.New(), uuid.New()
+	abbr := "it" + uuid.NewString()[:12]
+	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'PARTY', 'https://example.test')`, abbr, abbr)
 	require.NoError(t, err)
-	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id = $1`, batchID) }()
+	_, err = pool.Exec(ctx, `INSERT INTO batches (id, source_type, trace_id) VALUES ($1, 'PARTY', 'publish-root')`, parentID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO tasks (id, batch_id, kind, source_type, source_abbr, url, trace_id) VALUES ($1, $2, 'PIPELINE_STAGE', 'PARTY', $3, 'https://pipeline.test/owner', 'publish-root')`, ownerID, parentID, abbr)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO batches (id, source_type, trace_id, parent_id, parent_task_id, n_subtasks, completed_at) VALUES ($1, 'PARTY', 'publish-test', $2, $3, 0, NOW())`, batchID, parentID, ownerID)
+	require.NoError(t, err)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE id = $1`, ownerID)
+		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id = $1`, batchID)
+		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id = $1`, parentID)
+		_, _ = pool.Exec(ctx, `DELETE FROM sources WHERE abbr = $1`, abbr)
+	}()
 
 	runtime := NewPostgresRepository(pool).PipelineRuntime()
 	require.NoError(t, runtime.RecordPipelinePublishFailure(ctx, batchID, "publisher unavailable"))
-	ready, err := runtime.ListReadyPipelineBatches(ctx, 10)
+	ready, err := runtime.ListReadyPipelineBatches(ctx, 1000)
 	require.NoError(t, err)
 	found := false
 	for _, batch := range ready {
@@ -231,7 +288,7 @@ func TestPipelinePublishFailureRemainsRetryable(t *testing.T) {
 	}
 	require.True(t, found)
 	require.NoError(t, runtime.MarkPipelinePublished(ctx, batchID))
-	ready, err = runtime.ListReadyPipelineBatches(ctx, 10)
+	ready, err = runtime.ListReadyPipelineBatches(ctx, 1000)
 	require.NoError(t, err)
 	for _, batch := range ready {
 		require.NotEqual(t, batchID, batch.ID)

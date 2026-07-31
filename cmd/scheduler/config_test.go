@@ -44,7 +44,7 @@ func TestLoadConfig_ShippedConfigs(t *testing.T) {
 			schedulerName: "slow",
 			path:          filepath.Join("..", "..", "configs", "scheduler", "slow.yaml"),
 			wantHealth:    8090,
-			wantKinds:     []string{"DIRECTORY_FETCH", "KEYWORD_SEARCH", "EMBED_CANDIDATE", "EMBED_CONTENT"},
+			wantKinds:     []string{"DIRECTORY_FETCH", "KEYWORD_SEARCH", "EMBED_CANDIDATE", "EMBED_CONTENT", "PIPELINE_INIT", "PIPELINE_STAGE"},
 			wantSvc:       "prism.scheduler.slow",
 			name:          "slow",
 		},

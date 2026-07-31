@@ -170,6 +170,21 @@ func (r *PGPipelineRuntime) InitializePipeline(ctx context.Context, arg repo.Ini
 	return nil
 }
 
+func (r *PGPipelineRuntime) GetPipelineBatch(ctx context.Context, batchID uuid.UUID) (repo.Batch, error) {
+	row, err := r.q.GetBatchByID(ctx, batchID)
+	if err != nil {
+		return repo.Batch{}, err
+	}
+	return dbBatchToRepoBatch(
+		row.ID, pgconv.PgUUIDToUUIDPtr(row.ParentID), pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+		pgconv.PgUUIDToUUIDPtr(row.ParentTaskID), pgconv.PgBoolToBoolPtr(row.Succeeded), string(row.SourceType),
+		pgconv.PgTextToStringPtr(row.TraceID), *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+		*pgconv.PgTimestamptzToTimePtr(row.UpdatedAt), pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
+		pgconv.PgTimestamptzToTimePtr(row.PublishedAt), pgconv.PgTimestamptzToTimePtr(row.LastPublishAttemptAt),
+		row.PublishRetryCount, pgconv.PgTextToStringPtr(row.PublishError), pgconv.PgTimestamptzToTimePtr(row.StalledAt),
+	), nil
+}
+
 func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
 	beginner, ok := r.db.(pgBeginner)
 	if !ok {
