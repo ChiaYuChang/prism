@@ -44,6 +44,43 @@ jobs:
       - name: Validate bootstrap script syntax
         run: bash -n script/bootstrap-auth.sh
 
+  pipeline-integration:
+    name: Pipeline PostgreSQL Integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: prism
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d prism"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PRISM_TEST_DATABASE_URL: postgres://postgres@localhost:5432/prism?sslmode=disable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Apply migrations
+        run: go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.3 -path db/migrations -database "$PRISM_TEST_DATABASE_URL" up
+
+      - name: Run pipeline integration tests
+        run: go test -v -run 'Test(InitializePipelineConcurrentIsAtomicAndIdempotent|MarkPipelineBatchFinishedHasSingleWinner|PipelinePublishFailureRemainsRetryable|PipelineRootFailureConvergesAndFinalizes)$' ./internal/repo/pg
+
   web:
     name: Control Room Web
     runs-on: ubuntu-latest

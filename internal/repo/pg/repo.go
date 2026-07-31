@@ -170,6 +170,43 @@ func (r *PGPipelineRuntime) InitializePipeline(ctx context.Context, arg repo.Ini
 	return nil
 }
 
+func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return repo.Task{}, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return repo.Task{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := r.q.WithTx(tx)
+	if arg.ParentBatchID == nil {
+		return repo.Task{}, fmt.Errorf("pipeline root input batch is required")
+	}
+	input, err := qtx.LockBatchForTaskInsert(ctx, *arg.ParentBatchID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return repo.Task{}, repo.ErrPipelineInputNotFound
+		}
+		return repo.Task{}, fmt.Errorf("lock pipeline input batch %s: %w", *arg.ParentBatchID, err)
+	}
+	if !input.CompletedAt.Valid {
+		return repo.Task{}, repo.ErrPipelineInputNotTerminal
+	}
+	if err := qtx.EnsureBatchExists(ctx, repoCreateTaskParamsToEnsureBatchExists(arg)); err != nil {
+		return repo.Task{}, fmt.Errorf("ensure pipeline root batch: %w", err)
+	}
+	row, err := qtx.CreateTask(ctx, repoCreateTaskParamsToDB(arg))
+	if err != nil {
+		return repo.Task{}, fmt.Errorf("create pipeline init task: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return repo.Task{}, fmt.Errorf("commit pipeline root: %w", err)
+	}
+	return dbCreateTaskRowToRepoTask(row), nil
+}
+
 func (r *PGPipelineRuntime) InitializePipelineStage(ctx context.Context, arg repo.InitializePipelineStageParams) (uuid.UUID, error) {
 	beginner, ok := r.db.(pgBeginner)
 	if !ok {
@@ -188,20 +225,22 @@ func (r *PGPipelineRuntime) InitializePipelineStage(ctx context.Context, arg rep
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("ensure pipeline child batch: %w", err)
 	}
-	if _, err := qtx.LockBatchForTaskInsert(ctx, childBatchID); err != nil {
+	locked, err := qtx.LockBatchForTaskInsert(ctx, childBatchID)
+	if err != nil {
 		return uuid.Nil, fmt.Errorf("lock pipeline child batch %s: %w", childBatchID, err)
 	}
-	previousID := uuid.Nil
-	for i, task := range arg.Tasks {
-		task.BatchID = childBatchID
-		if i > 0 {
-			task.PreviousTaskID = &previousID
+	if locked.CompletedAt.Valid {
+		if err := tx.Commit(ctx); err != nil {
+			return uuid.Nil, fmt.Errorf("commit completed pipeline stage recovery: %w", err)
 		}
-		created, err := qtx.CreateTask(ctx, repoCreateTaskParamsToDB(task))
+		return childBatchID, nil
+	}
+	for _, task := range arg.Tasks {
+		task.BatchID = childBatchID
+		_, err := qtx.CreateTask(ctx, repoCreateTaskParamsToDB(task))
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("create pipeline stage task: %w", err)
 		}
-		previousID = created.ID
 	}
 	if _, err := qtx.SetBatchNSubtasks(ctx, SetBatchNSubtasksParams{
 		BatchID: childBatchID, NSubtasks: pgconv.Int32PtrToPgInt4(&arg.NSubtasks),
@@ -306,12 +345,67 @@ func (r *PGPipelineRuntime) SetNSubtasks(ctx context.Context, batchID uuid.UUID,
 	), nil
 }
 
+func (r *PGPipelineRuntime) FindFinishedRootBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	rows, err := r.q.FindFinishedPipelineRootBatches(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Batch, len(rows))
+	for i, row := range rows {
+		out[i] = dbBatchToRepoBatch(
+			row.ID, pgconv.PgUUIDToUUIDPtr(row.ParentID), pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID), &row.CompletionSucceeded, string(row.SourceType),
+			pgconv.PgTextToStringPtr(row.TraceID), *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+			*pgconv.PgTimestamptzToTimePtr(row.UpdatedAt), pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
+			pgconv.PgTimestamptzToTimePtr(row.PublishedAt), pgconv.PgTimestamptzToTimePtr(row.LastPublishAttemptAt),
+			row.PublishRetryCount, pgconv.PgTextToStringPtr(row.PublishError), pgconv.PgTimestamptzToTimePtr(row.StalledAt),
+		)
+	}
+	return out, nil
+}
+
 func (r *PGPipelineRuntime) MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error) {
 	return r.q.MarkPipelineBatchFinished(ctx, MarkPipelineBatchFinishedParams{
 		BatchID:   batchID,
 		Succeeded: pgtype.Bool{Bool: succeeded, Valid: true},
 		TraceID:   traceID,
 	})
+}
+
+func (r *PGPipelineRuntime) MarkRootBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error) {
+	return r.q.MarkPipelineRootFinished(ctx, MarkPipelineRootFinishedParams{
+		BatchID: batchID, Succeeded: pgtype.Bool{Bool: succeeded, Valid: true}, TraceID: traceID,
+	})
+}
+
+func (r *PGPipelineRuntime) ConvergePipelineFailure(ctx context.Context, taskID, rootBatchID uuid.UUID, reason string) error {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := r.q.WithTx(tx)
+	task, err := qtx.GetTaskByID(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if task.Status != TaskStatusFAILED {
+		return tx.Commit(ctx)
+	}
+	if task.Kind == TaskKindPIPELINEINIT {
+		if err := qtx.SetPipelineRootFailure(ctx, rootBatchID); err != nil {
+			return fmt.Errorf("set failed pipeline root: %w", err)
+		}
+	} else if _, err := qtx.CancelPendingTasksByBatchID(ctx, CancelPendingTasksByBatchIDParams{
+		BatchID: rootBatchID, FailureMessage: pgconv.StringPtrToPgText(&reason),
+	}); err != nil {
+		return fmt.Errorf("cancel downstream pipeline tasks: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *PGPipelineRuntime) ListReadyPipelineBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {

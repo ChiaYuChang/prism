@@ -34,6 +34,7 @@ func TestFinisherMarksAndPublishesOnlyWinningTransitions(t *testing.T) {
 		ID: batchID, ParentID: &rootID, ParentTaskID: &ownerID, TraceID: &traceID,
 		Succeeded: boolPtr(true), CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}}, nil)
+	runtime.EXPECT().FindFinishedRootBatches(mock.Anything, int32(10)).Return(nil, nil)
 	runtime.EXPECT().MarkBatchFinished(mock.Anything, batchID, true, traceID).Return(int64(1), nil)
 	runtime.EXPECT().MarkPipelinePublished(mock.Anything, batchID).Return(nil)
 	publisher := &finishedPublisher{}

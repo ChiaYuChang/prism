@@ -21,6 +21,8 @@ type Config struct {
 	Logger          obs.LoggingConfig   `mapstructure:"logger"`
 	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
 	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
+	MessengerType   string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
+	Messenger       app.MessengerConfig `mapstructure:"-"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -39,6 +41,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.batch.detector"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.batch.detector"))
+	app.RegisterMessengerFlags(fs, "batch-detector")
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -87,10 +90,18 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Telemetry = telemetryCfg
+	messengerCfg, err := app.LoadMessengerConfig(v)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Messenger = messengerCfg
 
 	validate := validator.New()
 	if err := validate.Struct(&cfg); err != nil {
 		return nil, fmt.Errorf("config validation failed: %v", err)
+	}
+	if err := validate.Struct(cfg.Messenger); err != nil {
+		return nil, fmt.Errorf("messenger config validation failed: %v", err)
 	}
 	return &cfg, nil
 }
