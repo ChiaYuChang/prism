@@ -80,7 +80,52 @@ func TestInitializePipelineConcurrentIsAtomicAndIdempotent(t *testing.T) {
 	var nSubtasks int32
 	require.NoError(t, pool.QueryRow(ctx, `SELECT n_subtasks FROM batches WHERE id = $1`, rootID).Scan(&nSubtasks))
 	require.Equal(t, int32(3), nSubtasks)
+	stageOwner := rows[1]
+	stageWork := []repo.CreateTaskParams{
+		{LogicalKey: stringPtr("work:first"), Kind: repo.TaskKindEmbedCandidate, SourceType: repo.SourceTypeParty, SourceAbbr: abbr, URL: "https://pipeline.test/work/first", TraceID: traceID},
+		{LogicalKey: stringPtr("work:second"), Kind: repo.TaskKindEmbedCandidate, SourceType: repo.SourceTypeParty, SourceAbbr: abbr, URL: "https://pipeline.test/work/second", TraceID: traceID},
+	}
+	stageArg := repo.InitializePipelineStageParams{
+		ChildBatchID: uuid.New(), ParentBatchID: rootID, ParentTaskID: stageOwner.ID, SourceType: repo.SourceTypeParty,
+		TraceID: traceID, NSubtasks: 2, Tasks: stageWork,
+	}
+	childIDs := make(chan uuid.UUID, attempts)
+	stageErrs := make(chan error, attempts)
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			childID, stageErr := r.PipelineRuntime().InitializePipelineStage(ctx, stageArg)
+			if stageErr != nil {
+				stageErrs <- stageErr
+				return
+			}
+			childIDs <- childID
+		}()
+	}
+	wg.Wait()
+	close(childIDs)
+	close(stageErrs)
+	for err := range stageErrs {
+		require.NoError(t, err)
+	}
+	var childID uuid.UUID
+	for id := range childIDs {
+		if childID == uuid.Nil {
+			childID = id
+		}
+		require.Equal(t, childID, id)
+	}
+	require.NotEqual(t, uuid.Nil, childID)
+	var childCount int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM batches WHERE parent_task_id = $1`, stageOwner.ID).Scan(&childCount))
+	require.Equal(t, 1, childCount)
+	var workCount int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM tasks WHERE batch_id = $1`, childID).Scan(&workCount))
+	require.Equal(t, 2, workCount)
 }
+
+func stringPtr(value string) *string { return &value }
 
 func TestMarkPipelineBatchFinishedHasSingleWinner(t *testing.T) {
 	url := os.Getenv("PRISM_TEST_DATABASE_URL")

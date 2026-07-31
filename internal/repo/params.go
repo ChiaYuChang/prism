@@ -79,6 +79,16 @@ type InitializePipelineParams struct {
 	Tasks      []CreateTaskParams
 }
 
+type InitializePipelineStageParams struct {
+	ChildBatchID  uuid.UUID
+	ParentBatchID uuid.UUID
+	ParentTaskID  uuid.UUID
+	SourceType    string
+	TraceID       string
+	NSubtasks     int32
+	Tasks         []CreateTaskParams
+}
+
 type ExtendActiveTaskExpiryParams struct {
 	SourceAbbr  string     `validate:"required"`
 	Kind        string     `validate:"required"`
