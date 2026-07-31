@@ -17,7 +17,7 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'embedding_category') THEN
-        CREATE TYPE embedding_category AS ENUM ('TITLE', 'CONTENT', 'BRIEF');
+        CREATE TYPE embedding_category AS ENUM ('TITLE', 'BRIEF');
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'entity_type') THEN
@@ -42,11 +42,19 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'task_status') THEN
-        CREATE TYPE task_status AS ENUM ('PENDING', 'RUNNING', 'FAILED', 'COMPLETED');
+        CREATE TYPE task_status AS ENUM ('PENDING', 'RUNNING', 'FAILED', 'COMPLETED', 'CANCELLED');
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'task_kind') THEN
-        CREATE TYPE task_kind AS ENUM ('DIRECTORY_FETCH', 'KEYWORD_SEARCH', 'PAGE_FETCH');
+        CREATE TYPE task_kind AS ENUM (
+            'DIRECTORY_FETCH',
+            'KEYWORD_SEARCH',
+            'PAGE_FETCH',
+            'EMBED_CANDIDATE',
+            'EMBED_CONTENT',
+            'PIPELINE_INIT',
+            'PIPELINE_STAGE'
+        );
     END IF;
 END
 $$;
@@ -241,7 +249,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     next_run_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at     TIMESTAMPTZ,
     status         task_status NOT NULL DEFAULT 'PENDING',
-    retry_count    INT NOT NULL DEFAULT 0,
+     retry_count    INT NOT NULL DEFAULT 0,
+     failure_message TEXT,
     last_run_at    TIMESTAMPTZ,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()

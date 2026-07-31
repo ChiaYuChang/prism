@@ -44,6 +44,10 @@ type PGPipeline struct {
 	q  *Queries
 }
 
+type PGPipelineRuntime struct {
+	q *Queries
+}
+
 type PGEmbeddings struct {
 	q *Queries
 }
@@ -94,6 +98,7 @@ var _ repo.Scheduler = (*PGScheduler)(nil)
 var _ repo.Scout = (*PGScout)(nil)
 var _ repo.Tasks = (*PGTasks)(nil)
 var _ repo.Pipeline = (*PGPipeline)(nil)
+var _ repo.PipelineRuntime = (*PGPipelineRuntime)(nil)
 var _ repo.Embeddings = (*PGEmbeddings)(nil)
 var _ repo.Analysis = (*PGAnalysis)(nil)
 var _ repo.BatchTrigger = (*PGBatchTrigger)(nil)
@@ -120,6 +125,10 @@ func (r *PGRepository) Tasks() repo.Tasks {
 
 func (r *PGRepository) Pipeline() repo.Pipeline {
 	return &PGPipeline{db: r.db, q: r.q}
+}
+
+func (r *PGRepository) PipelineRuntime() repo.PipelineRuntime {
+	return &PGPipelineRuntime{q: r.q}
 }
 
 func (r *PGRepository) Embedding() repo.Embeddings {
@@ -160,6 +169,66 @@ func (r *PGRepository) Sources() repo.Sources {
 
 func (r *PGRepository) Models() repo.Models {
 	return &PGModels{q: r.q}
+}
+
+func (r *PGPipelineRuntime) FindFinishedBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	rows, err := r.q.FindFinishedPipelineBatches(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.Batch, len(rows))
+	for i, row := range rows {
+		out[i] = dbBatchToRepoBatch(
+			row.ID,
+			pgconv.PgUUIDToUUIDPtr(row.ParentID),
+			pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),
+			&row.CompletionSucceeded,
+			string(row.SourceType),
+			pgconv.PgTextToStringPtr(row.TraceID),
+			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+			*pgconv.PgTimestamptzToTimePtr(row.UpdatedAt),
+			pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
+			pgconv.PgTimestamptzToTimePtr(row.PublishedAt),
+			pgconv.PgTimestamptzToTimePtr(row.LastPublishAttemptAt),
+			row.PublishRetryCount,
+			pgconv.PgTextToStringPtr(row.PublishError),
+			pgconv.PgTimestamptzToTimePtr(row.StalledAt),
+		)
+	}
+	return out, nil
+}
+
+func (r *PGPipelineRuntime) SetNSubtasks(ctx context.Context, batchID uuid.UUID, count int32) (repo.Batch, error) {
+	row, err := r.q.SetBatchNSubtasks(ctx, SetBatchNSubtasksParams{BatchID: batchID, NSubtasks: pgconv.Int32PtrToPgInt4(&count)})
+	if err != nil {
+		return repo.Batch{}, err
+	}
+	return dbBatchToRepoBatch(
+		row.ID,
+		pgconv.PgUUIDToUUIDPtr(row.ParentID),
+		pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+		pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),
+		pgconv.PgBoolToBoolPtr(row.Succeeded),
+		string(row.SourceType),
+		pgconv.PgTextToStringPtr(row.TraceID),
+		*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+		*pgconv.PgTimestamptzToTimePtr(row.UpdatedAt),
+		pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
+		pgconv.PgTimestamptzToTimePtr(row.PublishedAt),
+		pgconv.PgTimestamptzToTimePtr(row.LastPublishAttemptAt),
+		row.PublishRetryCount,
+		pgconv.PgTextToStringPtr(row.PublishError),
+		pgconv.PgTimestamptzToTimePtr(row.StalledAt),
+	), nil
+}
+
+func (r *PGPipelineRuntime) MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error) {
+	return r.q.MarkPipelineBatchFinished(ctx, MarkPipelineBatchFinishedParams{
+		BatchID:   batchID,
+		Succeeded: pgtype.Bool{Bool: succeeded, Valid: true},
+		TraceID:   traceID,
+	})
 }
 
 // Scheduler repository.
@@ -585,6 +654,9 @@ func (r *PGOperator) ListBatches(ctx context.Context, params repo.ListOperatorPa
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
 			pgconv.PgUUIDToUUIDPtr(row.ParentID),
+			pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),
+			pgconv.PgBoolToBoolPtr(row.Succeeded),
 			string(row.SourceType),
 			pgconv.PgTextToStringPtr(row.TraceID),
 			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
@@ -663,6 +735,17 @@ func (r *PGPrompts) CreatePromptVersion(ctx context.Context, arg repo.CreateProm
 
 func (r *PGPrompts) GetPromptVersionByID(ctx context.Context, id uuid.UUID) (repo.PromptVersion, error) {
 	row, err := r.q.GetPromptVersionByID(ctx, id)
+	if err != nil {
+		return repo.PromptVersion{}, err
+	}
+	return dbPromptVersionRowToRepoPromptVersion(row.ID, row.Key, row.Version, row.Hash, row.SizeBytes, row.CreatedAt), nil
+}
+
+func (r *PGPrompts) GetPromptVersionByNameAndVersion(ctx context.Context, name string, version int32) (repo.PromptVersion, error) {
+	row, err := r.q.GetPromptVersionByNameAndVersion(ctx, GetPromptVersionByNameAndVersionParams{
+		Name:    name,
+		Version: version,
+	})
 	if err != nil {
 		return repo.PromptVersion{}, err
 	}
@@ -968,6 +1051,9 @@ func (r *PGBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
 			pgconv.PgUUIDToUUIDPtr(row.ParentID),
+			pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),
+			pgconv.PgBoolToBoolPtr(row.Succeeded),
 			string(row.SourceType),
 			pgconv.PgTextToStringPtr(row.TraceID),
 			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
@@ -1024,6 +1110,9 @@ func (r *PGBatchTrigger) ListReadyToPublishBatches(ctx context.Context, limit in
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
 			pgconv.PgUUIDToUUIDPtr(row.ParentID),
+			pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),
+			pgconv.PgBoolToBoolPtr(row.Succeeded),
 			string(row.SourceType),
 			pgconv.PgTextToStringPtr(row.TraceID),
 			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt),

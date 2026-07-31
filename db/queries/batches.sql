@@ -67,9 +67,48 @@ SELECT *
 FROM batches
 WHERE id = $1;
 
+-- name: FindFinishedPipelineBatches :many
+SELECT b.*,
+       COUNT(t.id) FILTER (WHERE t.status IN ('FAILED', 'CANCELLED')) = 0 AS completion_succeeded
+FROM batches b
+LEFT JOIN tasks t ON t.batch_id = b.id
+WHERE b.completed_at IS NULL
+  AND b.n_subtasks IS NOT NULL
+GROUP BY b.id
+HAVING COUNT(t.id) = b.n_subtasks
+   AND COUNT(t.id) FILTER (WHERE t.status IN ('COMPLETED', 'FAILED', 'CANCELLED')) = b.n_subtasks
+ORDER BY b.created_at ASC
+LIMIT $1;
+
+-- name: SetBatchNSubtasks :one
+WITH locked AS (
+    SELECT id, n_subtasks, completed_at
+    FROM batches
+    WHERE batches.id = sqlc.arg(batch_id)
+    FOR UPDATE
+), updated AS (
+    UPDATE batches b
+    SET n_subtasks = sqlc.arg(n_subtasks), updated_at = NOW()
+    FROM locked
+    WHERE b.id = locked.id
+      AND locked.completed_at IS NULL
+      AND (locked.n_subtasks IS NULL OR locked.n_subtasks = sqlc.arg(n_subtasks))
+      AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = b.id) <= sqlc.arg(n_subtasks)
+    RETURNING b.*
+)
+SELECT * FROM updated;
+
+-- name: MarkPipelineBatchFinished :execrows
+UPDATE batches
+SET completed_at = NOW(),
+    succeeded = sqlc.arg(succeeded),
+    updated_at = NOW(),
+    trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF(sqlc.arg(trace_id), ''))
+WHERE id = sqlc.arg(batch_id)
+  AND completed_at IS NULL;
+
 -- name: ListChildBatchesByParentID :many
 SELECT *
 FROM batches
 WHERE parent_id = $1
 ORDER BY created_at ASC;
-

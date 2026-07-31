@@ -61,22 +61,17 @@ WITH ins AS (
         payload_hash,
         meta,
         trace_id,
+        previous_task_id,
+        next_task_id,
+        logical_key,
         frequency,
         next_run_at,
         expires_at
     ) VALUES (
-        sqlc.arg(batch_id),
-        sqlc.arg(kind),
-        sqlc.arg(source_type),
-        sqlc.arg(source_abbr),
-        sqlc.arg(url),
-        COALESCE(sqlc.narg(payload), '{}'::jsonb),
-        sqlc.narg(payload_hash),
-        sqlc.narg(meta),
-        sqlc.arg(trace_id),
-        sqlc.narg(frequency),
-        COALESCE(sqlc.narg(next_run_at), NOW()),
-        sqlc.narg(expires_at)
+        sqlc.arg(batch_id), sqlc.arg(kind), sqlc.arg(source_type), sqlc.arg(source_abbr), sqlc.arg(url),
+        COALESCE(sqlc.narg(payload), '{}'::jsonb), sqlc.narg(payload_hash), sqlc.narg(meta), sqlc.arg(trace_id),
+        sqlc.narg(previous_task_id), sqlc.narg(next_task_id), sqlc.narg(logical_key), sqlc.narg(frequency),
+        COALESCE(sqlc.narg(next_run_at), NOW()), sqlc.narg(expires_at)
     )
     ON CONFLICT DO NOTHING
     RETURNING tasks.*
@@ -117,6 +112,14 @@ WHERE id IN (
             COALESCE(array_length(sqlc.arg(source_types)::source_type[], 1), 0) = 0
             OR source_type = ANY(sqlc.arg(source_types)::source_type[])
         )
+        AND (
+            previous_task_id IS NULL
+            OR EXISTS (
+                SELECT 1 FROM tasks previous
+                WHERE previous.id = tasks.previous_task_id
+                  AND previous.status = 'COMPLETED'
+            )
+        )
     ) OR (
             status = 'RUNNING'
         AND last_run_at < NOW() - INTERVAL '30 minutes'
@@ -125,6 +128,14 @@ WHERE id IN (
         AND (
             COALESCE(array_length(sqlc.arg(source_types)::source_type[], 1), 0) = 0
             OR source_type = ANY(sqlc.arg(source_types)::source_type[])
+        )
+        AND (
+            previous_task_id IS NULL
+            OR EXISTS (
+                SELECT 1 FROM tasks previous
+                WHERE previous.id = tasks.previous_task_id
+                  AND previous.status = 'COMPLETED'
+            )
         )
     )
     ORDER BY next_run_at ASC

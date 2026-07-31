@@ -23,6 +23,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 	"github.com/ChiaYuChang/prism/internal/storage"
+	"github.com/google/uuid"
 )
 
 const (
@@ -122,6 +123,7 @@ func main() {
 		monitor.SetStatus(obs.LevelError, "Failed to initialize prompt storage")
 		os.Exit(1)
 	}
+	warnIfPlannerPromptUnpinned(logger, config.Prompt)
 	promptBody, promptVersion, promptLogAttrs, err := loadPlannerPrompt(ctx, dbRepo.Prompts(), promptStore, *config)
 	if err != nil {
 		logger.Error("failed to load prompt", "error", err)
@@ -201,6 +203,16 @@ func main() {
 				msg.Nack()
 			}
 		}
+	}
+}
+
+func plannerPromptUsesLatest(ref prompt.Ref) bool {
+	return ref.ID == uuid.Nil && strings.TrimSpace(ref.Key) != "" && ref.Version == 0
+}
+
+func warnIfPlannerPromptUnpinned(logger *slog.Logger, ref prompt.Ref) {
+	if plannerPromptUsesLatest(ref) {
+		logger.Warn("planner prompt is not pinned; resolving latest version", "prompt_key", ref.Key)
 	}
 }
 

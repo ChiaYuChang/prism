@@ -12,6 +12,7 @@ type Repository interface {
 	Scout() Scout
 	Tasks() Tasks
 	Pipeline() Pipeline
+	PipelineRuntime() PipelineRuntime
 	Embedding() Embeddings
 	Analysis() Analysis
 	BatchTrigger() BatchTrigger
@@ -107,6 +108,7 @@ type Operator interface {
 type Prompts interface {
 	CreatePromptVersion(ctx context.Context, arg CreatePromptVersionParams) (PromptVersion, error)
 	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (PromptVersion, error)
+	GetPromptVersionByNameAndVersion(ctx context.Context, name string, version int32) (PromptVersion, error)
 	GetLatestPromptVersionByName(ctx context.Context, name string) (PromptVersion, error)
 	ListPromptVersions(ctx context.Context, params ListOperatorParams) ([]PromptVersion, error)
 	ListPromptVersionsByKey(ctx context.Context, key string, params ListOperatorParams) ([]PromptVersion, error)
@@ -138,6 +140,12 @@ type Pipeline interface {
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
 	DeleteContent(ctx context.Context, id uuid.UUID) (Content, error)
 	RestoreContent(ctx context.Context, id uuid.UUID) (Content, error)
+}
+
+type PipelineRuntime interface {
+	FindFinishedBatches(ctx context.Context, limit int32) ([]Batch, error)
+	SetNSubtasks(ctx context.Context, batchID uuid.UUID, count int32) (Batch, error)
+	MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
 }
 
 type BatchTrigger interface {

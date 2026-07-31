@@ -27,18 +27,21 @@ func repoCreateTaskParamsToEnsureBatchExists(arg repo.CreateTaskParams) EnsureBa
 
 func repoCreateTaskParamsToDB(arg repo.CreateTaskParams) CreateTaskParams {
 	return CreateTaskParams{
-		BatchID:     arg.BatchID,
-		Kind:        TaskKind(arg.Kind),
-		SourceType:  SourceType(arg.SourceType),
-		SourceAbbr:  arg.SourceAbbr,
-		Url:         arg.URL,
-		Payload:     arg.Payload,
-		PayloadHash: pgconv.StringPtrToPgText(arg.PayloadHash),
-		Meta:        arg.Meta,
-		TraceID:     arg.TraceID,
-		Frequency:   pgconv.DurationPtrToPgInterval(arg.Frequency),
-		NextRunAt:   pgconv.TimePtrToPgTimestamptz(arg.NextRunAt),
-		ExpiresAt:   pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
+		BatchID:        arg.BatchID,
+		Kind:           TaskKind(arg.Kind),
+		SourceType:     SourceType(arg.SourceType),
+		SourceAbbr:     arg.SourceAbbr,
+		Url:            arg.URL,
+		Payload:        arg.Payload,
+		PayloadHash:    pgconv.StringPtrToPgText(arg.PayloadHash),
+		Meta:           arg.Meta,
+		TraceID:        arg.TraceID,
+		PreviousTaskID: pgconv.UUIDPtrToPgUUID(arg.PreviousTaskID),
+		NextTaskID:     pgconv.UUIDPtrToPgUUID(arg.NextTaskID),
+		LogicalKey:     pgconv.StringPtrToPgText(arg.LogicalKey),
+		Frequency:      pgconv.DurationPtrToPgInterval(arg.Frequency),
+		NextRunAt:      pgconv.TimePtrToPgTimestamptz(arg.NextRunAt),
+		ExpiresAt:      pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
 	}
 }
 

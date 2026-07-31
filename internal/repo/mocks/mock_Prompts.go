@@ -237,6 +237,78 @@ func (_c *MockPrompts_GetPromptVersionByID_Call) RunAndReturn(run func(ctx conte
 	return _c
 }
 
+// GetPromptVersionByNameAndVersion provides a mock function for the type MockPrompts
+func (_mock *MockPrompts) GetPromptVersionByNameAndVersion(ctx context.Context, name string, version int32) (repo.PromptVersion, error) {
+	ret := _mock.Called(ctx, name, version)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPromptVersionByNameAndVersion")
+	}
+
+	var r0 repo.PromptVersion
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int32) (repo.PromptVersion, error)); ok {
+		return returnFunc(ctx, name, version)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int32) repo.PromptVersion); ok {
+		r0 = returnFunc(ctx, name, version)
+	} else {
+		r0 = ret.Get(0).(repo.PromptVersion)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int32) error); ok {
+		r1 = returnFunc(ctx, name, version)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPrompts_GetPromptVersionByNameAndVersion_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPromptVersionByNameAndVersion'
+type MockPrompts_GetPromptVersionByNameAndVersion_Call struct {
+	*mock.Call
+}
+
+// GetPromptVersionByNameAndVersion is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name string
+//   - version int32
+func (_e *MockPrompts_Expecter) GetPromptVersionByNameAndVersion(ctx interface{}, name interface{}, version interface{}) *MockPrompts_GetPromptVersionByNameAndVersion_Call {
+	return &MockPrompts_GetPromptVersionByNameAndVersion_Call{Call: _e.mock.On("GetPromptVersionByNameAndVersion", ctx, name, version)}
+}
+
+func (_c *MockPrompts_GetPromptVersionByNameAndVersion_Call) Run(run func(ctx context.Context, name string, version int32)) *MockPrompts_GetPromptVersionByNameAndVersion_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int32
+		if args[2] != nil {
+			arg2 = args[2].(int32)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPrompts_GetPromptVersionByNameAndVersion_Call) Return(promptVersion repo.PromptVersion, err error) *MockPrompts_GetPromptVersionByNameAndVersion_Call {
+	_c.Call.Return(promptVersion, err)
+	return _c
+}
+
+func (_c *MockPrompts_GetPromptVersionByNameAndVersion_Call) RunAndReturn(run func(ctx context.Context, name string, version int32) (repo.PromptVersion, error)) *MockPrompts_GetPromptVersionByNameAndVersion_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListPromptVersions provides a mock function for the type MockPrompts
 func (_mock *MockPrompts) ListPromptVersions(ctx context.Context, params repo.ListOperatorParams) ([]repo.PromptVersion, error) {
 	ret := _mock.Called(ctx, params)

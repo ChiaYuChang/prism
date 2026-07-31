@@ -9,6 +9,9 @@ import (
 type Task struct {
 	ID             uuid.UUID
 	BatchID        uuid.UUID
+	PreviousTaskID *uuid.UUID
+	NextTaskID     *uuid.UUID
+	LogicalKey     *string
 	TraceID        string
 	Kind           string
 	SourceType     string
@@ -46,6 +49,9 @@ type FailedTaskSummary struct {
 type Batch struct {
 	ID                   uuid.UUID
 	ParentID             *uuid.UUID
+	NSubtasks            *int32
+	ParentTaskID         *uuid.UUID
+	Succeeded            *bool
 	SourceType           string
 	TraceID              *string
 	CreatedAt            time.Time
