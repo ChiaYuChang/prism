@@ -39,6 +39,141 @@ func (_m *MockPipelineRuntime) EXPECT() *MockPipelineRuntime_Expecter {
 	return &MockPipelineRuntime_Expecter{mock: &_m.Mock}
 }
 
+// ConvergePipelineFailure provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) ConvergePipelineFailure(ctx context.Context, taskID uuid.UUID, rootBatchID uuid.UUID, reason string) error {
+	ret := _mock.Called(ctx, taskID, rootBatchID, reason)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ConvergePipelineFailure")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, uuid.UUID, string) error); ok {
+		r0 = returnFunc(ctx, taskID, rootBatchID, reason)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPipelineRuntime_ConvergePipelineFailure_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ConvergePipelineFailure'
+type MockPipelineRuntime_ConvergePipelineFailure_Call struct {
+	*mock.Call
+}
+
+// ConvergePipelineFailure is a helper method to define mock.On call
+//   - ctx context.Context
+//   - taskID uuid.UUID
+//   - rootBatchID uuid.UUID
+//   - reason string
+func (_e *MockPipelineRuntime_Expecter) ConvergePipelineFailure(ctx interface{}, taskID interface{}, rootBatchID interface{}, reason interface{}) *MockPipelineRuntime_ConvergePipelineFailure_Call {
+	return &MockPipelineRuntime_ConvergePipelineFailure_Call{Call: _e.mock.On("ConvergePipelineFailure", ctx, taskID, rootBatchID, reason)}
+}
+
+func (_c *MockPipelineRuntime_ConvergePipelineFailure_Call) Run(run func(ctx context.Context, taskID uuid.UUID, rootBatchID uuid.UUID, reason string)) *MockPipelineRuntime_ConvergePipelineFailure_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 uuid.UUID
+		if args[2] != nil {
+			arg2 = args[2].(uuid.UUID)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_ConvergePipelineFailure_Call) Return(err error) *MockPipelineRuntime_ConvergePipelineFailure_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_ConvergePipelineFailure_Call) RunAndReturn(run func(ctx context.Context, taskID uuid.UUID, rootBatchID uuid.UUID, reason string) error) *MockPipelineRuntime_ConvergePipelineFailure_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CreatePipelineRoot provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreatePipelineRoot")
+	}
+
+	var r0 repo.Task
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateTaskParams) (repo.Task, error)); ok {
+		return returnFunc(ctx, arg)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateTaskParams) repo.Task); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repo.Task)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateTaskParams) error); ok {
+		r1 = returnFunc(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPipelineRuntime_CreatePipelineRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreatePipelineRoot'
+type MockPipelineRuntime_CreatePipelineRoot_Call struct {
+	*mock.Call
+}
+
+// CreatePipelineRoot is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.CreateTaskParams
+func (_e *MockPipelineRuntime_Expecter) CreatePipelineRoot(ctx interface{}, arg interface{}) *MockPipelineRuntime_CreatePipelineRoot_Call {
+	return &MockPipelineRuntime_CreatePipelineRoot_Call{Call: _e.mock.On("CreatePipelineRoot", ctx, arg)}
+}
+
+func (_c *MockPipelineRuntime_CreatePipelineRoot_Call) Run(run func(ctx context.Context, arg repo.CreateTaskParams)) *MockPipelineRuntime_CreatePipelineRoot_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.CreateTaskParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.CreateTaskParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_CreatePipelineRoot_Call) Return(task repo.Task, err error) *MockPipelineRuntime_CreatePipelineRoot_Call {
+	_c.Call.Return(task, err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_CreatePipelineRoot_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error)) *MockPipelineRuntime_CreatePipelineRoot_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // FindFinishedBatches provides a mock function for the type MockPipelineRuntime
 func (_mock *MockPipelineRuntime) FindFinishedBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
 	ret := _mock.Called(ctx, limit)
@@ -103,6 +238,74 @@ func (_c *MockPipelineRuntime_FindFinishedBatches_Call) Return(batchs []repo.Bat
 }
 
 func (_c *MockPipelineRuntime_FindFinishedBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Batch, error)) *MockPipelineRuntime_FindFinishedBatches_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// FindFinishedRootBatches provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) FindFinishedRootBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	ret := _mock.Called(ctx, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FindFinishedRootBatches")
+	}
+
+	var r0 []repo.Batch
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) ([]repo.Batch, error)); ok {
+		return returnFunc(ctx, limit)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) []repo.Batch); ok {
+		r0 = returnFunc(ctx, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]repo.Batch)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32) error); ok {
+		r1 = returnFunc(ctx, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPipelineRuntime_FindFinishedRootBatches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindFinishedRootBatches'
+type MockPipelineRuntime_FindFinishedRootBatches_Call struct {
+	*mock.Call
+}
+
+// FindFinishedRootBatches is a helper method to define mock.On call
+//   - ctx context.Context
+//   - limit int32
+func (_e *MockPipelineRuntime_Expecter) FindFinishedRootBatches(ctx interface{}, limit interface{}) *MockPipelineRuntime_FindFinishedRootBatches_Call {
+	return &MockPipelineRuntime_FindFinishedRootBatches_Call{Call: _e.mock.On("FindFinishedRootBatches", ctx, limit)}
+}
+
+func (_c *MockPipelineRuntime_FindFinishedRootBatches_Call) Run(run func(ctx context.Context, limit int32)) *MockPipelineRuntime_FindFinishedRootBatches_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 int32
+		if args[1] != nil {
+			arg1 = args[1].(int32)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_FindFinishedRootBatches_Call) Return(batchs []repo.Batch, err error) *MockPipelineRuntime_FindFinishedRootBatches_Call {
+	_c.Call.Return(batchs, err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_FindFinishedRootBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Batch, error)) *MockPipelineRuntime_FindFinishedRootBatches_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -431,6 +634,84 @@ func (_c *MockPipelineRuntime_MarkPipelinePublished_Call) Return(err error) *Moc
 }
 
 func (_c *MockPipelineRuntime_MarkPipelinePublished_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID) error) *MockPipelineRuntime_MarkPipelinePublished_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// MarkRootBatchFinished provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) MarkRootBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error) {
+	ret := _mock.Called(ctx, batchID, succeeded, traceID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for MarkRootBatchFinished")
+	}
+
+	var r0 int64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, bool, string) (int64, error)); ok {
+		return returnFunc(ctx, batchID, succeeded, traceID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, bool, string) int64); ok {
+		r0 = returnFunc(ctx, batchID, succeeded, traceID)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID, bool, string) error); ok {
+		r1 = returnFunc(ctx, batchID, succeeded, traceID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPipelineRuntime_MarkRootBatchFinished_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'MarkRootBatchFinished'
+type MockPipelineRuntime_MarkRootBatchFinished_Call struct {
+	*mock.Call
+}
+
+// MarkRootBatchFinished is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+//   - succeeded bool
+//   - traceID string
+func (_e *MockPipelineRuntime_Expecter) MarkRootBatchFinished(ctx interface{}, batchID interface{}, succeeded interface{}, traceID interface{}) *MockPipelineRuntime_MarkRootBatchFinished_Call {
+	return &MockPipelineRuntime_MarkRootBatchFinished_Call{Call: _e.mock.On("MarkRootBatchFinished", ctx, batchID, succeeded, traceID)}
+}
+
+func (_c *MockPipelineRuntime_MarkRootBatchFinished_Call) Run(run func(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string)) *MockPipelineRuntime_MarkRootBatchFinished_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_MarkRootBatchFinished_Call) Return(n int64, err error) *MockPipelineRuntime_MarkRootBatchFinished_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_MarkRootBatchFinished_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)) *MockPipelineRuntime_MarkRootBatchFinished_Call {
 	_c.Call.Return(run)
 	return _c
 }

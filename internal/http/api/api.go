@@ -198,6 +198,10 @@ func WithSources(sources repo.Sources) ServerOption {
 	return func(s *Server) { s.Sources = sources }
 }
 
+func WithPipelineRuntime(runtime repo.PipelineRuntime) ServerOption {
+	return func(s *Server) { s.PipelineRuntime = runtime }
+}
+
 // WithNATSInspector attaches the read-only JetStream inspector used by admin
 // diagnostics. It cannot publish, subscribe, acknowledge, or mutate NATS.
 func WithNATSInspector(inspector NATSInspector) ServerOption {
@@ -234,6 +238,7 @@ type Server struct {
 	Tasks            repo.Tasks
 	Pipeline         repo.Pipeline
 	UserFetches      repo.UserFetches
+	PipelineRuntime  repo.PipelineRuntime
 	Sources          repo.Sources
 	Operator         repo.Operator
 	Prompts          repo.Prompts
@@ -312,6 +317,7 @@ func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("GET /embedding/{model_name}", s.requireAdmin(http.HandlerFunc(s.ListAdminEmbeddings)))
 	r.Handle("GET /tasks", s.requireAdmin(http.HandlerFunc(s.ListAdminTasks)))
 	r.Handle("POST /tasks", s.requireAdmin(http.HandlerFunc(s.CreateAdminTask)))
+	r.Handle("POST /pipelines", s.requireAdmin(http.HandlerFunc(s.CreateAdminPipeline)))
 	r.Handle("GET /nats", s.requireAdmin(http.HandlerFunc(s.GetAdminNATS)))
 	r.Handle("POST /nats/apply", s.requireAdmin(http.HandlerFunc(s.ApplyAdminNATS)))
 	r.Handle("POST /nats/streams/{stream}/purge", s.requireAdmin(http.HandlerFunc(s.PurgeAdminNATSStream)))

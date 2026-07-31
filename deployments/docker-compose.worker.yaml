@@ -324,6 +324,50 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  analyzer-pipeline:
+    profiles: [ worker ]
+    image: prism/analyzer-pipeline:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: worker/analyzer/pipeline
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --pipeline-file=/app/configs/llm_pipeline.yaml
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_ANALYZER_PIPELINE_WORKER_MESSENGER_TYPE: nats
+      PRISM_ANALYZER_PIPELINE_WORKER_NATS_HOST: nats
+      PRISM_ANALYZER_PIPELINE_WORKER_NATS_PORT: 4222
+      PRISM_ANALYZER_PIPELINE_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_ANALYZER_PIPELINE_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_ANALYZER_PIPELINE_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_ANALYZER_PIPELINE_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_ANALYZER_PIPELINE_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+    networks:
+      - prism-net
+    volumes:
+      - ../runtime/logs/analyzer-pipeline:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8097/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 150s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
   # fixture-server — serves testdata/real over HTTP for the e2e replay path.
   # It is isolated behind the `fixture` profile and is not part of the normal
   # real-world collection stack.
