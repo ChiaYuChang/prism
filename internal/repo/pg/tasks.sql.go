@@ -12,6 +12,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelPendingTasksByBatchID = `-- name: CancelPendingTasksByBatchID :execrows
+UPDATE tasks
+SET status = 'CANCELLED',
+    failure_message = $2,
+    updated_at = NOW()
+WHERE batch_id = $1
+  AND status = 'PENDING'
+`
+
+type CancelPendingTasksByBatchIDParams struct {
+	BatchID        uuid.UUID   `db:"batch_id" json:"batch_id"`
+	FailureMessage pgtype.Text `db:"failure_message" json:"failure_message"`
+}
+
+func (q *Queries) CancelPendingTasksByBatchID(ctx context.Context, arg CancelPendingTasksByBatchIDParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelPendingTasksByBatchID, arg.BatchID, arg.FailureMessage)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimTasks = `-- name: ClaimTasks :many
 UPDATE tasks
 SET status = 'RUNNING',
@@ -137,6 +159,19 @@ WHERE id = $1
 func (q *Queries) CompleteTask(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, completeTask, id)
 	return err
+}
+
+const countTasksByBatchID = `-- name: CountTasksByBatchID :one
+SELECT COUNT(*)::bigint
+FROM tasks
+WHERE batch_id = $1
+`
+
+func (q *Queries) CountTasksByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countTasksByBatchID, batchID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const createTask = `-- name: CreateTask :one
@@ -282,17 +317,19 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (CreateT
 }
 
 const ensureBatchExists = `-- name: EnsureBatchExists :exec
-INSERT INTO batches (id, source_type, trace_id, parent_id)
-VALUES ($1, $2, $3, $4)
+INSERT INTO batches (id, source_type, trace_id, parent_id, parent_task_id)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (id) DO UPDATE
-SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id)
+SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id),
+    parent_task_id = COALESCE(batches.parent_task_id, EXCLUDED.parent_task_id)
 `
 
 type EnsureBatchExistsParams struct {
-	ID         uuid.UUID   `db:"id" json:"id"`
-	SourceType SourceType  `db:"source_type" json:"source_type"`
-	TraceID    pgtype.Text `db:"trace_id" json:"trace_id"`
-	ParentID   pgtype.UUID `db:"parent_id" json:"parent_id"`
+	ID           uuid.UUID   `db:"id" json:"id"`
+	SourceType   SourceType  `db:"source_type" json:"source_type"`
+	TraceID      pgtype.Text `db:"trace_id" json:"trace_id"`
+	ParentID     pgtype.UUID `db:"parent_id" json:"parent_id"`
+	ParentTaskID pgtype.UUID `db:"parent_task_id" json:"parent_task_id"`
 }
 
 func (q *Queries) EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error {
@@ -301,6 +338,7 @@ func (q *Queries) EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsPa
 		arg.SourceType,
 		arg.TraceID,
 		arg.ParentID,
+		arg.ParentTaskID,
 	)
 	return err
 }
@@ -381,6 +419,49 @@ type GetActiveTaskByPayloadDedupParams struct {
 
 func (q *Queries) GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error) {
 	row := q.db.QueryRow(ctx, getActiveTaskByPayloadDedup, arg.SourceAbbr, arg.Kind, arg.PayloadHash)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.BatchID,
+		&i.Kind,
+		&i.SourceType,
+		&i.SourceAbbr,
+		&i.Url,
+		&i.Payload,
+		&i.PayloadHash,
+		&i.Meta,
+		&i.TraceID,
+		&i.Frequency,
+		&i.NextRunAt,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.RetryCount,
+		&i.FailureMessage,
+		&i.LastRunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PreviousTaskID,
+		&i.NextTaskID,
+		&i.LogicalKey,
+	)
+	return i, err
+}
+
+const getTaskByBatchLogicalKey = `-- name: GetTaskByBatchLogicalKey :one
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, failure_message, last_run_at, created_at, updated_at, previous_task_id, next_task_id, logical_key
+FROM tasks
+WHERE batch_id = $1
+  AND logical_key = $2
+LIMIT 1
+`
+
+type GetTaskByBatchLogicalKeyParams struct {
+	BatchID    uuid.UUID   `db:"batch_id" json:"batch_id"`
+	LogicalKey pgtype.Text `db:"logical_key" json:"logical_key"`
+}
+
+func (q *Queries) GetTaskByBatchLogicalKey(ctx context.Context, arg GetTaskByBatchLogicalKeyParams) (Task, error) {
+	row := q.db.QueryRow(ctx, getTaskByBatchLogicalKey, arg.BatchID, arg.LogicalKey)
 	var i Task
 	err := row.Scan(
 		&i.ID,

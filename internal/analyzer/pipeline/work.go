@@ -23,8 +23,10 @@ type WorkTaskSpec struct {
 
 // WorkSetInput is the immutable data made available to a stage work-set builder.
 type WorkSetInput struct {
-	CandidateIDs []uuid.UUID
-	ContentIDs   []uuid.UUID
+	CandidateIDs        []uuid.UUID
+	ContentIDs          []uuid.UUID
+	CandidateSourceAbbr map[uuid.UUID]string
+	ContentSourceAbbr   map[uuid.UUID]string
 }
 
 // WorkSetBuilder builds ordinary tasks for one registered task type.
@@ -74,11 +76,12 @@ type fanOutConfig struct {
 	FanOut string `json:"fan_out"`
 }
 
-type embedCandidateBuilder struct{}
+// EmbedCandidateBuilder builds one EMBED_CANDIDATE task per candidate.
+type EmbedCandidateBuilder struct{}
 
-func (embedCandidateBuilder) TaskType() string { return repo.TaskKindEmbedCandidate }
+func (EmbedCandidateBuilder) TaskType() string { return repo.TaskKindEmbedCandidate }
 
-func (embedCandidateBuilder) Build(stage string, config map[string]any, input WorkSetInput) ([]WorkTaskSpec, error) {
+func (EmbedCandidateBuilder) Build(stage string, config map[string]any, input WorkSetInput) ([]WorkTaskSpec, error) {
 	var typed fanOutConfig
 	if err := decodeConfig(config, &typed); err != nil {
 		return nil, fmt.Errorf("stage %q: %w", stage, err)
@@ -88,14 +91,15 @@ func (embedCandidateBuilder) Build(stage string, config map[string]any, input Wo
 	}
 	ids := append([]uuid.UUID(nil), input.CandidateIDs...)
 	sort.Slice(ids, func(i, j int) bool { return ids[i].String() < ids[j].String() })
-	return embedTasks(stage, repo.TaskKindEmbedCandidate, "candidate_id", ids)
+	return embedTasks(stage, repo.TaskKindEmbedCandidate, "candidate_id", ids, input.CandidateSourceAbbr)
 }
 
-type embedContentBuilder struct{}
+// EmbedContentBuilder builds one EMBED_CONTENT task per content.
+type EmbedContentBuilder struct{}
 
-func (embedContentBuilder) TaskType() string { return repo.TaskKindEmbedContent }
+func (EmbedContentBuilder) TaskType() string { return repo.TaskKindEmbedContent }
 
-func (embedContentBuilder) Build(stage string, config map[string]any, input WorkSetInput) ([]WorkTaskSpec, error) {
+func (EmbedContentBuilder) Build(stage string, config map[string]any, input WorkSetInput) ([]WorkTaskSpec, error) {
 	var typed fanOutConfig
 	if err := decodeConfig(config, &typed); err != nil {
 		return nil, fmt.Errorf("stage %q: %w", stage, err)
@@ -105,12 +109,16 @@ func (embedContentBuilder) Build(stage string, config map[string]any, input Work
 	}
 	ids := append([]uuid.UUID(nil), input.ContentIDs...)
 	sort.Slice(ids, func(i, j int) bool { return ids[i].String() < ids[j].String() })
-	return embedTasks(stage, repo.TaskKindEmbedContent, "content_id", ids)
+	return embedTasks(stage, repo.TaskKindEmbedContent, "content_id", ids, input.ContentSourceAbbr)
 }
 
-func embedTasks(stage, kind, field string, ids []uuid.UUID) ([]WorkTaskSpec, error) {
+func embedTasks(stage, kind, field string, ids []uuid.UUID, sourceAbbr map[uuid.UUID]string) ([]WorkTaskSpec, error) {
 	tasks := make([]WorkTaskSpec, 0, len(ids))
 	for _, id := range ids {
+		abbr := sourceAbbr[id]
+		if abbr == "" {
+			return nil, fmt.Errorf("stage %q has no source abbreviation for %s %s", stage, field, id)
+		}
 		payload, err := json.Marshal(map[string]string{field: id.String()})
 		if err != nil {
 			return nil, fmt.Errorf("marshal %s task: %w", kind, err)
@@ -119,6 +127,7 @@ func embedTasks(stage, kind, field string, ids []uuid.UUID) ([]WorkTaskSpec, err
 			LogicalKey: stage + ":" + id.String(),
 			Kind:       kind,
 			SourceType: repo.SourceTypeParty,
+			SourceAbbr: abbr,
 			URL:        "pipeline://" + stage + "/" + id.String(),
 			Payload:    payload,
 		})

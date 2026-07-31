@@ -39,6 +39,78 @@ func (_m *MockTasks) EXPECT() *MockTasks_Expecter {
 	return &MockTasks_Expecter{mock: &_m.Mock}
 }
 
+// CancelPendingTasksByBatchID provides a mock function for the type MockTasks
+func (_mock *MockTasks) CancelPendingTasksByBatchID(ctx context.Context, batchID uuid.UUID, reason string) (int64, error) {
+	ret := _mock.Called(ctx, batchID, reason)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CancelPendingTasksByBatchID")
+	}
+
+	var r0 int64
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) (int64, error)); ok {
+		return returnFunc(ctx, batchID, reason)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID, string) int64); ok {
+		r0 = returnFunc(ctx, batchID, reason)
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID, string) error); ok {
+		r1 = returnFunc(ctx, batchID, reason)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTasks_CancelPendingTasksByBatchID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CancelPendingTasksByBatchID'
+type MockTasks_CancelPendingTasksByBatchID_Call struct {
+	*mock.Call
+}
+
+// CancelPendingTasksByBatchID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+//   - reason string
+func (_e *MockTasks_Expecter) CancelPendingTasksByBatchID(ctx interface{}, batchID interface{}, reason interface{}) *MockTasks_CancelPendingTasksByBatchID_Call {
+	return &MockTasks_CancelPendingTasksByBatchID_Call{Call: _e.mock.On("CancelPendingTasksByBatchID", ctx, batchID, reason)}
+}
+
+func (_c *MockTasks_CancelPendingTasksByBatchID_Call) Run(run func(ctx context.Context, batchID uuid.UUID, reason string)) *MockTasks_CancelPendingTasksByBatchID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTasks_CancelPendingTasksByBatchID_Call) Return(n int64, err error) *MockTasks_CancelPendingTasksByBatchID_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *MockTasks_CancelPendingTasksByBatchID_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID, reason string) (int64, error)) *MockTasks_CancelPendingTasksByBatchID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CreateTask provides a mock function for the type MockTasks
 func (_mock *MockTasks) CreateTask(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
 	ret := _mock.Called(ctx, arg)
@@ -101,6 +173,63 @@ func (_c *MockTasks_CreateTask_Call) Return(task repo.Task, err error) *MockTask
 }
 
 func (_c *MockTasks_CreateTask_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error)) *MockTasks_CreateTask_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// EnsureBatch provides a mock function for the type MockTasks
+func (_mock *MockTasks) EnsureBatch(ctx context.Context, arg repo.EnsureBatchParams) error {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EnsureBatch")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.EnsureBatchParams) error); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTasks_EnsureBatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnsureBatch'
+type MockTasks_EnsureBatch_Call struct {
+	*mock.Call
+}
+
+// EnsureBatch is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.EnsureBatchParams
+func (_e *MockTasks_Expecter) EnsureBatch(ctx interface{}, arg interface{}) *MockTasks_EnsureBatch_Call {
+	return &MockTasks_EnsureBatch_Call{Call: _e.mock.On("EnsureBatch", ctx, arg)}
+}
+
+func (_c *MockTasks_EnsureBatch_Call) Run(run func(ctx context.Context, arg repo.EnsureBatchParams)) *MockTasks_EnsureBatch_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.EnsureBatchParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.EnsureBatchParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTasks_EnsureBatch_Call) Return(err error) *MockTasks_EnsureBatch_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTasks_EnsureBatch_Call) RunAndReturn(run func(ctx context.Context, arg repo.EnsureBatchParams) error) *MockTasks_EnsureBatch_Call {
 	_c.Call.Return(run)
 	return _c
 }
