@@ -31,6 +31,14 @@ WHERE id IN (
             COALESCE(array_length($2::source_type[], 1), 0) = 0
             OR source_type = ANY($2::source_type[])
         )
+        AND (
+            previous_task_id IS NULL
+            OR EXISTS (
+                SELECT 1 FROM tasks previous
+                WHERE previous.id = tasks.previous_task_id
+                  AND previous.status = 'COMPLETED'
+            )
+        )
     ) OR (
             status = 'RUNNING'
         AND last_run_at < NOW() - INTERVAL '30 minutes'
@@ -39,6 +47,14 @@ WHERE id IN (
         AND (
             COALESCE(array_length($2::source_type[], 1), 0) = 0
             OR source_type = ANY($2::source_type[])
+        )
+        AND (
+            previous_task_id IS NULL
+            OR EXISTS (
+                SELECT 1 FROM tasks previous
+                WHERE previous.id = tasks.previous_task_id
+                  AND previous.status = 'COMPLETED'
+            )
         )
     )
     ORDER BY next_run_at ASC
@@ -135,22 +151,17 @@ WITH ins AS (
         payload_hash,
         meta,
         trace_id,
+        previous_task_id,
+        next_task_id,
+        logical_key,
         frequency,
         next_run_at,
         expires_at
     ) VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        COALESCE($6, '{}'::jsonb),
-        $7,
-        $8,
-        $9,
-        $10,
-        COALESCE($11, NOW()),
-        $12
+        $1, $2, $3, $4, $5,
+        COALESCE($6, '{}'::jsonb), $7, $8, $9,
+        $10, $11, $12, $13,
+        COALESCE($14, NOW()), $15
     )
     ON CONFLICT DO NOTHING
     RETURNING tasks.id, tasks.batch_id, tasks.kind, tasks.source_type, tasks.source_abbr, tasks.url, tasks.payload, tasks.payload_hash, tasks.meta, tasks.trace_id, tasks.frequency, tasks.next_run_at, tasks.expires_at, tasks.status, tasks.retry_count, tasks.failure_message, tasks.last_run_at, tasks.created_at, tasks.updated_at, tasks.previous_task_id, tasks.next_task_id, tasks.logical_key
@@ -174,18 +185,21 @@ LIMIT 1
 `
 
 type CreateTaskParams struct {
-	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
-	Kind        TaskKind           `db:"kind" json:"kind"`
-	SourceType  SourceType         `db:"source_type" json:"source_type"`
-	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
-	Url         string             `db:"url" json:"url"`
-	Payload     interface{}        `db:"payload" json:"payload"`
-	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
-	Meta        []byte             `db:"meta" json:"meta"`
-	TraceID     string             `db:"trace_id" json:"trace_id"`
-	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
-	NextRunAt   interface{}        `db:"next_run_at" json:"next_run_at"`
-	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	BatchID        uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Kind           TaskKind           `db:"kind" json:"kind"`
+	SourceType     SourceType         `db:"source_type" json:"source_type"`
+	SourceAbbr     string             `db:"source_abbr" json:"source_abbr"`
+	Url            string             `db:"url" json:"url"`
+	Payload        interface{}        `db:"payload" json:"payload"`
+	PayloadHash    pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta           []byte             `db:"meta" json:"meta"`
+	TraceID        string             `db:"trace_id" json:"trace_id"`
+	PreviousTaskID pgtype.UUID        `db:"previous_task_id" json:"previous_task_id"`
+	NextTaskID     pgtype.UUID        `db:"next_task_id" json:"next_task_id"`
+	LogicalKey     pgtype.Text        `db:"logical_key" json:"logical_key"`
+	Frequency      pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt      interface{}        `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
 type CreateTaskRow struct {
@@ -231,6 +245,9 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (CreateT
 		arg.PayloadHash,
 		arg.Meta,
 		arg.TraceID,
+		arg.PreviousTaskID,
+		arg.NextTaskID,
+		arg.LogicalKey,
 		arg.Frequency,
 		arg.NextRunAt,
 		arg.ExpiresAt,

@@ -14,6 +14,9 @@ func dbCreateTaskRowToRepoTask(row CreateTaskRow) repo.Task {
 	return repo.Task{
 		ID:             row.ID,
 		BatchID:        row.BatchID,
+		PreviousTaskID: pgconv.PgUUIDToUUIDPtr(row.PreviousTaskID),
+		NextTaskID:     pgconv.PgUUIDToUUIDPtr(row.NextTaskID),
+		LogicalKey:     pgconv.PgTextToStringPtr(row.LogicalKey),
 		TraceID:        row.TraceID,
 		Kind:           string(row.Kind),
 		SourceType:     string(row.SourceType),
@@ -37,6 +40,9 @@ func dbTaskToRepoTask(task Task) repo.Task {
 	return repo.Task{
 		ID:             task.ID,
 		BatchID:        task.BatchID,
+		PreviousTaskID: pgconv.PgUUIDToUUIDPtr(task.PreviousTaskID),
+		NextTaskID:     pgconv.PgUUIDToUUIDPtr(task.NextTaskID),
+		LogicalKey:     pgconv.PgTextToStringPtr(task.LogicalKey),
 		TraceID:        task.TraceID,
 		Kind:           string(task.Kind),
 		SourceType:     string(task.SourceType),
@@ -60,6 +66,9 @@ func dbRetryFailedTaskRowToRepoTask(row RetryFailedTaskRow) repo.Task {
 	return repo.Task{
 		ID:             row.ID,
 		BatchID:        row.BatchID,
+		PreviousTaskID: pgconv.PgUUIDToUUIDPtr(row.PreviousTaskID),
+		NextTaskID:     pgconv.PgUUIDToUUIDPtr(row.NextTaskID),
+		LogicalKey:     pgconv.PgTextToStringPtr(row.LogicalKey),
 		TraceID:        row.TraceID,
 		Kind:           string(row.Kind),
 		SourceType:     string(row.SourceType),
@@ -106,6 +115,9 @@ func dbScheduleToRepoSchedule(s Schedule) repo.Schedule {
 func dbBatchToRepoBatch(
 	id uuid.UUID,
 	parentID *uuid.UUID,
+	nSubtasks *int32,
+	parentTaskID *uuid.UUID,
+	succeeded *bool,
 	sourceType string,
 	traceID *string,
 	createdAt time.Time,
@@ -120,6 +132,9 @@ func dbBatchToRepoBatch(
 	return repo.Batch{
 		ID:                   id,
 		ParentID:             parentID,
+		NSubtasks:            nSubtasks,
+		ParentTaskID:         parentTaskID,
+		Succeeded:            succeeded,
 		SourceType:           sourceType,
 		TraceID:              traceID,
 		CreatedAt:            createdAt,

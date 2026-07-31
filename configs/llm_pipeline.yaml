@@ -1,0 +1,13 @@
+# Runtime-safe pipeline stages backed by existing embedding workers.
+pipeline:
+  - name: embed_selected_candidates
+    depends_on: []
+    config:
+      task_type: EMBED_CANDIDATE
+      fan_out: candidate_ids
+
+  - name: embed_selected_contents
+    depends_on: [embed_selected_candidates]
+    config:
+      task_type: EMBED_CONTENT
+      fan_out: content_ids

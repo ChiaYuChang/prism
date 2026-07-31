@@ -14,6 +14,7 @@ ALTER TABLE tasks
 ALTER TABLE batches
     DROP COLUMN IF EXISTS parent_task_id,
     DROP COLUMN IF EXISTS parent_id,
+    DROP COLUMN IF EXISTS succeeded,
     DROP COLUMN IF EXISTS n_subtasks;
 
 COMMIT;
