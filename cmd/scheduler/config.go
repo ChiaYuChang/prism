@@ -25,7 +25,7 @@ type Config struct {
 	RetryMax        int                 `mapstructure:"retry-max"        validate:"required,min=1"`
 	SchedulerName   string              `mapstructure:"scheduler-name"   validate:"required"`
 	StartPaused     bool                `mapstructure:"start-paused"`
-	Kinds           []string            `mapstructure:"kinds"            validate:"required,min=1,dive,oneof=DIRECTORY_FETCH KEYWORD_SEARCH PAGE_FETCH EMBED_CANDIDATE EMBED_CONTENT"`
+	Kinds           []string            `mapstructure:"kinds"            validate:"required,min=1,dive,oneof=DIRECTORY_FETCH KEYWORD_SEARCH PAGE_FETCH EMBED_CANDIDATE EMBED_CONTENT PIPELINE_INIT PIPELINE_STAGE"`
 	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
 	MessengerType   string              `mapstructure:"messenger-type"   validate:"oneof=nats gochannel"`
 	Messenger       app.MessengerConfig `mapstructure:"-"`

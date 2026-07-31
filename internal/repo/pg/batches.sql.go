@@ -429,6 +429,7 @@ FROM batches
 WHERE completed_at IS NOT NULL
   AND n_subtasks IS NOT NULL
   AND pipeline_published_at IS NULL
+  AND parent_task_id IS NOT NULL
 ORDER BY completed_at ASC, created_at ASC
 LIMIT $1
 `

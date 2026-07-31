@@ -310,6 +310,72 @@ func (_c *MockPipelineRuntime_FindFinishedRootBatches_Call) RunAndReturn(run fun
 	return _c
 }
 
+// GetPipelineBatch provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) GetPipelineBatch(ctx context.Context, batchID uuid.UUID) (repo.Batch, error) {
+	ret := _mock.Called(ctx, batchID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPipelineBatch")
+	}
+
+	var r0 repo.Batch
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repo.Batch, error)); ok {
+		return returnFunc(ctx, batchID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) repo.Batch); ok {
+		r0 = returnFunc(ctx, batchID)
+	} else {
+		r0 = ret.Get(0).(repo.Batch)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, batchID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPipelineRuntime_GetPipelineBatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPipelineBatch'
+type MockPipelineRuntime_GetPipelineBatch_Call struct {
+	*mock.Call
+}
+
+// GetPipelineBatch is a helper method to define mock.On call
+//   - ctx context.Context
+//   - batchID uuid.UUID
+func (_e *MockPipelineRuntime_Expecter) GetPipelineBatch(ctx interface{}, batchID interface{}) *MockPipelineRuntime_GetPipelineBatch_Call {
+	return &MockPipelineRuntime_GetPipelineBatch_Call{Call: _e.mock.On("GetPipelineBatch", ctx, batchID)}
+}
+
+func (_c *MockPipelineRuntime_GetPipelineBatch_Call) Run(run func(ctx context.Context, batchID uuid.UUID)) *MockPipelineRuntime_GetPipelineBatch_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_GetPipelineBatch_Call) Return(batch repo.Batch, err error) *MockPipelineRuntime_GetPipelineBatch_Call {
+	_c.Call.Return(batch, err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_GetPipelineBatch_Call) RunAndReturn(run func(ctx context.Context, batchID uuid.UUID) (repo.Batch, error)) *MockPipelineRuntime_GetPipelineBatch_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // InitializePipeline provides a mock function for the type MockPipelineRuntime
 func (_mock *MockPipelineRuntime) InitializePipeline(ctx context.Context, arg repo.InitializePipelineParams) error {
 	ret := _mock.Called(ctx, arg)

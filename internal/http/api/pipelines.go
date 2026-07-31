@@ -10,7 +10,8 @@ import (
 )
 
 type createPipelineRequest struct {
-	BatchID      uuid.UUID `json:"batch_id"`
+	InputBatchID uuid.UUID `json:"input_batch_id"`
+	BatchID      uuid.UUID `json:"batch_id,omitempty"` // legacy alias for input_batch_id
 	SourceType   string    `json:"source_type"`
 	SourceAbbr   string    `json:"source_abbr"`
 	TraceID      string    `json:"trace_id"`
@@ -30,14 +31,19 @@ func (s *Server) CreateAdminPipeline(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if req.BatchID == uuid.Nil {
-		id, err := uuid.NewV7()
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to create batch id")
-			return
-		}
-		req.BatchID = id
+	if req.InputBatchID == uuid.Nil {
+		req.InputBatchID = req.BatchID
 	}
+	if req.InputBatchID == uuid.Nil {
+		writeError(w, http.StatusBadRequest, "input_batch_id is required")
+		return
+	}
+	rootID, err := uuid.NewV7()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create pipeline root id")
+		return
+	}
+	req.BatchID = rootID
 	if strings.TrimSpace(req.SourceType) == "" || strings.TrimSpace(req.SourceAbbr) == "" || strings.TrimSpace(req.TraceID) == "" {
 		writeError(w, http.StatusBadRequest, "source_type, source_abbr, and trace_id are required")
 		return
@@ -49,8 +55,8 @@ func (s *Server) CreateAdminPipeline(w http.ResponseWriter, r *http.Request) {
 	}
 	logicalKey := "pipeline:init"
 	task, err := s.PipelineRuntime.CreatePipelineRoot(r.Context(), repo.CreateTaskParams{
-		BatchID: req.BatchID, Kind: repo.TaskKindPipelineInit, SourceType: strings.TrimSpace(req.SourceType),
-		SourceAbbr: strings.TrimSpace(req.SourceAbbr), URL: "pipeline://init/" + req.BatchID.String(),
+		BatchID: rootID, ParentBatchID: &req.InputBatchID, Kind: repo.TaskKindPipelineInit, SourceType: strings.TrimSpace(req.SourceType),
+		SourceAbbr: strings.TrimSpace(req.SourceAbbr), URL: "pipeline://init/" + rootID.String(),
 		Payload: payload, TraceID: strings.TrimSpace(req.TraceID), LogicalKey: &logicalKey,
 	})
 	if err != nil {
