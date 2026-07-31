@@ -143,7 +143,8 @@ CREATE TYPE public.task_status AS ENUM (
     'PENDING',
     'RUNNING',
     'FAILED',
-    'COMPLETED'
+    'COMPLETED',
+    'CANCELLED'
 );
 
 
@@ -263,6 +264,7 @@ CREATE TABLE public.batches (
     n_subtasks integer,
     parent_id uuid,
     parent_task_id uuid,
+    succeeded boolean,
     CONSTRAINT batches_n_subtasks_check CHECK ((n_subtasks >= 0))
 );
 
@@ -288,6 +290,13 @@ COMMENT ON COLUMN public.batches.n_subtasks IS 'Expected number of direct tasks;
 --
 
 COMMENT ON COLUMN public.batches.parent_task_id IS 'Stage-control task that owns this child batch.';
+
+
+--
+-- Name: COLUMN batches.succeeded; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.batches.succeeded IS 'Whether a finished batch completed without failed or cancelled direct tasks.';
 
 
 --

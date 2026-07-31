@@ -66,6 +66,22 @@ func Int32PtrToPgInt4(v *int32) pgtype.Int4 {
 	return pgtype.Int4{Int32: *v, Valid: true}
 }
 
+func PgInt4ToInt32Ptr(v pgtype.Int4) *int32 {
+	if !v.Valid {
+		return nil
+	}
+	value := v.Int32
+	return &value
+}
+
+func PgBoolToBoolPtr(v pgtype.Bool) *bool {
+	if !v.Valid {
+		return nil
+	}
+	value := v.Bool
+	return &value
+}
+
 func Int64PtrToPgInt8(v *int64) pgtype.Int8 {
 	if v == nil {
 		return pgtype.Int8{}

@@ -483,6 +483,7 @@ const (
 	TaskStatusRUNNING   TaskStatus = "RUNNING"
 	TaskStatusFAILED    TaskStatus = "FAILED"
 	TaskStatusCOMPLETED TaskStatus = "COMPLETED"
+	TaskStatusCANCELLED TaskStatus = "CANCELLED"
 )
 
 func (e *TaskStatus) Scan(src interface{}) error {
@@ -525,7 +526,8 @@ func (e TaskStatus) Valid() bool {
 	case TaskStatusPENDING,
 		TaskStatusRUNNING,
 		TaskStatusFAILED,
-		TaskStatusCOMPLETED:
+		TaskStatusCOMPLETED,
+		TaskStatusCANCELLED:
 		return true
 	}
 	return false
@@ -537,6 +539,7 @@ func AllTaskStatusValues() []TaskStatus {
 		TaskStatusRUNNING,
 		TaskStatusFAILED,
 		TaskStatusCOMPLETED,
+		TaskStatusCANCELLED,
 	}
 }
 
@@ -558,6 +561,8 @@ type Batch struct {
 	ParentID  pgtype.UUID `db:"parent_id" json:"parent_id"`
 	// Stage-control task that owns this child batch.
 	ParentTaskID pgtype.UUID `db:"parent_task_id" json:"parent_task_id"`
+	// Whether a finished batch completed without failed or cancelled direct tasks.
+	Succeeded pgtype.Bool `db:"succeeded" json:"succeeded"`
 }
 
 // Article briefs (title/url/desc) before full-page fetch. Discovery terminal asset.

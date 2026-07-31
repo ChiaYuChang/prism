@@ -45,19 +45,22 @@ type ListOperatorParams struct {
 }
 
 type CreateTaskParams struct {
-	BatchID       uuid.UUID      `validate:"required"`
-	ParentBatchID *uuid.UUID     `validate:"omitempty"`
-	Kind          string         `validate:"required"`
-	SourceType    string         `validate:"required"`
-	SourceAbbr    string         `validate:"required"`
-	URL           string         `validate:"required,url"`
-	Payload       []byte         `validate:"omitempty"`
-	PayloadHash   *string        `validate:"omitempty,len=64"`
-	Meta          []byte         `validate:"omitempty"`
-	TraceID       string         `validate:"required"`
-	Frequency     *time.Duration `validate:"omitempty"`
-	NextRunAt     *time.Time     `validate:"omitempty"`
-	ExpiresAt     *time.Time     `validate:"omitempty"`
+	BatchID        uuid.UUID      `validate:"required"`
+	ParentBatchID  *uuid.UUID     `validate:"omitempty"`
+	PreviousTaskID *uuid.UUID     `validate:"omitempty"`
+	NextTaskID     *uuid.UUID     `validate:"omitempty"`
+	LogicalKey     *string        `validate:"omitempty"`
+	Kind           string         `validate:"required"`
+	SourceType     string         `validate:"required"`
+	SourceAbbr     string         `validate:"required"`
+	URL            string         `validate:"required,url"`
+	Payload        []byte         `validate:"omitempty"`
+	PayloadHash    *string        `validate:"omitempty,len=64"`
+	Meta           []byte         `validate:"omitempty"`
+	TraceID        string         `validate:"required"`
+	Frequency      *time.Duration `validate:"omitempty"`
+	NextRunAt      *time.Time     `validate:"omitempty"`
+	ExpiresAt      *time.Time     `validate:"omitempty"`
 }
 
 type ExtendActiveTaskExpiryParams struct {

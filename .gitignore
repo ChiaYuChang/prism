@@ -97,4 +97,4 @@ review_report.md
 web/prismctl-web/node_modules/
 web/prismctl-web/dist/
 assets/static/prismctl-web/
-prism-runner-stage-construction-guide.md
+pipeline-dag-implementation-spec.md

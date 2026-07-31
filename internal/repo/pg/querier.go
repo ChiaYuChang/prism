@@ -42,6 +42,7 @@ type Querier interface {
 	// A claim increments retry_count before execution, so retry_count is the total
 	// number of attempts. Failed attempts below retry_max are made runnable again.
 	FailTask(ctx context.Context, arg FailTaskParams) error
+	FindFinishedPipelineBatches(ctx context.Context, limit int32) ([]FindFinishedPipelineBatchesRow, error)
 	// Finds batches where all tasks are completed and all candidates are promoted to contents.
 	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
 	GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error)
@@ -102,6 +103,7 @@ type Querier interface {
 	// (0). Only the winner should publish the batch.completed signal.
 	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) (int64, error)
 	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
+	MarkPipelineBatchFinished(ctx context.Context, arg MarkPipelineBatchFinishedParams) (int64, error)
 	MarkScheduleError(ctx context.Context, arg MarkScheduleErrorParams) error
 	MarkScheduleMaterialized(ctx context.Context, arg MarkScheduleMaterializedParams) error
 	MarkSchedulesConfigAbsent(ctx context.Context) error
@@ -129,6 +131,7 @@ type Querier interface {
 	SearchCandidatesByText(ctx context.Context, arg SearchCandidatesByTextParams) ([]Candidate, error)
 	SearchCandidatesByVector(ctx context.Context, arg SearchCandidatesByVectorParams) ([]SearchCandidatesByVectorRow, error)
 	SearchContentsByVector(ctx context.Context, arg SearchContentsByVectorParams) ([]SearchContentsByVectorRow, error)
+	SetBatchNSubtasks(ctx context.Context, arg SetBatchNSubtasksParams) (SetBatchNSubtasksRow, error)
 	SoftDeleteContent(ctx context.Context, id uuid.UUID) (Content, error)
 	SoftDeleteContentEmbeddings(ctx context.Context, contentID uuid.UUID) error
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
