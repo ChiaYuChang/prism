@@ -411,6 +411,8 @@ const (
 	TaskKindPAGEFETCH      TaskKind = "PAGE_FETCH"
 	TaskKindEMBEDCANDIDATE TaskKind = "EMBED_CANDIDATE"
 	TaskKindEMBEDCONTENT   TaskKind = "EMBED_CONTENT"
+	TaskKindPIPELINEINIT   TaskKind = "PIPELINE_INIT"
+	TaskKindPIPELINESTAGE  TaskKind = "PIPELINE_STAGE"
 )
 
 func (e *TaskKind) Scan(src interface{}) error {
@@ -454,7 +456,9 @@ func (e TaskKind) Valid() bool {
 		TaskKindKEYWORDSEARCH,
 		TaskKindPAGEFETCH,
 		TaskKindEMBEDCANDIDATE,
-		TaskKindEMBEDCONTENT:
+		TaskKindEMBEDCONTENT,
+		TaskKindPIPELINEINIT,
+		TaskKindPIPELINESTAGE:
 		return true
 	}
 	return false
@@ -467,6 +471,8 @@ func AllTaskKindValues() []TaskKind {
 		TaskKindPAGEFETCH,
 		TaskKindEMBEDCANDIDATE,
 		TaskKindEMBEDCONTENT,
+		TaskKindPIPELINEINIT,
+		TaskKindPIPELINESTAGE,
 	}
 }
 
@@ -537,7 +543,6 @@ func AllTaskStatusValues() []TaskStatus {
 // Groups one cron/trigger run so planner can detect completion. id used in tasks.batch_id and copied into candidates/contents.
 type Batch struct {
 	ID                   uuid.UUID          `db:"id" json:"id"`
-	ParentID             pgtype.UUID        `db:"parent_id" json:"parent_id"`
 	SourceType           SourceType         `db:"source_type" json:"source_type"`
 	TraceID              pgtype.Text        `db:"trace_id" json:"trace_id"`
 	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
@@ -548,6 +553,11 @@ type Batch struct {
 	PublishRetryCount    int32              `db:"publish_retry_count" json:"publish_retry_count"`
 	PublishError         pgtype.Text        `db:"publish_error" json:"publish_error"`
 	StalledAt            pgtype.Timestamptz `db:"stalled_at" json:"stalled_at"`
+	// Expected number of direct tasks; NULL means expansion is not complete.
+	NSubtasks pgtype.Int4 `db:"n_subtasks" json:"n_subtasks"`
+	ParentID  pgtype.UUID `db:"parent_id" json:"parent_id"`
+	// Stage-control task that owns this child batch.
+	ParentTaskID pgtype.UUID `db:"parent_task_id" json:"parent_task_id"`
 }
 
 // Article briefs (title/url/desc) before full-page fetch. Discovery terminal asset.
@@ -694,28 +704,23 @@ type Prompt struct {
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
-// Recurring schedule intent that materializes concrete task rows.
 type Schedule struct {
-	// Stable operator-provided UUIDv7 identity. Names and source_abbr are not durable identity.
-	ID      uuid.UUID `db:"id" json:"id"`
-	Name    string    `db:"name" json:"name"`
-	Enabled bool      `db:"enabled" json:"enabled"`
-	// False when a previously synced YAML schedule is absent from the latest config load; absent schedules do not fire.
-	ConfigPresent bool            `db:"config_present" json:"config_present"`
-	ConfigHash    string          `db:"config_hash" json:"config_hash"`
-	Kind          TaskKind        `db:"kind" json:"kind"`
-	SourceType    SourceType      `db:"source_type" json:"source_type"`
-	SourceAbbr    string          `db:"source_abbr" json:"source_abbr"`
-	Url           string          `db:"url" json:"url"`
-	Payload       []byte          `db:"payload" json:"payload"`
-	Meta          []byte          `db:"meta" json:"meta"`
-	Frequency     pgtype.Interval `db:"frequency" json:"frequency"`
-	RunOnInsert   bool            `db:"run_on_insert" json:"run_on_insert"`
-	// Next time the schedule trigger should materialize a concrete task.
-	NextFireAt         pgtype.Timestamptz `db:"next_fire_at" json:"next_fire_at"`
-	LastFireAt         pgtype.Timestamptz `db:"last_fire_at" json:"last_fire_at"`
-	LastMaterializedAt pgtype.Timestamptz `db:"last_materialized_at" json:"last_materialized_at"`
-	// Latest task inserted or recovered by the schedule trigger.
+	ID                     uuid.UUID          `db:"id" json:"id"`
+	Name                   string             `db:"name" json:"name"`
+	Enabled                bool               `db:"enabled" json:"enabled"`
+	ConfigPresent          bool               `db:"config_present" json:"config_present"`
+	ConfigHash             string             `db:"config_hash" json:"config_hash"`
+	Kind                   TaskKind           `db:"kind" json:"kind"`
+	SourceType             SourceType         `db:"source_type" json:"source_type"`
+	SourceAbbr             string             `db:"source_abbr" json:"source_abbr"`
+	Url                    string             `db:"url" json:"url"`
+	Payload                []byte             `db:"payload" json:"payload"`
+	Meta                   []byte             `db:"meta" json:"meta"`
+	Frequency              pgtype.Interval    `db:"frequency" json:"frequency"`
+	RunOnInsert            bool               `db:"run_on_insert" json:"run_on_insert"`
+	NextFireAt             pgtype.Timestamptz `db:"next_fire_at" json:"next_fire_at"`
+	LastFireAt             pgtype.Timestamptz `db:"last_fire_at" json:"last_fire_at"`
+	LastMaterializedAt     pgtype.Timestamptz `db:"last_materialized_at" json:"last_materialized_at"`
 	LastMaterializedTaskID pgtype.UUID        `db:"last_materialized_task_id" json:"last_materialized_task_id"`
 	LastError              pgtype.Text        `db:"last_error" json:"last_error"`
 	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
@@ -759,15 +764,21 @@ type Task struct {
 	LastRunAt      pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	// Successful predecessor required before this task can be claimed.
+	PreviousTaskID pgtype.UUID `db:"previous_task_id" json:"previous_task_id"`
+	// Successor stage-control task awakened after this task succeeds.
+	NextTaskID pgtype.UUID `db:"next_task_id" json:"next_task_id"`
+	// Stable idempotency key scoped to the owning batch.
+	LogicalKey pgtype.Text `db:"logical_key" json:"logical_key"`
 }
 
 type Token struct {
 	ID            uuid.UUID          `db:"id" json:"id"`
 	Type          string             `db:"type" json:"type"`
 	Name          string             `db:"name" json:"name"`
-	Permissions   int16              `db:"permissions" json:"permissions"`
 	HashAlgorithm string             `db:"hash_algorithm" json:"hash_algorithm"`
 	TokenHash     string             `db:"token_hash" json:"token_hash"`
+	Permissions   int16              `db:"permissions" json:"permissions"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	ExpiresAt     pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	LastUsedAt    pgtype.Timestamptz `db:"last_used_at" json:"last_used_at"`

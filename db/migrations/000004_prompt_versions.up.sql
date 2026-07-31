@@ -1,2 +1,0 @@
--- Prompt versions are part of the initial schema. This migration is retained
--- for databases that already recorded migration 004.

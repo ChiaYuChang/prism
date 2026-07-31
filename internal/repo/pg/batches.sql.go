@@ -58,7 +58,7 @@ func (q *Queries) FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCo
 }
 
 const getBatchByID = `-- name: GetBatchByID :one
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id
 FROM batches
 WHERE id = $1
 `
@@ -68,7 +68,6 @@ func (q *Queries) GetBatchByID(ctx context.Context, id uuid.UUID) (Batch, error)
 	var i Batch
 	err := row.Scan(
 		&i.ID,
-		&i.ParentID,
 		&i.SourceType,
 		&i.TraceID,
 		&i.CreatedAt,
@@ -79,12 +78,15 @@ func (q *Queries) GetBatchByID(ctx context.Context, id uuid.UUID) (Batch, error)
 		&i.PublishRetryCount,
 		&i.PublishError,
 		&i.StalledAt,
+		&i.NSubtasks,
+		&i.ParentID,
+		&i.ParentTaskID,
 	)
 	return i, err
 }
 
 const listBatches = `-- name: ListBatches :many
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id
 FROM batches
 ORDER BY created_at DESC, id DESC
 LIMIT $2
@@ -107,7 +109,6 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Bat
 		var i Batch
 		if err := rows.Scan(
 			&i.ID,
-			&i.ParentID,
 			&i.SourceType,
 			&i.TraceID,
 			&i.CreatedAt,
@@ -118,6 +119,9 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Bat
 			&i.PublishRetryCount,
 			&i.PublishError,
 			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
 		); err != nil {
 			return nil, err
 		}
@@ -130,7 +134,7 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Bat
 }
 
 const listChildBatchesByParentID = `-- name: ListChildBatchesByParentID :many
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id
 FROM batches
 WHERE parent_id = $1
 ORDER BY created_at ASC
@@ -147,7 +151,6 @@ func (q *Queries) ListChildBatchesByParentID(ctx context.Context, parentID pgtyp
 		var i Batch
 		if err := rows.Scan(
 			&i.ID,
-			&i.ParentID,
 			&i.SourceType,
 			&i.TraceID,
 			&i.CreatedAt,
@@ -158,6 +161,9 @@ func (q *Queries) ListChildBatchesByParentID(ctx context.Context, parentID pgtyp
 			&i.PublishRetryCount,
 			&i.PublishError,
 			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
 		); err != nil {
 			return nil, err
 		}
@@ -170,7 +176,7 @@ func (q *Queries) ListChildBatchesByParentID(ctx context.Context, parentID pgtyp
 }
 
 const listPendingCompletionBatches = `-- name: ListPendingCompletionBatches :many
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id
 FROM batches
 WHERE completed_at IS NULL
   AND source_type = $1
@@ -194,7 +200,6 @@ func (q *Queries) ListPendingCompletionBatches(ctx context.Context, arg ListPend
 		var i Batch
 		if err := rows.Scan(
 			&i.ID,
-			&i.ParentID,
 			&i.SourceType,
 			&i.TraceID,
 			&i.CreatedAt,
@@ -205,6 +210,9 @@ func (q *Queries) ListPendingCompletionBatches(ctx context.Context, arg ListPend
 			&i.PublishRetryCount,
 			&i.PublishError,
 			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
 		); err != nil {
 			return nil, err
 		}
@@ -217,7 +225,7 @@ func (q *Queries) ListPendingCompletionBatches(ctx context.Context, arg ListPend
 }
 
 const listReadyToPublishBatches = `-- name: ListReadyToPublishBatches :many
-SELECT id, parent_id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id
 FROM batches
 WHERE completed_at IS NOT NULL
   AND published_at IS NULL
@@ -242,7 +250,6 @@ func (q *Queries) ListReadyToPublishBatches(ctx context.Context, arg ListReadyTo
 		var i Batch
 		if err := rows.Scan(
 			&i.ID,
-			&i.ParentID,
 			&i.SourceType,
 			&i.TraceID,
 			&i.CreatedAt,
@@ -253,6 +260,9 @@ func (q *Queries) ListReadyToPublishBatches(ctx context.Context, arg ListReadyTo
 			&i.PublishRetryCount,
 			&i.PublishError,
 			&i.StalledAt,
+			&i.NSubtasks,
+			&i.ParentID,
+			&i.ParentTaskID,
 		); err != nil {
 			return nil, err
 		}
