@@ -271,16 +271,16 @@ WHERE b.completed_at IS NULL
       WHERE t.batch_id = b.id
         AND t.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
   )
-  AND (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id) > 0
-  AND (
-      (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id)
-          <= (SELECT COUNT(*) FROM contents ct WHERE ct.batch_id = b.id)
-      OR EXISTS (
-          SELECT 1 FROM tasks t
-          WHERE t.batch_id = b.id
-            AND t.status IN ('FAILED', 'CANCELLED')
-      )
-  )
+   AND (
+       EXISTS (
+           SELECT 1 FROM tasks t
+           WHERE t.batch_id = b.id
+             AND t.status IN ('FAILED', 'CANCELLED')
+       )
+       OR (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id) = 0
+       OR (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id)
+           <= (SELECT COUNT(*) FROM contents ct WHERE ct.batch_id = b.id)
+   )
 ORDER BY b.created_at ASC
 LIMIT $2
 `
@@ -567,15 +567,27 @@ func (q *Queries) ListPendingCompletionBatches(ctx context.Context, arg ListPend
 }
 
 const listPipelineInputCandidates = `-- name: ListPipelineInputCandidates :many
-SELECT candidate_id, source_abbr
+SELECT candidate_id, batch_id, fingerprint, source_abbr, title, url, description,
+       published_at, discovered_at, trace_id, ingestion_method::text AS ingestion_method, metadata, created_at
 FROM pipeline_input_candidates
 WHERE root_batch_id = $1
 ORDER BY candidate_id
 `
 
 type ListPipelineInputCandidatesRow struct {
-	CandidateID uuid.UUID `db:"candidate_id" json:"candidate_id"`
-	SourceAbbr  string    `db:"source_abbr" json:"source_abbr"`
+	CandidateID     uuid.UUID          `db:"candidate_id" json:"candidate_id"`
+	BatchID         uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Fingerprint     string             `db:"fingerprint" json:"fingerprint"`
+	SourceAbbr      string             `db:"source_abbr" json:"source_abbr"`
+	Title           string             `db:"title" json:"title"`
+	Url             string             `db:"url" json:"url"`
+	Description     pgtype.Text        `db:"description" json:"description"`
+	PublishedAt     pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	DiscoveredAt    pgtype.Timestamptz `db:"discovered_at" json:"discovered_at"`
+	TraceID         string             `db:"trace_id" json:"trace_id"`
+	IngestionMethod string             `db:"ingestion_method" json:"ingestion_method"`
+	Metadata        []byte             `db:"metadata" json:"metadata"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 func (q *Queries) ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]ListPipelineInputCandidatesRow, error) {
@@ -587,7 +599,21 @@ func (q *Queries) ListPipelineInputCandidates(ctx context.Context, rootBatchID u
 	var items []ListPipelineInputCandidatesRow
 	for rows.Next() {
 		var i ListPipelineInputCandidatesRow
-		if err := rows.Scan(&i.CandidateID, &i.SourceAbbr); err != nil {
+		if err := rows.Scan(
+			&i.CandidateID,
+			&i.BatchID,
+			&i.Fingerprint,
+			&i.SourceAbbr,
+			&i.Title,
+			&i.Url,
+			&i.Description,
+			&i.PublishedAt,
+			&i.DiscoveredAt,
+			&i.TraceID,
+			&i.IngestionMethod,
+			&i.Metadata,
+			&i.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -599,15 +625,29 @@ func (q *Queries) ListPipelineInputCandidates(ctx context.Context, rootBatchID u
 }
 
 const listPipelineInputContents = `-- name: ListPipelineInputContents :many
-SELECT content_id, source_abbr
+SELECT content_id, batch_id, type, source_abbr, candidate_id, url, title, content,
+       author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
 FROM pipeline_input_contents
 WHERE root_batch_id = $1
 ORDER BY content_id
 `
 
 type ListPipelineInputContentsRow struct {
-	ContentID  uuid.UUID `db:"content_id" json:"content_id"`
-	SourceAbbr string    `db:"source_abbr" json:"source_abbr"`
+	ContentID   uuid.UUID          `db:"content_id" json:"content_id"`
+	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Type        ContentType        `db:"type" json:"type"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
+	CandidateID pgtype.UUID        `db:"candidate_id" json:"candidate_id"`
+	Url         string             `db:"url" json:"url"`
+	Title       string             `db:"title" json:"title"`
+	Content     string             `db:"content" json:"content"`
+	Author      pgtype.Text        `db:"author" json:"author"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	PublishedAt pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	FetchedAt   pgtype.Timestamptz `db:"fetched_at" json:"fetched_at"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DeletedAt   pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	Metadata    []byte             `db:"metadata" json:"metadata"`
 }
 
 func (q *Queries) ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]ListPipelineInputContentsRow, error) {
@@ -619,7 +659,23 @@ func (q *Queries) ListPipelineInputContents(ctx context.Context, rootBatchID uui
 	var items []ListPipelineInputContentsRow
 	for rows.Next() {
 		var i ListPipelineInputContentsRow
-		if err := rows.Scan(&i.ContentID, &i.SourceAbbr); err != nil {
+		if err := rows.Scan(
+			&i.ContentID,
+			&i.BatchID,
+			&i.Type,
+			&i.SourceAbbr,
+			&i.CandidateID,
+			&i.Url,
+			&i.Title,
+			&i.Content,
+			&i.Author,
+			&i.TraceID,
+			&i.PublishedAt,
+			&i.FetchedAt,
+			&i.CreatedAt,
+			&i.DeletedAt,
+			&i.Metadata,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -823,9 +879,12 @@ SET completed_at = NOW(),
     succeeded = $1,
     updated_at = NOW(),
     trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF($2, ''))
-WHERE id = $3
+WHERE batches.id = $3
   AND purpose = 'ANALYZER_PIPELINE_STAGE'
   AND completed_at IS NULL
+  AND n_subtasks IS NOT NULL
+  AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = batches.id) = n_subtasks
+  AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = batches.id AND t.status IN ('COMPLETED', 'FAILED', 'CANCELLED')) = n_subtasks
 `
 
 type MarkPipelineBatchFinishedParams struct {
@@ -878,10 +937,13 @@ SET completed_at = NOW(),
     succeeded = $1,
     updated_at = NOW(),
     trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF($2, ''))
-WHERE id = $3
+WHERE batches.id = $3
   AND purpose = 'ANALYZER_PIPELINE_ROOT'
   AND parent_task_id IS NULL
   AND completed_at IS NULL
+  AND n_subtasks IS NOT NULL
+  AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = batches.id) = n_subtasks
+  AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = batches.id AND t.status IN ('COMPLETED', 'FAILED', 'CANCELLED')) = n_subtasks
 `
 
 type MarkPipelineRootFinishedParams struct {
@@ -1031,8 +1093,13 @@ func (q *Queries) SetPipelineRootFailure(ctx context.Context, id uuid.UUID) erro
 }
 
 const snapshotPipelineCandidates = `-- name: SnapshotPipelineCandidates :exec
-INSERT INTO pipeline_input_candidates (root_batch_id, candidate_id, source_abbr)
-SELECT $1, c.id, c.source_abbr
+INSERT INTO pipeline_input_candidates (
+    root_batch_id, candidate_id, batch_id, fingerprint, source_abbr, title, url,
+    description, published_at, discovered_at, trace_id, ingestion_method, metadata, created_at
+)
+SELECT
+    $1, c.id, c.batch_id, c.fingerprint, c.source_abbr, c.title, c.url,
+    c.description, c.published_at, c.discovered_at, c.trace_id, c.ingestion_method, c.metadata, c.created_at
 FROM candidates c
 WHERE c.batch_id = $2
 ON CONFLICT (root_batch_id, candidate_id) DO NOTHING
@@ -1049,10 +1116,16 @@ func (q *Queries) SnapshotPipelineCandidates(ctx context.Context, arg SnapshotPi
 }
 
 const snapshotPipelineContents = `-- name: SnapshotPipelineContents :exec
-INSERT INTO pipeline_input_contents (root_batch_id, content_id, source_abbr)
-SELECT $1, c.id, c.source_abbr
+INSERT INTO pipeline_input_contents (
+    root_batch_id, content_id, batch_id, type, source_abbr, candidate_id, url, title,
+    content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+)
+SELECT
+    $1, c.id, c.batch_id, c.type, c.source_abbr, c.candidate_id, c.url, c.title,
+    c.content, c.author, c.trace_id, c.published_at, c.fetched_at, c.created_at, c.deleted_at, c.metadata
 FROM contents c
 WHERE c.batch_id = $2
+  AND c.deleted_at IS NULL
 ON CONFLICT (root_batch_id, content_id) DO NOTHING
 `
 

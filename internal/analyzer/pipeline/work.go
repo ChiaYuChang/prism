@@ -27,6 +27,8 @@ type WorkSetInput struct {
 	ContentIDs          []uuid.UUID
 	CandidateSourceAbbr map[uuid.UUID]string
 	ContentSourceAbbr   map[uuid.UUID]string
+	CandidateSnapshots  map[uuid.UUID]repo.Candidate
+	ContentSnapshots    map[uuid.UUID]repo.Content
 }
 
 // WorkSetBuilder builds ordinary tasks for one registered task type.
@@ -91,7 +93,7 @@ func (EmbedCandidateBuilder) Build(stage string, config map[string]any, input Wo
 	}
 	ids := append([]uuid.UUID(nil), input.CandidateIDs...)
 	sort.Slice(ids, func(i, j int) bool { return ids[i].String() < ids[j].String() })
-	return embedTasks(stage, repo.TaskKindEmbedCandidate, "candidate_id", ids, input.CandidateSourceAbbr)
+	return embedTasks(stage, repo.TaskKindEmbedCandidate, "candidate_id", ids, input.CandidateSourceAbbr, input.CandidateSnapshots)
 }
 
 // EmbedContentBuilder builds one EMBED_CONTENT task per content.
@@ -109,19 +111,36 @@ func (EmbedContentBuilder) Build(stage string, config map[string]any, input Work
 	}
 	ids := append([]uuid.UUID(nil), input.ContentIDs...)
 	sort.Slice(ids, func(i, j int) bool { return ids[i].String() < ids[j].String() })
-	return embedTasks(stage, repo.TaskKindEmbedContent, "content_id", ids, input.ContentSourceAbbr)
+	return embedTasks(stage, repo.TaskKindEmbedContent, "content_id", ids, input.ContentSourceAbbr, input.ContentSnapshots)
 }
 
-func embedTasks(stage, kind, field string, ids []uuid.UUID, sourceAbbr map[uuid.UUID]string) ([]WorkTaskSpec, error) {
+func embedTasks(stage, kind, field string, ids []uuid.UUID, sourceAbbr map[uuid.UUID]string, snapshots any) ([]WorkTaskSpec, error) {
 	tasks := make([]WorkTaskSpec, 0, len(ids))
 	for _, id := range ids {
 		abbr := sourceAbbr[id]
 		if abbr == "" {
 			return nil, fmt.Errorf("stage %q has no source abbreviation for %s %s", stage, field, id)
 		}
-		payload, err := json.Marshal(map[string]string{field: id.String()})
+		var snapshot any
+		switch values := snapshots.(type) {
+		case map[uuid.UUID]repo.Candidate:
+			candidate, ok := values[id]
+			if !ok || candidate.ID != id {
+				return nil, fmt.Errorf("stage %q has no candidate snapshot for %s", stage, id)
+			}
+			snapshot = candidate
+		case map[uuid.UUID]repo.Content:
+			content, ok := values[id]
+			if !ok || content.ID != id {
+				return nil, fmt.Errorf("stage %q has no content snapshot for %s", stage, id)
+			}
+			snapshot = content
+		default:
+			return nil, fmt.Errorf("stage %q has invalid %s snapshots", stage, field)
+		}
+		meta, err := json.Marshal(map[string]any{field: id.String(), "snapshot": snapshot})
 		if err != nil {
-			return nil, fmt.Errorf("marshal %s task: %w", kind, err)
+			return nil, fmt.Errorf("marshal %s task metadata: %w", kind, err)
 		}
 		tasks = append(tasks, WorkTaskSpec{
 			LogicalKey: stage + ":" + id.String(),
@@ -129,7 +148,7 @@ func embedTasks(stage, kind, field string, ids []uuid.UUID, sourceAbbr map[uuid.
 			SourceType: repo.SourceTypeParty,
 			SourceAbbr: abbr,
 			URL:        "pipeline://" + stage + "/" + id.String(),
-			Payload:    payload,
+			Meta:       meta,
 		})
 	}
 	return tasks, nil

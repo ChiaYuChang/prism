@@ -287,14 +287,38 @@ CREATE TABLE public.batches (
 CREATE TABLE public.pipeline_input_candidates (
     root_batch_id uuid NOT NULL,
     candidate_id uuid NOT NULL,
+    batch_id uuid NOT NULL,
+    fingerprint character varying(64) NOT NULL,
     source_abbr character varying(16) NOT NULL,
+    title text NOT NULL,
+    url text NOT NULL,
+    description text,
+    published_at timestamp with time zone,
+    discovered_at timestamp with time zone NOT NULL,
+    trace_id character varying(100) NOT NULL,
+    ingestion_method public.candidate_ingestion_method NOT NULL,
+    metadata jsonb,
+    created_at timestamp with time zone NOT NULL,
     CONSTRAINT pipeline_input_candidates_pkey PRIMARY KEY (root_batch_id, candidate_id)
 );
 
 CREATE TABLE public.pipeline_input_contents (
     root_batch_id uuid NOT NULL,
     content_id uuid NOT NULL,
+    batch_id uuid NOT NULL,
+    type public.content_type NOT NULL,
     source_abbr character varying(16) NOT NULL,
+    candidate_id uuid,
+    url text NOT NULL,
+    title text NOT NULL,
+    content text NOT NULL,
+    author text,
+    trace_id character varying(100) NOT NULL,
+    published_at timestamp with time zone NOT NULL,
+    fetched_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    deleted_at timestamp with time zone,
+    metadata jsonb,
     CONSTRAINT pipeline_input_contents_pkey PRIMARY KEY (root_batch_id, content_id)
 );
 

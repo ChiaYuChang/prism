@@ -66,12 +66,16 @@ type Batch struct {
 	PipelineInputSnapshotAt *time.Time
 }
 
-// PipelineInputMember is an immutable candidate or content reference stored
-// for one pipeline Root. Stages use only these references, never live source
-// batch membership.
-type PipelineInputMember struct {
-	ID         uuid.UUID
-	SourceAbbr string
+// PipelineInputCandidate is the immutable candidate record captured for one
+// pipeline Root. Stages use this record instead of a live candidate row.
+type PipelineInputCandidate struct {
+	Candidate
+}
+
+// PipelineInputContent is the immutable content record captured for one
+// pipeline Root. Stages use this record instead of a live content row.
+type PipelineInputContent struct {
+	Content
 }
 
 type Source struct {

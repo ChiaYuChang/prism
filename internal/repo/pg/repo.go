@@ -13,6 +13,7 @@ import (
 	"github.com/ChiaYuChang/prism/pkg/pgconv"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	pgvector "github.com/pgvector/pgvector-go"
 )
@@ -48,8 +49,10 @@ type PGPipeline struct {
 }
 
 type PGPipelineRuntime struct {
-	db DBTX
-	q  *Queries
+	db                     DBTX
+	q                      *Queries
+	afterPipelineInputLock func(context.Context) error
+	afterPipelineSnapshot  func(context.Context) error
 }
 
 type PGEmbeddings struct {
@@ -156,7 +159,11 @@ func (r *PGPipelineRuntime) InitializePipeline(ctx context.Context, arg repo.Ini
 		if err != nil {
 			return fmt.Errorf("create pipeline control task: %w", err)
 		}
-		if !created.Inserted && (!bytes.Equal(created.Payload, task.Payload) || !created.PreviousTaskID.Valid || created.PreviousTaskID.Bytes != previousID) {
+		expectedPayload := task.Payload
+		if len(expectedPayload) == 0 {
+			expectedPayload = []byte(`{}`)
+		}
+		if !created.Inserted && (!bytes.Equal(created.Payload, expectedPayload) || !created.PreviousTaskID.Valid || created.PreviousTaskID.Bytes != previousID) {
 			return fmt.Errorf("%w: stage %v", repo.ErrPipelinePlanConflict, task.LogicalKey)
 		}
 		if rows, err := qtx.LinkTaskSuccessor(ctx, LinkTaskSuccessorParams{PredecessorID: previousID, SuccessorID: pgconv.UUIDToPgUUID(created.ID)}); err != nil {
@@ -197,26 +204,38 @@ func (r *PGPipelineRuntime) GetPipelineBatch(ctx context.Context, batchID uuid.U
 	return batch, nil
 }
 
-func (r *PGPipelineRuntime) ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]repo.PipelineInputMember, error) {
+func (r *PGPipelineRuntime) ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]repo.PipelineInputCandidate, error) {
 	rows, err := r.q.ListPipelineInputCandidates(ctx, rootBatchID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]repo.PipelineInputMember, len(rows))
+	out := make([]repo.PipelineInputCandidate, len(rows))
 	for i, row := range rows {
-		out[i] = repo.PipelineInputMember{ID: row.CandidateID, SourceAbbr: row.SourceAbbr}
+		out[i] = repo.PipelineInputCandidate{Candidate: repo.Candidate{
+			ID: row.CandidateID, BatchID: row.BatchID, Fingerprint: row.Fingerprint, SourceAbbr: row.SourceAbbr,
+			Title: row.Title, URL: row.Url, Description: pgconv.PgTextToStringPtr(row.Description),
+			PublishedAt: pgconv.PgTimestamptzToTimePtr(row.PublishedAt), DiscoveredAt: *pgconv.PgTimestamptzToTimePtr(row.DiscoveredAt),
+			TraceID: row.TraceID, IngestionMethod: row.IngestionMethod, Metadata: row.Metadata,
+			CreatedAt: *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+		}}
 	}
 	return out, nil
 }
 
-func (r *PGPipelineRuntime) ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]repo.PipelineInputMember, error) {
+func (r *PGPipelineRuntime) ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]repo.PipelineInputContent, error) {
 	rows, err := r.q.ListPipelineInputContents(ctx, rootBatchID)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]repo.PipelineInputMember, len(rows))
+	out := make([]repo.PipelineInputContent, len(rows))
 	for i, row := range rows {
-		out[i] = repo.PipelineInputMember{ID: row.ContentID, SourceAbbr: row.SourceAbbr}
+		out[i] = repo.PipelineInputContent{Content: repo.Content{
+			ID: row.ContentID, BatchID: row.BatchID, Type: string(row.Type), SourceAbbr: row.SourceAbbr,
+			CandidateID: pgconv.PgUUIDToUUID(row.CandidateID), URL: row.Url, Title: row.Title, Content: row.Content,
+			Author: pgconv.PgTextToStringPtr(row.Author), TraceID: row.TraceID,
+			PublishedAt: *pgconv.PgTimestamptzToTimePtr(row.PublishedAt), FetchedAt: *pgconv.PgTimestamptzToTimePtr(row.FetchedAt),
+			CreatedAt: *pgconv.PgTimestamptzToTimePtr(row.CreatedAt), DeletedAt: pgconv.PgTimestamptzToTimePtr(row.DeletedAt), Metadata: row.Metadata,
+		}}
 	}
 	return out, nil
 }
@@ -231,6 +250,17 @@ func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.Cre
 		return repo.Task{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+		return repo.Task{}, fmt.Errorf("set pipeline root transaction isolation: %w", err)
+	}
+	if _, err := tx.Exec(ctx, "SELECT 1"); err != nil {
+		return repo.Task{}, fmt.Errorf("establish pipeline root snapshot: %w", err)
+	}
+	if r.afterPipelineSnapshot != nil {
+		if err := r.afterPipelineSnapshot(ctx); err != nil {
+			return repo.Task{}, err
+		}
+	}
 	qtx := r.q.WithTx(tx)
 	if arg.ParentBatchID == nil {
 		return repo.Task{}, fmt.Errorf("pipeline root input batch is required")
@@ -247,6 +277,11 @@ func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.Cre
 	}
 	if input.Succeeded.Valid && !input.Succeeded.Bool {
 		return repo.Task{}, repo.ErrPipelineInputFailed
+	}
+	if r.afterPipelineInputLock != nil {
+		if err := r.afterPipelineInputLock(ctx); err != nil {
+			return repo.Task{}, err
+		}
 	}
 	var existing Batch
 	if arg.PipelineIdempotencyKey != nil {
@@ -274,6 +309,11 @@ func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.Cre
 		}
 	}
 	if err := qtx.EnsurePipelineRoot(ctx, repoCreateTaskParamsToEnsurePipelineRoot(arg)); err != nil {
+		var pgErr *pgconn.PgError
+		if arg.PipelineIdempotencyKey != nil && errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			_ = tx.Rollback(ctx)
+			return r.recoverPipelineRoot(ctx, arg)
+		}
 		return repo.Task{}, fmt.Errorf("ensure pipeline root batch: %w", err)
 	}
 	if err := qtx.SnapshotPipelineCandidates(ctx, SnapshotPipelineCandidatesParams{RootBatchID: arg.BatchID, InputBatchID: pgconv.UUIDToPgUUID(*arg.ParentBatchID)}); err != nil {
@@ -293,6 +333,26 @@ func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.Cre
 		return repo.Task{}, fmt.Errorf("commit pipeline root: %w", err)
 	}
 	return dbCreateTaskRowToRepoTask(row), nil
+}
+
+func (r *PGPipelineRuntime) recoverPipelineRoot(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
+	existing, err := r.q.GetPipelineRootByIdempotency(ctx, GetPipelineRootByIdempotencyParams{
+		ParentID: pgconv.UUIDToPgUUID(*arg.ParentBatchID), IdempotencyKey: pgconv.StringPtrToPgText(arg.PipelineIdempotencyKey),
+	})
+	if err != nil {
+		return repo.Task{}, fmt.Errorf("recover concurrent pipeline root: %w", err)
+	}
+	if strings.TrimSpace(existing.PipelineDefinitionHash.String) != arg.PipelineDefinitionHash || strings.TrimSpace(existing.PipelineRequestFingerprint.String) != arg.PipelineRequestFingerprint {
+		return repo.Task{}, repo.ErrPipelineIdempotencyConflict
+	}
+	if !existing.PipelineInputSnapshotAt.Valid {
+		return repo.Task{}, repo.ErrPipelineSnapshotMissing
+	}
+	row, err := r.q.GetTaskByBatchLogicalKey(ctx, GetTaskByBatchLogicalKeyParams{BatchID: existing.ID, LogicalKey: pgconv.StringPtrToPgText(arg.LogicalKey)})
+	if err != nil {
+		return repo.Task{}, fmt.Errorf("recover concurrent pipeline init task: %w", err)
+	}
+	return dbTaskToRepoTask(row), repo.ErrTaskAlreadyActive
 }
 
 func (r *PGPipelineRuntime) InitializePipelineStage(ctx context.Context, arg repo.InitializePipelineStageParams) (uuid.UUID, error) {
@@ -334,6 +394,13 @@ func (r *PGPipelineRuntime) InitializePipelineStage(ctx context.Context, arg rep
 		BatchID: childBatchID, NSubtasks: pgconv.Int32PtrToPgInt4(&arg.NSubtasks),
 	}); err != nil {
 		return uuid.Nil, fmt.Errorf("set pipeline child subtasks: %w", err)
+	}
+	if arg.NSubtasks == 0 {
+		if _, err := qtx.MarkPipelineBatchFinished(ctx, MarkPipelineBatchFinishedParams{
+			BatchID: childBatchID, Succeeded: pgtype.Bool{Bool: true, Valid: true}, TraceID: arg.TraceID,
+		}); err != nil {
+			return uuid.Nil, fmt.Errorf("finish empty pipeline child batch: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return uuid.Nil, fmt.Errorf("commit pipeline stage initialization: %w", err)
@@ -466,6 +533,44 @@ func (r *PGPipelineRuntime) MarkRootBatchFinished(ctx context.Context, batchID u
 	return r.q.MarkPipelineRootFinished(ctx, MarkPipelineRootFinishedParams{
 		BatchID: batchID, Succeeded: pgtype.Bool{Bool: succeeded, Valid: true}, TraceID: traceID,
 	})
+}
+
+func (r *PGPipelineRuntime) FailPipelineTask(ctx context.Context, taskID, rootBatchID uuid.UUID, retryMax int, reason string) (bool, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return false, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := r.q.WithTx(tx)
+	if err := qtx.FailTask(ctx, FailTaskParams{
+		ID: taskID, RetryMax: int32(retryMax), FailureMessage: reason,
+	}); err != nil {
+		return false, fmt.Errorf("fail pipeline task: %w", err)
+	}
+	task, err := qtx.GetTaskByID(ctx, taskID)
+	if err != nil {
+		return false, fmt.Errorf("get failed pipeline task: %w", err)
+	}
+	terminal := task.Status == TaskStatusFAILED
+	if terminal && task.Kind == TaskKindPIPELINEINIT {
+		if err := qtx.SetPipelineRootFailure(ctx, rootBatchID); err != nil {
+			return false, fmt.Errorf("set failed pipeline root: %w", err)
+		}
+	} else if terminal {
+		if _, err := qtx.CancelPendingTasksByBatchID(ctx, CancelPendingTasksByBatchIDParams{
+			BatchID: rootBatchID, FailureMessage: pgconv.StringPtrToPgText(&reason),
+		}); err != nil {
+			return false, fmt.Errorf("cancel downstream pipeline tasks: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit pipeline task failure: %w", err)
+	}
+	return terminal, nil
 }
 
 func (r *PGPipelineRuntime) ConvergePipelineFailure(ctx context.Context, taskID, rootBatchID uuid.UUID, reason string) error {

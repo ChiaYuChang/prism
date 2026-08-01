@@ -11,6 +11,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 )
@@ -99,13 +100,23 @@ func TestInitializePipelineConcurrentIsAtomicAndIdempotent(t *testing.T) {
 	finishedInit, err := tasks.GetTaskByID(ctx, initTask.ID)
 	require.NoError(t, err)
 	require.Equal(t, repo.TaskStatusCompleted, finishedInit.Status)
-	require.Equal(t, int64(1), queryCount(t, pool, ctx, `SELECT COUNT(*) FROM tasks WHERE id = $1 AND next_task_id = $2`, initTask.ID, rows[1].ID))
-	require.Equal(t, int64(1), queryCount(t, pool, ctx, `SELECT COUNT(*) FROM tasks WHERE id = $1 AND previous_task_id = $2 AND next_task_id = $3`, rows[1].ID, initTask.ID, rows[2].ID))
-	require.Equal(t, int64(1), queryCount(t, pool, ctx, `SELECT COUNT(*) FROM tasks WHERE id = $1 AND previous_task_id = $2 AND next_task_id IS NULL`, rows[2].ID, rows[1].ID))
+	stages := make(map[string]repo.Task, 2)
+	for _, task := range rows {
+		if task.LogicalKey != nil {
+			stages[*task.LogicalKey] = task
+		}
+	}
+	first, ok := stages["pipeline:stage:first"]
+	require.True(t, ok)
+	second, ok := stages["pipeline:stage:second"]
+	require.True(t, ok)
+	require.Equal(t, int64(1), queryCount(t, pool, ctx, `SELECT COUNT(*) FROM tasks WHERE id = $1 AND next_task_id = $2`, initTask.ID, first.ID))
+	require.Equal(t, int64(1), queryCount(t, pool, ctx, `SELECT COUNT(*) FROM tasks WHERE id = $1 AND previous_task_id = $2 AND next_task_id = $3`, first.ID, initTask.ID, second.ID))
+	require.Equal(t, int64(1), queryCount(t, pool, ctx, `SELECT COUNT(*) FROM tasks WHERE id = $1 AND previous_task_id = $2 AND next_task_id IS NULL`, second.ID, first.ID))
 	var nSubtasks int32
 	require.NoError(t, pool.QueryRow(ctx, `SELECT n_subtasks FROM batches WHERE id = $1`, rootID).Scan(&nSubtasks))
 	require.Equal(t, int32(3), nSubtasks)
-	stageOwner := rows[1]
+	stageOwner := first
 	stageWork := []repo.CreateTaskParams{
 		{LogicalKey: stringPtr("work:first"), Kind: repo.TaskKindEmbedCandidate, SourceType: repo.SourceTypeParty, SourceAbbr: abbr, URL: "https://pipeline.test/work/first", TraceID: traceID},
 		{LogicalKey: stringPtr("work:second"), Kind: repo.TaskKindEmbedCandidate, SourceType: repo.SourceTypeParty, SourceAbbr: abbr, URL: "https://pipeline.test/work/second", TraceID: traceID},
@@ -211,6 +222,124 @@ func TestCreatePipelineRootRequiresCompletedInputAndStoresParent(t *testing.T) {
 	require.Equal(t, inputID, parentID)
 }
 
+func TestCollectionCompletionPredicate(t *testing.T) {
+	url := os.Getenv("PRISM_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set PRISM_TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	require.NoError(t, err)
+	defer pool.Close()
+	require.NoError(t, pool.Ping(ctx))
+
+	testCases := []struct {
+		name           string
+		statuses       []string
+		candidateCount int
+		contentCount   int
+		wantFinished   bool
+		wantSucceeded  bool
+	}{
+		{
+			name:          "successful zero output",
+			statuses:      []string{"COMPLETED"},
+			wantFinished:  true,
+			wantSucceeded: true,
+		},
+		{
+			name:         "failed zero output",
+			statuses:     []string{"FAILED"},
+			wantFinished: true,
+		},
+		{
+			name:           "successful promotion remains gated",
+			statuses:       []string{"COMPLETED"},
+			candidateCount: 2,
+			contentCount:   1,
+		},
+		{
+			name:           "partial failure bypasses promotion gate",
+			statuses:       []string{"COMPLETED", "CANCELLED"},
+			candidateCount: 2,
+			contentCount:   1,
+			wantFinished:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			abbr := "it" + uuid.NewString()[:12]
+			batchID := uuid.New()
+			require.NoError(t, insertTestSource(ctx, pool, abbr))
+			t.Cleanup(func() { cleanupCollectionBatch(ctx, pool, batchID, abbr) })
+			require.NoError(t, insertCollectionBatch(ctx, pool, batchID, abbr, tc.statuses, tc.candidateCount, tc.contentCount))
+
+			trigger := NewPostgresRepository(pool).BatchTrigger()
+			ready, queryErr := trigger.FindNewlyCompletedBatches(ctx, 100, repo.SourceTypeParty)
+			require.NoError(t, queryErr)
+			found := containsBatchID(ready, batchID)
+			require.Equal(t, tc.wantFinished, found)
+			if !tc.wantFinished {
+				return
+			}
+
+			marked, markErr := trigger.MarkBatchCompleted(ctx, batchID, "collection-test")
+			require.NoError(t, markErr)
+			require.Equal(t, int64(1), marked)
+			var succeeded bool
+			require.NoError(t, pool.QueryRow(ctx, `SELECT succeeded FROM batches WHERE id = $1`, batchID).Scan(&succeeded))
+			require.Equal(t, tc.wantSucceeded, succeeded)
+		})
+	}
+}
+
+func insertTestSource(ctx context.Context, pool *pgxpool.Pool, abbr string) error {
+	_, err := pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'PARTY', 'https://example.test')`, abbr, abbr)
+	return err
+}
+
+func cleanupCollectionBatch(ctx context.Context, pool *pgxpool.Pool, batchID uuid.UUID, abbr string) {
+	_, _ = pool.Exec(ctx, `DELETE FROM contents WHERE batch_id = $1`, batchID)
+	_, _ = pool.Exec(ctx, `DELETE FROM candidates WHERE batch_id = $1`, batchID)
+	_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE batch_id = $1`, batchID)
+	_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id = $1`, batchID)
+	_, _ = pool.Exec(ctx, `DELETE FROM sources WHERE abbr = $1`, abbr)
+}
+
+func insertCollectionBatch(ctx context.Context, pool *pgxpool.Pool, batchID uuid.UUID, abbr string, statuses []string, candidateCount, contentCount int) error {
+	if _, err := pool.Exec(ctx, `INSERT INTO batches (id, source_type, trace_id) VALUES ($1, 'PARTY', 'collection-test')`, batchID); err != nil {
+		return err
+	}
+	for _, status := range statuses {
+		if _, err := pool.Exec(ctx, `INSERT INTO tasks (id, batch_id, kind, source_type, source_abbr, url, trace_id, status) VALUES ($1, $2, 'DIRECTORY_FETCH', 'PARTY', $3, $4, 'collection-test', $5)`, uuid.New(), batchID, abbr, "https://example.test/task/"+uuid.NewString(), status); err != nil {
+			return err
+		}
+	}
+	candidateIDs := make([]uuid.UUID, candidateCount)
+	for i := range candidateIDs {
+		candidateIDs[i] = uuid.New()
+		if _, err := pool.Exec(ctx, `INSERT INTO candidates (id, batch_id, source_abbr, trace_id, fingerprint, url, title, ingestion_method) VALUES ($1, $2, $3, 'collection-test', $4, $5, 'Candidate', 'DIRECTORY')`, candidateIDs[i], batchID, abbr, uuid.NewString()[:32], "https://example.test/candidate/"+candidateIDs[i].String()); err != nil {
+			return err
+		}
+	}
+	for i := 0; i < contentCount; i++ {
+		if _, err := pool.Exec(ctx, `INSERT INTO contents (id, batch_id, type, source_abbr, candidate_id, url, title, content, trace_id, published_at, fetched_at) VALUES ($1, $2, 'ARTICLE', $3, $4, $5, 'Content', 'body', 'collection-test', NOW(), NOW())`, uuid.New(), batchID, abbr, candidateIDs[i], "https://example.test/content/"+uuid.NewString()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func containsBatchID(batches []repo.Batch, batchID uuid.UUID) bool {
+	for _, batch := range batches {
+		if batch.ID == batchID {
+			return true
+		}
+	}
+	return false
+}
+
 func TestPipelineInputSnapshotRemainsStableAfterSourceMutation(t *testing.T) {
 	url := os.Getenv("PRISM_TEST_DATABASE_URL")
 	if url == "" {
@@ -259,8 +388,28 @@ func TestPipelineInputSnapshotRemainsStableAfterSourceMutation(t *testing.T) {
 	require.NoError(t, err)
 	contents, err := runtime.ListPipelineInputContents(ctx, rootID)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []repo.PipelineInputMember{{ID: candidate1, SourceAbbr: abbr}, {ID: candidate2, SourceAbbr: abbr}}, candidates)
-	require.Equal(t, []repo.PipelineInputMember{{ID: content1, SourceAbbr: abbr}}, contents)
+	require.ElementsMatch(t, []uuid.UUID{candidate1, candidate2}, []uuid.UUID{candidates[0].ID, candidates[1].ID})
+	require.Equal(t, abbr, candidates[0].SourceAbbr)
+	require.Equal(t, content1, contents[0].ID)
+	require.Equal(t, "body", contents[0].Content.Content)
+
+	_, err = pool.Exec(ctx, `UPDATE candidates SET title = 'Mutated candidate', metadata = '{"mutated":true}' WHERE id = $1`, candidate1)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE contents SET content = 'mutated body', deleted_at = NOW(), metadata = '{"mutated":true}' WHERE id = $1`, content1)
+	require.NoError(t, err)
+	candidates, err = runtime.ListPipelineInputCandidates(ctx, rootID)
+	require.NoError(t, err)
+	contents, err = runtime.ListPipelineInputContents(ctx, rootID)
+	require.NoError(t, err)
+	for _, candidate := range candidates {
+		if candidate.ID == candidate1 {
+			require.Equal(t, "Candidate A", candidate.Title)
+			require.Empty(t, candidate.Metadata)
+		}
+	}
+	require.Equal(t, "body", contents[0].Content.Content)
+	require.Nil(t, contents[0].DeletedAt)
+	require.Empty(t, contents[0].Metadata)
 
 	_, err = pool.Exec(ctx, `INSERT INTO contents (id, batch_id, type, source_abbr, candidate_id, url, title, content, trace_id, published_at, fetched_at) VALUES ($1, $2, 'ARTICLE', $3, $4, $5, 'Content B', 'body', 'trace', NOW(), NOW())`, content2, inputID, abbr, candidate2, "https://example.test/content/2")
 	require.NoError(t, err)
@@ -449,6 +598,179 @@ func TestPipelineRootIdempotencyIsSemanticAndConcurrent(t *testing.T) {
 
 	_, err = runtime.CreatePipelineRoot(ctx, makeArg(uuid.New(), definition, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"))
 	require.ErrorIs(t, err, repo.ErrPipelineIdempotencyConflict)
+}
+
+func TestCreatePipelineRootCapturesConsistentRepeatableReadSnapshot(t *testing.T) {
+	url := os.Getenv("PRISM_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set PRISM_TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	require.NoError(t, err)
+	defer pool.Close()
+	require.NoError(t, pool.Ping(ctx))
+
+	testCases := []struct {
+		name           string
+		initialContent bool
+		mutate         func(t *testing.T, inputID uuid.UUID, abbr string)
+		wantCandidates int
+		wantContents   int
+		wantContent    string
+	}{
+		{
+			name: "concurrent candidate and content insert is excluded together",
+			mutate: func(t *testing.T, inputID uuid.UUID, abbr string) {
+				candidateID := uuid.New()
+				_, err := pool.Exec(ctx, `INSERT INTO candidates (id, batch_id, source_abbr, trace_id, fingerprint, url, title, ingestion_method) VALUES ($1, $2, $3, 'snapshot-test', $4, $5, 'Concurrent candidate', 'DIRECTORY')`, candidateID, inputID, abbr, uuid.NewString()[:32], "https://example.test/candidate/concurrent")
+				require.NoError(t, err)
+				_, err = pool.Exec(ctx, `INSERT INTO contents (id, batch_id, type, source_abbr, candidate_id, url, title, content, trace_id, published_at, fetched_at) VALUES ($1, $2, 'ARTICLE', $3, $4, 'https://example.test/content/concurrent', 'Concurrent content', 'concurrent body', 'snapshot-test', NOW(), NOW())`, uuid.New(), inputID, abbr, candidateID)
+				require.NoError(t, err)
+			},
+			wantCandidates: 1,
+		},
+		{
+			name:           "concurrent soft delete preserves active content revision",
+			initialContent: true,
+			mutate: func(t *testing.T, inputID uuid.UUID, _ string) {
+				_, err := pool.Exec(ctx, `UPDATE contents SET deleted_at = NOW(), content = 'mutated after snapshot' WHERE batch_id = $1`, inputID)
+				require.NoError(t, err)
+			},
+			wantCandidates: 1,
+			wantContents:   1,
+			wantContent:    "original body",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			abbr := "it" + uuid.NewString()[:12]
+			inputID, rootID := uuid.New(), uuid.New()
+			require.NoError(t, insertTestSource(ctx, pool, abbr))
+			t.Cleanup(func() { cleanupPipelineSnapshotTest(ctx, pool, inputID, rootID, abbr) })
+			require.NoError(t, insertCompletedPipelineInput(ctx, pool, inputID, abbr, tc.initialContent))
+
+			locked := make(chan struct{})
+			resume := make(chan struct{})
+			runtime := &PGPipelineRuntime{
+				db: pool,
+				q:  New(pool),
+				afterPipelineInputLock: func(context.Context) error {
+					close(locked)
+					<-resume
+					return nil
+				},
+			}
+			result := make(chan error, 1)
+			go func() {
+				_, createErr := runtime.CreatePipelineRoot(ctx, pipelineRootParams(rootID, inputID, abbr, "snapshot-"+uuid.NewString()))
+				result <- createErr
+			}()
+			<-locked
+			tc.mutate(t, inputID, abbr)
+			close(resume)
+			require.NoError(t, <-result)
+
+			candidates, listErr := runtime.ListPipelineInputCandidates(ctx, rootID)
+			require.NoError(t, listErr)
+			contents, listErr := runtime.ListPipelineInputContents(ctx, rootID)
+			require.NoError(t, listErr)
+			require.Len(t, candidates, tc.wantCandidates)
+			require.Len(t, contents, tc.wantContents)
+			if tc.wantContent != "" {
+				require.Equal(t, tc.wantContent, contents[0].Content.Content)
+				require.Nil(t, contents[0].DeletedAt)
+			}
+		})
+	}
+}
+
+func TestCreatePipelineRootSerializationRetryIsIdempotent(t *testing.T) {
+	url := os.Getenv("PRISM_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set PRISM_TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	require.NoError(t, err)
+	defer pool.Close()
+	require.NoError(t, pool.Ping(ctx))
+
+	abbr := "it" + uuid.NewString()[:12]
+	inputID, rootID := uuid.New(), uuid.New()
+	require.NoError(t, insertTestSource(ctx, pool, abbr))
+	t.Cleanup(func() { cleanupPipelineSnapshotTest(ctx, pool, inputID, rootID, abbr) })
+	require.NoError(t, insertCompletedPipelineInput(ctx, pool, inputID, abbr, true))
+
+	arg := pipelineRootParams(rootID, inputID, abbr, "serialization-"+uuid.NewString())
+	snapshot := make(chan struct{})
+	resume := make(chan struct{})
+	failingRuntime := &PGPipelineRuntime{db: pool, q: New(pool), afterPipelineSnapshot: func(context.Context) error {
+		close(snapshot)
+		<-resume
+		return nil
+	}}
+	result := make(chan error, 1)
+	go func() {
+		_, createErr := failingRuntime.CreatePipelineRoot(ctx, arg)
+		result <- createErr
+	}()
+	<-snapshot
+	_, err = pool.Exec(ctx, `UPDATE batches SET updated_at = NOW() WHERE id = $1`, inputID)
+	require.NoError(t, err)
+	close(resume)
+	err = <-result
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr)
+	require.Equal(t, "40001", pgErr.Code)
+
+	created, err := NewPostgresRepository(pool).PipelineRuntime().CreatePipelineRoot(ctx, arg)
+	require.NoError(t, err)
+	require.NotEqual(t, uuid.Nil, created.ID)
+	var roots, initTasks, candidates, contents int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM batches WHERE id = $1`, rootID).Scan(&roots))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM tasks WHERE batch_id = $1 AND kind = 'PIPELINE_INIT'`, rootID).Scan(&initTasks))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM pipeline_input_candidates WHERE root_batch_id = $1`, rootID).Scan(&candidates))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT COUNT(*) FROM pipeline_input_contents WHERE root_batch_id = $1`, rootID).Scan(&contents))
+	require.Equal(t, 1, roots)
+	require.Equal(t, 1, initTasks)
+	require.Equal(t, 1, candidates)
+	require.Equal(t, 1, contents)
+}
+
+func insertCompletedPipelineInput(ctx context.Context, pool *pgxpool.Pool, inputID uuid.UUID, abbr string, withContent bool) error {
+	if _, err := pool.Exec(ctx, `INSERT INTO batches (id, source_type, trace_id, completed_at, succeeded) VALUES ($1, 'PARTY', 'snapshot-test', NOW(), TRUE)`, inputID); err != nil {
+		return err
+	}
+	candidateID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO candidates (id, batch_id, source_abbr, trace_id, fingerprint, url, title, ingestion_method) VALUES ($1, $2, $3, 'snapshot-test', $4, $5, 'Original candidate', 'DIRECTORY')`, candidateID, inputID, abbr, uuid.NewString()[:32], "https://example.test/candidate/"+candidateID.String()); err != nil {
+		return err
+	}
+	if !withContent {
+		return nil
+	}
+	_, err := pool.Exec(ctx, `INSERT INTO contents (id, batch_id, type, source_abbr, candidate_id, url, title, content, trace_id, published_at, fetched_at) VALUES ($1, $2, 'ARTICLE', $3, $4, $5, 'Original content', 'original body', 'snapshot-test', NOW(), NOW())`, uuid.New(), inputID, abbr, candidateID, "https://example.test/content/"+candidateID.String())
+	return err
+}
+
+func cleanupPipelineSnapshotTest(ctx context.Context, pool *pgxpool.Pool, inputID, rootID uuid.UUID, abbr string) {
+	_, _ = pool.Exec(ctx, `DELETE FROM pipeline_input_candidates WHERE root_batch_id = $1`, rootID)
+	_, _ = pool.Exec(ctx, `DELETE FROM pipeline_input_contents WHERE root_batch_id = $1`, rootID)
+	_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE batch_id = $1`, rootID)
+	_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id = $1`, rootID)
+	cleanupCollectionBatch(ctx, pool, inputID, abbr)
+}
+
+func pipelineRootParams(rootID, inputID uuid.UUID, abbr, idempotencyKey string) repo.CreateTaskParams {
+	logicalKey := "pipeline:init"
+	return repo.CreateTaskParams{
+		BatchID: rootID, ParentBatchID: &inputID, Kind: repo.TaskKindPipelineInit, LogicalKey: &logicalKey,
+		SourceType: repo.SourceTypeParty, SourceAbbr: abbr, URL: "https://pipeline.test/root/" + rootID.String(), TraceID: "snapshot-test",
+		PipelineDefinitionHash:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		PipelineIdempotencyKey:     &idempotencyKey,
+		PipelineRequestFingerprint: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	}
 }
 
 func TestPipelineRootRejectsFailedInput(t *testing.T) {
@@ -644,6 +966,54 @@ func TestPipelinePublishFailureRemainsRetryable(t *testing.T) {
 	}
 }
 
+func TestInitializePipelineStageFinishesEmptyChildImmediately(t *testing.T) {
+	url := os.Getenv("PRISM_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set PRISM_TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	require.NoError(t, err)
+	defer pool.Close()
+	require.NoError(t, pool.Ping(ctx))
+	abbr := "it" + uuid.NewString()[:12]
+	rootID, ownerID, childID := uuid.New(), uuid.New(), uuid.New()
+	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'PARTY', 'https://example.test')`, abbr, abbr)
+	require.NoError(t, err)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE batch_id = $1`, rootID)
+		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id IN ($1, $2)`, childID, rootID)
+		_, _ = pool.Exec(ctx, `DELETE FROM sources WHERE abbr = $1`, abbr)
+	}()
+	_, err = pool.Exec(ctx, `INSERT INTO batches (id, source_type, trace_id, purpose) VALUES ($1, 'PARTY', 'empty-child', 'ANALYZER_PIPELINE_ROOT')`, rootID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO tasks (id, batch_id, kind, source_type, source_abbr, url, trace_id) VALUES ($1, $2, 'PIPELINE_STAGE', 'PARTY', $3, 'https://pipeline.test/empty-owner', 'empty-child')`, ownerID, rootID, abbr)
+	require.NoError(t, err)
+
+	runtime := NewPostgresRepository(pool).PipelineRuntime()
+	gotChildID, err := runtime.InitializePipelineStage(ctx, repo.InitializePipelineStageParams{
+		ChildBatchID: childID, ParentBatchID: rootID, ParentTaskID: ownerID,
+		SourceType: repo.SourceTypeParty, TraceID: "empty-child", NSubtasks: 0,
+	})
+	require.NoError(t, err)
+	require.Equal(t, childID, gotChildID)
+	var completed bool
+	var succeeded bool
+	require.NoError(t, pool.QueryRow(ctx, `SELECT completed_at IS NOT NULL, succeeded FROM batches WHERE id = $1`, childID).Scan(&completed, &succeeded))
+	require.True(t, completed)
+	require.True(t, succeeded)
+	ready, err := runtime.ListReadyPipelineBatches(ctx, 100)
+	require.NoError(t, err)
+	found := false
+	for _, batch := range ready {
+		if batch.ID == childID {
+			found = true
+			break
+		}
+	}
+	require.True(t, found)
+}
+
 func TestPipelineRootFailureConvergesAndFinalizes(t *testing.T) {
 	url := os.Getenv("PRISM_TEST_DATABASE_URL")
 	if url == "" {
@@ -655,17 +1025,18 @@ func TestPipelineRootFailureConvergesAndFinalizes(t *testing.T) {
 	defer pool.Close()
 	require.NoError(t, pool.Ping(ctx))
 	abbr := "it" + uuid.NewString()[:12]
-	rootID := uuid.New()
+	inputID, rootID := uuid.New(), uuid.New()
 	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'PARTY', 'https://example.test')`, abbr, abbr)
 	require.NoError(t, err)
 	defer func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE batch_id = $1`, rootID)
-		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id = $1`, rootID)
+		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id IN ($1, $2)`, rootID, inputID)
 		_, _ = pool.Exec(ctx, `DELETE FROM sources WHERE abbr = $1`, abbr)
 	}()
 	r := NewPostgresRepository(pool)
 	tasks := r.Tasks()
-	require.NoError(t, tasks.EnsureBatch(ctx, repo.EnsureBatchParams{BatchID: rootID, SourceType: repo.SourceTypeParty, TraceID: "failure-test"}))
+	require.NoError(t, tasks.EnsureBatch(ctx, repo.EnsureBatchParams{BatchID: inputID, SourceType: repo.SourceTypeParty, TraceID: "failure-input"}))
+	require.NoError(t, tasks.EnsureBatch(ctx, repo.EnsureBatchParams{BatchID: rootID, ParentBatchID: &inputID, SourceType: repo.SourceTypeParty, TraceID: "failure-test"}))
 	_, err = pool.Exec(ctx, `UPDATE batches SET purpose = 'ANALYZER_PIPELINE_ROOT' WHERE id = $1`, rootID)
 	require.NoError(t, err)
 	initTask, err := tasks.CreateTask(ctx, repo.CreateTaskParams{
@@ -673,10 +1044,12 @@ func TestPipelineRootFailureConvergesAndFinalizes(t *testing.T) {
 		URL: "https://pipeline.test/failure/" + rootID.String(), TraceID: "failure-test",
 	})
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `UPDATE tasks SET status = 'FAILED', failure_message = 'invalid pipeline' WHERE id = $1`, initTask.ID)
+	_, err = pool.Exec(ctx, `UPDATE tasks SET status = 'RUNNING', retry_count = 1 WHERE id = $1`, initTask.ID)
 	require.NoError(t, err)
 	runtime := r.PipelineRuntime()
-	require.NoError(t, runtime.ConvergePipelineFailure(ctx, initTask.ID, rootID, "invalid pipeline"))
+	terminal, err := runtime.FailPipelineTask(ctx, initTask.ID, rootID, 1, "invalid pipeline")
+	require.NoError(t, err)
+	require.True(t, terminal)
 	var nSubtasks int32
 	require.NoError(t, pool.QueryRow(ctx, `SELECT n_subtasks FROM batches WHERE id = $1`, rootID).Scan(&nSubtasks))
 	require.Equal(t, int32(1), nSubtasks)
@@ -684,6 +1057,52 @@ func TestPipelineRootFailureConvergesAndFinalizes(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, roots, 1)
 	require.Equal(t, int64(1), mustMarkRoot(t, runtime, rootID))
+}
+
+func TestFailPipelineInitRollsBackWhenRootFailureCannotBeRecorded(t *testing.T) {
+	url := os.Getenv("PRISM_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("set PRISM_TEST_DATABASE_URL to run PostgreSQL integration tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	require.NoError(t, err)
+	defer pool.Close()
+	require.NoError(t, pool.Ping(ctx))
+	abbr := "it" + uuid.NewString()[:12]
+	inputID, rootID, initID := uuid.New(), uuid.New(), uuid.New()
+	triggerName := "reject_root_failure_" + uuid.NewString()[:8]
+	functionName := triggerName + "_fn"
+	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'PARTY', 'https://example.test')`, abbr, abbr)
+	require.NoError(t, err)
+	defer func() {
+		_, _ = pool.Exec(ctx, `DROP TRIGGER IF EXISTS `+triggerName+` ON batches`)
+		_, _ = pool.Exec(ctx, `DROP FUNCTION IF EXISTS `+functionName+`()`)
+		_, _ = pool.Exec(ctx, `DELETE FROM tasks WHERE batch_id = $1`, rootID)
+		_, _ = pool.Exec(ctx, `DELETE FROM batches WHERE id IN ($1, $2)`, rootID, inputID)
+		_, _ = pool.Exec(ctx, `DELETE FROM sources WHERE abbr = $1`, abbr)
+	}()
+	r := NewPostgresRepository(pool)
+	tasks := r.Tasks()
+	require.NoError(t, tasks.EnsureBatch(ctx, repo.EnsureBatchParams{BatchID: inputID, SourceType: repo.SourceTypeParty, TraceID: "rollback-input"}))
+	require.NoError(t, tasks.EnsureBatch(ctx, repo.EnsureBatchParams{BatchID: rootID, ParentBatchID: &inputID, SourceType: repo.SourceTypeParty, TraceID: "rollback-test"}))
+	_, err = pool.Exec(ctx, `UPDATE batches SET purpose = 'ANALYZER_PIPELINE_ROOT' WHERE id = $1`, rootID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO tasks (id, batch_id, kind, source_type, source_abbr, url, trace_id, status, retry_count) VALUES ($1, $2, 'PIPELINE_INIT', 'PARTY', $3, 'https://pipeline.test/rollback', 'rollback-test', 'RUNNING', 1)`, initID, rootID, abbr)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `CREATE FUNCTION `+functionName+`() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject root failure'; END; $$`)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `CREATE TRIGGER `+triggerName+` BEFORE UPDATE OF n_subtasks ON batches FOR EACH ROW WHEN (NEW.id = '`+rootID.String()+`'::uuid) EXECUTE FUNCTION `+functionName+`()`)
+	require.NoError(t, err)
+
+	_, err = r.PipelineRuntime().FailPipelineTask(ctx, initID, rootID, 1, "invalid pipeline")
+	require.Error(t, err)
+	var status string
+	var nSubtasks *int32
+	require.NoError(t, pool.QueryRow(ctx, `SELECT status FROM tasks WHERE id = $1`, initID).Scan(&status))
+	require.NoError(t, pool.QueryRow(ctx, `SELECT n_subtasks FROM batches WHERE id = $1`, rootID).Scan(&nSubtasks))
+	require.Equal(t, "RUNNING", status)
+	require.Nil(t, nSubtasks)
 }
 
 func mustMarkRoot(t *testing.T, runtime repo.PipelineRuntime, batchID uuid.UUID) int64 {

@@ -54,8 +54,8 @@ func TestHandlerStagesReuseSnapshotAcrossMutationAndReplay(t *testing.T) {
 	tasks.EXPECT().GetTaskByID(mock.Anything, task1.ID).Return(task1, nil).Times(2)
 	tasks.EXPECT().GetTaskByID(mock.Anything, task2.ID).Return(task2, nil).Once()
 	runtime.EXPECT().GetPipelineBatch(mock.Anything, rootID).Return(repo.Batch{ID: rootID, PipelineInputSnapshotAt: &now}, nil).Times(3)
-	runtime.EXPECT().ListPipelineInputCandidates(mock.Anything, rootID).Return([]repo.PipelineInputMember{{ID: candidateID, SourceAbbr: "dpp"}}, nil).Times(3)
-	runtime.EXPECT().ListPipelineInputContents(mock.Anything, rootID).Return([]repo.PipelineInputMember{{ID: contentID, SourceAbbr: "dpp"}}, nil).Times(3)
+	runtime.EXPECT().ListPipelineInputCandidates(mock.Anything, rootID).Return([]repo.PipelineInputCandidate{{Candidate: repo.Candidate{ID: candidateID, SourceAbbr: "dpp"}}}, nil).Times(3)
+	runtime.EXPECT().ListPipelineInputContents(mock.Anything, rootID).Return([]repo.PipelineInputContent{{Content: repo.Content{ID: contentID, SourceAbbr: "dpp"}}}, nil).Times(3)
 	runtime.EXPECT().InitializePipelineStage(mock.Anything, mock.Anything).Return(uuid.New(), nil).Times(3)
 
 	for _, task := range []repo.Task{task1, task2, task1} {
@@ -97,8 +97,8 @@ func TestHandlerStageUsesImmutablePipelineSnapshot(t *testing.T) {
 	runtime.EXPECT().GetPipelineBatch(mock.Anything, rootID).Return(repo.Batch{
 		ID: rootID, Purpose: "ANALYZER_PIPELINE_ROOT", PipelineInputSnapshotAt: &now,
 	}, nil).Once()
-	runtime.EXPECT().ListPipelineInputCandidates(mock.Anything, rootID).Return([]repo.PipelineInputMember{{ID: candidateID, SourceAbbr: "dpp"}}, nil).Once()
-	runtime.EXPECT().ListPipelineInputContents(mock.Anything, rootID).Return([]repo.PipelineInputMember{{ID: contentID, SourceAbbr: "dpp"}}, nil).Once()
+	runtime.EXPECT().ListPipelineInputCandidates(mock.Anything, rootID).Return([]repo.PipelineInputCandidate{{Candidate: repo.Candidate{ID: candidateID, SourceAbbr: "dpp", Title: "Snapshot candidate", Metadata: []byte(`{"snapshot":true}`)}}}, nil).Once()
+	runtime.EXPECT().ListPipelineInputContents(mock.Anything, rootID).Return([]repo.PipelineInputContent{{Content: repo.Content{ID: contentID, SourceAbbr: "dpp", Content: "Snapshot content", Metadata: []byte(`{"snapshot":true}`)}}}, nil).Once()
 	runtime.EXPECT().InitializePipelineStage(mock.Anything, mock.MatchedBy(func(arg repo.InitializePipelineStageParams) bool {
 		return arg.ParentBatchID == rootID && arg.ParentTaskID == taskID && arg.NSubtasks == 1
 	})).Return(uuid.New(), nil).Once()
@@ -110,6 +110,8 @@ func TestHandlerStageUsesImmutablePipelineSnapshot(t *testing.T) {
 	require.ElementsMatch(t, []uuid.UUID{contentID}, builder.input.ContentIDs)
 	require.Equal(t, "dpp", builder.input.CandidateSourceAbbr[candidateID])
 	require.Equal(t, "dpp", builder.input.ContentSourceAbbr[contentID])
+	require.Equal(t, "Snapshot candidate", builder.input.CandidateSnapshots[candidateID].Title)
+	require.JSONEq(t, `{"snapshot":true}`, string(builder.input.ContentSnapshots[contentID].Metadata))
 }
 
 func TestHandlerStageRejectsMissingSnapshotWithoutLiveFallback(t *testing.T) {
@@ -129,11 +131,33 @@ func TestHandlerStageRejectsMissingSnapshotWithoutLiveFallback(t *testing.T) {
 		ID: taskID, BatchID: rootID, Kind: repo.TaskKindPipelineStage, Status: repo.TaskStatusRunning, Payload: payload,
 	}, nil).Once()
 	runtime.EXPECT().GetPipelineBatch(mock.Anything, rootID).Return(repo.Batch{ID: rootID}, nil).Once()
-	reporter.EXPECT().FailTask(mock.Anything, taskID, 3, mock.Anything).Return(nil).Once()
-	tasks.EXPECT().GetTaskByID(mock.Anything, taskID).Return(repo.Task{ID: taskID, BatchID: rootID, Status: repo.TaskStatusPending}, nil).Once()
+	runtime.EXPECT().FailPipelineTask(mock.Anything, taskID, rootID, 3, mock.Anything).Return(false, nil).Once()
 
 	ack, err := handler.HandleTaskSignal(context.Background(), message.TaskSignal{TaskID: taskID, BatchID: rootID, Kind: repo.TaskKindPipelineStage}, PipelineSpec{})
 	require.ErrorIs(t, err, repo.ErrPipelineSnapshotMissing)
+	require.True(t, ack)
+}
+
+func TestHandlerInitFailureUsesAtomicFailureTransition(t *testing.T) {
+	tasks := mocks.NewMockTasks(t)
+	runtime := mocks.NewMockPipelineRuntime(t)
+	reporter := mocks.NewMockScheduler(t)
+	registry, err := NewRegistry(&captureWorkBuilder{})
+	require.NoError(t, err)
+	coordinator, err := NewCoordinator(tasks, runtime, reporter, registry)
+	require.NoError(t, err)
+	handler, err := NewHandler(tasks, reporter, runtime, coordinator, 3, "expected")
+	require.NoError(t, err)
+
+	rootID, taskID := uuid.New(), uuid.New()
+	tasks.EXPECT().GetTaskByID(mock.Anything, taskID).Return(repo.Task{
+		ID: taskID, BatchID: rootID, Kind: repo.TaskKindPipelineInit, Status: repo.TaskStatusRunning,
+		Payload: json.RawMessage(`{"pipeline_definition_hash":"different"}`),
+	}, nil).Once()
+	runtime.EXPECT().FailPipelineTask(mock.Anything, taskID, rootID, 3, mock.Anything).Return(true, nil).Once()
+
+	ack, err := handler.HandleTaskSignal(context.Background(), message.TaskSignal{TaskID: taskID, BatchID: rootID, Kind: repo.TaskKindPipelineInit}, PipelineSpec{})
+	require.Error(t, err)
 	require.True(t, ack)
 }
 

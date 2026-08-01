@@ -69,6 +69,9 @@ func LoadReader(reader io.Reader, filename string) (PipelineSpec, error) {
 	if err := spec.Validate(filename); err != nil {
 		return PipelineSpec{}, err
 	}
+	if _, err := compile(spec, filename); err != nil {
+		return PipelineSpec{}, err
+	}
 	return spec, nil
 }
 
@@ -109,7 +112,11 @@ func (s PipelineSpec) Validate(filename string) error {
 
 // Compile validates spec and returns its stages in deterministic topological order.
 func Compile(spec PipelineSpec) ([]StageSpec, error) {
-	if err := spec.Validate("<pipeline>"); err != nil {
+	return compile(spec, "<pipeline>")
+}
+
+func compile(spec PipelineSpec, filename string) ([]StageSpec, error) {
+	if err := spec.Validate(filename); err != nil {
 		return nil, err
 	}
 
@@ -151,7 +158,7 @@ func Compile(spec PipelineSpec) ([]StageSpec, error) {
 			}
 		}
 		sort.Strings(remaining)
-		return nil, fmt.Errorf("%w: %s", ErrCycle, strings.Join(remaining, ", "))
+		return nil, fmt.Errorf("%w: %s: %s", ErrCycle, displayFilename(filename), strings.Join(remaining, ", "))
 	}
 	return ordered, nil
 }

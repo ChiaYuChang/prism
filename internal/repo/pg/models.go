@@ -770,15 +770,39 @@ type Model struct {
 }
 
 type PipelineInputCandidate struct {
-	RootBatchID uuid.UUID `db:"root_batch_id" json:"root_batch_id"`
-	CandidateID uuid.UUID `db:"candidate_id" json:"candidate_id"`
-	SourceAbbr  string    `db:"source_abbr" json:"source_abbr"`
+	RootBatchID     uuid.UUID                `db:"root_batch_id" json:"root_batch_id"`
+	CandidateID     uuid.UUID                `db:"candidate_id" json:"candidate_id"`
+	BatchID         uuid.UUID                `db:"batch_id" json:"batch_id"`
+	Fingerprint     string                   `db:"fingerprint" json:"fingerprint"`
+	SourceAbbr      string                   `db:"source_abbr" json:"source_abbr"`
+	Title           string                   `db:"title" json:"title"`
+	Url             string                   `db:"url" json:"url"`
+	Description     pgtype.Text              `db:"description" json:"description"`
+	PublishedAt     pgtype.Timestamptz       `db:"published_at" json:"published_at"`
+	DiscoveredAt    pgtype.Timestamptz       `db:"discovered_at" json:"discovered_at"`
+	TraceID         string                   `db:"trace_id" json:"trace_id"`
+	IngestionMethod CandidateIngestionMethod `db:"ingestion_method" json:"ingestion_method"`
+	Metadata        []byte                   `db:"metadata" json:"metadata"`
+	CreatedAt       pgtype.Timestamptz       `db:"created_at" json:"created_at"`
 }
 
 type PipelineInputContent struct {
-	RootBatchID uuid.UUID `db:"root_batch_id" json:"root_batch_id"`
-	ContentID   uuid.UUID `db:"content_id" json:"content_id"`
-	SourceAbbr  string    `db:"source_abbr" json:"source_abbr"`
+	RootBatchID uuid.UUID          `db:"root_batch_id" json:"root_batch_id"`
+	ContentID   uuid.UUID          `db:"content_id" json:"content_id"`
+	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Type        ContentType        `db:"type" json:"type"`
+	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
+	CandidateID pgtype.UUID        `db:"candidate_id" json:"candidate_id"`
+	Url         string             `db:"url" json:"url"`
+	Title       string             `db:"title" json:"title"`
+	Content     string             `db:"content" json:"content"`
+	Author      pgtype.Text        `db:"author" json:"author"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	PublishedAt pgtype.Timestamptz `db:"published_at" json:"published_at"`
+	FetchedAt   pgtype.Timestamptz `db:"fetched_at" json:"fetched_at"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DeletedAt   pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	Metadata    []byte             `db:"metadata" json:"metadata"`
 }
 
 // Prompt asset registry. hash = SHA-256(body), used to pin extraction provenance.

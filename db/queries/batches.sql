@@ -27,16 +27,16 @@ WHERE b.completed_at IS NULL
       WHERE t.batch_id = b.id
         AND t.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
   )
-  AND (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id) > 0
-  AND (
-      (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id)
-          <= (SELECT COUNT(*) FROM contents ct WHERE ct.batch_id = b.id)
-      OR EXISTS (
-          SELECT 1 FROM tasks t
-          WHERE t.batch_id = b.id
-            AND t.status IN ('FAILED', 'CANCELLED')
-      )
-  )
+   AND (
+       EXISTS (
+           SELECT 1 FROM tasks t
+           WHERE t.batch_id = b.id
+             AND t.status IN ('FAILED', 'CANCELLED')
+       )
+       OR (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id) = 0
+       OR (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id)
+           <= (SELECT COUNT(*) FROM contents ct WHERE ct.batch_id = b.id)
+   )
 ORDER BY b.created_at ASC
 LIMIT $2;
 
@@ -127,27 +127,40 @@ WHERE id = sqlc.arg(root_batch_id)
   AND pipeline_input_snapshot_at IS NULL;
 
 -- name: SnapshotPipelineCandidates :exec
-INSERT INTO pipeline_input_candidates (root_batch_id, candidate_id, source_abbr)
-SELECT sqlc.arg(root_batch_id), c.id, c.source_abbr
+INSERT INTO pipeline_input_candidates (
+    root_batch_id, candidate_id, batch_id, fingerprint, source_abbr, title, url,
+    description, published_at, discovered_at, trace_id, ingestion_method, metadata, created_at
+)
+SELECT
+    sqlc.arg(root_batch_id), c.id, c.batch_id, c.fingerprint, c.source_abbr, c.title, c.url,
+    c.description, c.published_at, c.discovered_at, c.trace_id, c.ingestion_method, c.metadata, c.created_at
 FROM candidates c
 WHERE c.batch_id = sqlc.arg(input_batch_id)
 ON CONFLICT (root_batch_id, candidate_id) DO NOTHING;
 
 -- name: SnapshotPipelineContents :exec
-INSERT INTO pipeline_input_contents (root_batch_id, content_id, source_abbr)
-SELECT sqlc.arg(root_batch_id), c.id, c.source_abbr
+INSERT INTO pipeline_input_contents (
+    root_batch_id, content_id, batch_id, type, source_abbr, candidate_id, url, title,
+    content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+)
+SELECT
+    sqlc.arg(root_batch_id), c.id, c.batch_id, c.type, c.source_abbr, c.candidate_id, c.url, c.title,
+    c.content, c.author, c.trace_id, c.published_at, c.fetched_at, c.created_at, c.deleted_at, c.metadata
 FROM contents c
 WHERE c.batch_id = sqlc.arg(input_batch_id)
+  AND c.deleted_at IS NULL
 ON CONFLICT (root_batch_id, content_id) DO NOTHING;
 
 -- name: ListPipelineInputCandidates :many
-SELECT candidate_id, source_abbr
+SELECT candidate_id, batch_id, fingerprint, source_abbr, title, url, description,
+       published_at, discovered_at, trace_id, ingestion_method::text AS ingestion_method, metadata, created_at
 FROM pipeline_input_candidates
 WHERE root_batch_id = $1
 ORDER BY candidate_id;
 
 -- name: ListPipelineInputContents :many
-SELECT content_id, source_abbr
+SELECT content_id, batch_id, type, source_abbr, candidate_id, url, title, content,
+       author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
 FROM pipeline_input_contents
 WHERE root_batch_id = $1
 ORDER BY content_id;
@@ -214,9 +227,12 @@ SET completed_at = NOW(),
     succeeded = sqlc.arg(succeeded),
     updated_at = NOW(),
     trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF(sqlc.arg(trace_id), ''))
-WHERE id = sqlc.arg(batch_id)
+WHERE batches.id = sqlc.arg(batch_id)
   AND purpose = 'ANALYZER_PIPELINE_STAGE'
-  AND completed_at IS NULL;
+  AND completed_at IS NULL
+  AND n_subtasks IS NOT NULL
+  AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = batches.id) = n_subtasks
+  AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = batches.id AND t.status IN ('COMPLETED', 'FAILED', 'CANCELLED')) = n_subtasks;
 
 -- name: MarkPipelineRootFinished :execrows
 UPDATE batches
@@ -224,10 +240,13 @@ SET completed_at = NOW(),
     succeeded = sqlc.arg(succeeded),
     updated_at = NOW(),
     trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF(sqlc.arg(trace_id), ''))
-WHERE id = sqlc.arg(batch_id)
+WHERE batches.id = sqlc.arg(batch_id)
   AND purpose = 'ANALYZER_PIPELINE_ROOT'
   AND parent_task_id IS NULL
-  AND completed_at IS NULL;
+  AND completed_at IS NULL
+  AND n_subtasks IS NOT NULL
+  AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = batches.id) = n_subtasks
+  AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = batches.id AND t.status IN ('COMPLETED', 'FAILED', 'CANCELLED')) = n_subtasks;
 
 -- name: SetPipelineRootFailure :exec
 UPDATE batches

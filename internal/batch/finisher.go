@@ -48,6 +48,19 @@ func (f *Finisher) Detect(ctx context.Context, limit int32) (int, error) {
 		if rows == 0 {
 			continue
 		}
+	}
+	// completed_at with pipeline_published_at NULL is the transactional outbox:
+	// scan it independently so a prior publish failure remains retryable.
+	ready, err := f.runtime.ListReadyPipelineBatches(ctx, limit)
+	if err != nil {
+		return count, fmt.Errorf("list ready pipeline batches: %w", err)
+	}
+	for _, batch := range ready {
+		succeeded := batch.Succeeded != nil && *batch.Succeeded
+		traceID := ""
+		if batch.TraceID != nil {
+			traceID = *batch.TraceID
+		}
 		rootID := batch.ID
 		if batch.ParentID != nil {
 			rootID = *batch.ParentID

@@ -20,6 +20,7 @@ func TestLoadValidation(t *testing.T) {
 		{name: "duplicate dependency", yaml: "pipeline:\n  - name: child\n    depends_on: [root, root]\n  - name: root\n", want: `stage "child" has duplicate dependency "root"`},
 		{name: "malformed YAML", yaml: "pipeline: [\n", want: "decode:"},
 		{name: "unknown top-level field", yaml: "stages: []\n", want: "field stages not found"},
+		{name: "cycle", yaml: "pipeline:\n  - name: a\n    depends_on: [b]\n  - name: b\n    depends_on: [a]\n", want: "pipeline dependency cycle"},
 	}
 
 	for _, tt := range tests {
@@ -31,7 +32,11 @@ func TestLoadValidation(t *testing.T) {
 			if !strings.Contains(err.Error(), "configs/test-pipeline.yaml") {
 				t.Fatalf("Load() error = %v, want filename", err)
 			}
-			if !errors.Is(err, ErrInvalidSpec) {
+			if tt.name == "cycle" {
+				if !errors.Is(err, ErrCycle) {
+					t.Fatalf("Load() error = %v, want ErrCycle", err)
+				}
+			} else if !errors.Is(err, ErrInvalidSpec) {
 				t.Fatalf("Load() error = %v, want ErrInvalidSpec", err)
 			}
 		})

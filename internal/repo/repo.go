@@ -147,8 +147,8 @@ type Pipeline interface {
 
 type PipelineRuntime interface {
 	GetPipelineBatch(ctx context.Context, batchID uuid.UUID) (Batch, error)
-	ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]PipelineInputMember, error)
-	ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]PipelineInputMember, error)
+	ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]PipelineInputCandidate, error)
+	ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]PipelineInputContent, error)
 	InitializePipeline(ctx context.Context, arg InitializePipelineParams) error
 	InitializePipelineStage(ctx context.Context, arg InitializePipelineStageParams) (uuid.UUID, error)
 	CreatePipelineRoot(ctx context.Context, arg CreateTaskParams) (Task, error)
@@ -157,6 +157,9 @@ type PipelineRuntime interface {
 	SetNSubtasks(ctx context.Context, batchID uuid.UUID, count int32) (Batch, error)
 	MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
 	MarkRootBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
+	// FailPipelineTask records the task failure and converges its root state in
+	// one transaction. terminal reports whether the task exhausted its retries.
+	FailPipelineTask(ctx context.Context, taskID, rootBatchID uuid.UUID, retryMax int, reason string) (terminal bool, err error)
 	ConvergePipelineFailure(ctx context.Context, taskID, rootBatchID uuid.UUID, reason string) error
 	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
 	MarkPipelinePublished(ctx context.Context, batchID uuid.UUID) error

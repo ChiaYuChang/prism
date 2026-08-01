@@ -55,17 +55,8 @@ func (h *Handler) HandleTaskSignal(ctx context.Context, signal message.TaskSigna
 		return true, nil
 	}
 	if err := h.handleTask(ctx, task, signal.Kind, spec); err != nil {
-		if failErr := h.reporter.FailTask(ctx, task.ID, h.retryMax, err.Error()); failErr != nil {
-			return false, fmt.Errorf("handle pipeline task %s: %w; mark failed: %w", task.ID, err, failErr)
-		}
-		failedTask, getErr := h.tasks.GetTaskByID(ctx, task.ID)
-		if getErr != nil {
-			return false, fmt.Errorf("refresh failed pipeline task %s: %w", task.ID, getErr)
-		}
-		if failedTask.Status == repo.TaskStatusFailed {
-			if convergeErr := h.runtime.ConvergePipelineFailure(ctx, task.ID, task.BatchID, err.Error()); convergeErr != nil {
-				return false, fmt.Errorf("converge failed pipeline task %s: %w", task.ID, convergeErr)
-			}
+		if _, failErr := h.runtime.FailPipelineTask(ctx, task.ID, task.BatchID, h.retryMax, err.Error()); failErr != nil {
+			return false, fmt.Errorf("handle pipeline task %s: %w; atomically mark failed: %w", task.ID, err, failErr)
 		}
 		return true, err
 	}
@@ -106,14 +97,18 @@ func (h *Handler) handleTask(ctx context.Context, task repo.Task, kind string, s
 		input := WorkSetInput{
 			CandidateSourceAbbr: make(map[uuid.UUID]string, len(candidates)),
 			ContentSourceAbbr:   make(map[uuid.UUID]string, len(contents)),
+			CandidateSnapshots:  make(map[uuid.UUID]repo.Candidate, len(candidates)),
+			ContentSnapshots:    make(map[uuid.UUID]repo.Content, len(contents)),
 		}
 		for _, candidate := range candidates {
 			input.CandidateIDs = append(input.CandidateIDs, candidate.ID)
 			input.CandidateSourceAbbr[candidate.ID] = candidate.SourceAbbr
+			input.CandidateSnapshots[candidate.ID] = candidate.Candidate
 		}
 		for _, content := range contents {
 			input.ContentIDs = append(input.ContentIDs, content.ID)
 			input.ContentSourceAbbr[content.ID] = content.SourceAbbr
+			input.ContentSnapshots[content.ID] = content.Content
 		}
 		return h.coord.RunStage(ctx, task, input)
 	default:

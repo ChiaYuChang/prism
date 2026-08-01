@@ -24,14 +24,38 @@ CREATE INDEX idx_batches_purpose_completed
 CREATE TABLE pipeline_input_candidates (
     root_batch_id UUID NOT NULL,
     candidate_id UUID NOT NULL,
+    batch_id UUID NOT NULL,
+    fingerprint VARCHAR(64) NOT NULL,
     source_abbr VARCHAR(16) NOT NULL,
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    description TEXT,
+    published_at TIMESTAMPTZ,
+    discovered_at TIMESTAMPTZ NOT NULL,
+    trace_id VARCHAR(100) NOT NULL,
+    ingestion_method candidate_ingestion_method NOT NULL,
+    metadata JSONB,
+    created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (root_batch_id, candidate_id)
 );
 
 CREATE TABLE pipeline_input_contents (
     root_batch_id UUID NOT NULL,
     content_id UUID NOT NULL,
+    batch_id UUID NOT NULL,
+    type content_type NOT NULL,
     source_abbr VARCHAR(16) NOT NULL,
+    candidate_id UUID,
+    url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    author TEXT,
+    trace_id VARCHAR(100) NOT NULL,
+    published_at TIMESTAMPTZ NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    deleted_at TIMESTAMPTZ,
+    metadata JSONB,
     PRIMARY KEY (root_batch_id, content_id)
 );
 
