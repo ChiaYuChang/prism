@@ -3,6 +3,7 @@ SELECT *
 FROM batches
 WHERE completed_at IS NULL
   AND source_type = $1
+  AND purpose = 'COLLECTION'
 ORDER BY created_at ASC
 LIMIT $2;
 
@@ -19,10 +20,23 @@ SELECT id, source_type, trace_id
 FROM batches b
 WHERE b.completed_at IS NULL 
   AND b.source_type = $1
+  AND b.purpose = 'COLLECTION'
   AND EXISTS (SELECT 1 FROM tasks t WHERE t.batch_id = b.id)
-  AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.batch_id = b.id AND t.status != 'COMPLETED')
+  AND NOT EXISTS (
+      SELECT 1 FROM tasks t
+      WHERE t.batch_id = b.id
+        AND t.status NOT IN ('COMPLETED', 'FAILED', 'CANCELLED')
+  )
   AND (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id) > 0
-  AND (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id) <= (SELECT COUNT(*) FROM contents ct WHERE ct.batch_id = b.id)
+  AND (
+      (SELECT COUNT(*) FROM candidates c WHERE c.batch_id = b.id)
+          <= (SELECT COUNT(*) FROM contents ct WHERE ct.batch_id = b.id)
+      OR EXISTS (
+          SELECT 1 FROM tasks t
+          WHERE t.batch_id = b.id
+            AND t.status IN ('FAILED', 'CANCELLED')
+      )
+  )
 ORDER BY b.created_at ASC
 LIMIT $2;
 
@@ -33,9 +47,15 @@ LIMIT $2;
 UPDATE batches
 SET completed_at = NOW(),
     updated_at = NOW(),
-    trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF(sqlc.arg(trace_id), ''))
-WHERE id = $1
-  AND completed_at IS NULL;
+    trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF(sqlc.arg(trace_id), '')),
+    succeeded = NOT EXISTS (
+        SELECT 1 FROM tasks t
+        WHERE t.batch_id = batches.id
+          AND t.status IN ('FAILED', 'CANCELLED')
+    )
+WHERE batches.id = $1
+  AND batches.purpose = 'COLLECTION'
+  AND batches.completed_at IS NULL;
 
 -- name: ListReadyToPublishBatches :many
 SELECT *
@@ -43,6 +63,7 @@ FROM batches
 WHERE completed_at IS NOT NULL
   AND published_at IS NULL
   AND source_type = $1
+  AND purpose = 'COLLECTION'
 ORDER BY completed_at ASC, created_at ASC
 LIMIT $2;
 
@@ -68,14 +89,72 @@ FROM batches
 WHERE id = $1;
 
 -- name: LockBatchForTaskInsert :one
-SELECT id, n_subtasks, completed_at
+SELECT id, n_subtasks, completed_at, succeeded
 FROM batches
 WHERE id = $1
 FOR UPDATE;
 
+-- name: GetPipelineRootByIdempotency :one
+SELECT *
+FROM batches
+WHERE parent_id = sqlc.arg(parent_id)
+  AND purpose = 'ANALYZER_PIPELINE_ROOT'
+  AND pipeline_idempotency_key = sqlc.arg(idempotency_key)
+FOR UPDATE;
+
+-- name: EnsurePipelineRoot :exec
+INSERT INTO batches (
+    id, source_type, trace_id, parent_id, purpose,
+    pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint
+)
+VALUES (
+    sqlc.arg(id), sqlc.arg(source_type), sqlc.arg(trace_id), sqlc.arg(parent_id),
+    'ANALYZER_PIPELINE_ROOT', sqlc.arg(definition_hash),
+    sqlc.narg(idempotency_key), sqlc.arg(request_fingerprint)
+)
+ON CONFLICT (id) DO UPDATE
+SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id),
+    purpose = COALESCE(batches.purpose, EXCLUDED.purpose),
+    pipeline_definition_hash = COALESCE(batches.pipeline_definition_hash, EXCLUDED.pipeline_definition_hash),
+    pipeline_idempotency_key = COALESCE(batches.pipeline_idempotency_key, EXCLUDED.pipeline_idempotency_key),
+    pipeline_request_fingerprint = COALESCE(batches.pipeline_request_fingerprint, EXCLUDED.pipeline_request_fingerprint);
+
+-- name: MarkPipelineInputSnapshot :execrows
+UPDATE batches
+SET pipeline_input_snapshot_at = NOW(), updated_at = NOW()
+WHERE id = sqlc.arg(root_batch_id)
+  AND purpose = 'ANALYZER_PIPELINE_ROOT'
+  AND pipeline_input_snapshot_at IS NULL;
+
+-- name: SnapshotPipelineCandidates :exec
+INSERT INTO pipeline_input_candidates (root_batch_id, candidate_id, source_abbr)
+SELECT sqlc.arg(root_batch_id), c.id, c.source_abbr
+FROM candidates c
+WHERE c.batch_id = sqlc.arg(input_batch_id)
+ON CONFLICT (root_batch_id, candidate_id) DO NOTHING;
+
+-- name: SnapshotPipelineContents :exec
+INSERT INTO pipeline_input_contents (root_batch_id, content_id, source_abbr)
+SELECT sqlc.arg(root_batch_id), c.id, c.source_abbr
+FROM contents c
+WHERE c.batch_id = sqlc.arg(input_batch_id)
+ON CONFLICT (root_batch_id, content_id) DO NOTHING;
+
+-- name: ListPipelineInputCandidates :many
+SELECT candidate_id, source_abbr
+FROM pipeline_input_candidates
+WHERE root_batch_id = $1
+ORDER BY candidate_id;
+
+-- name: ListPipelineInputContents :many
+SELECT content_id, source_abbr
+FROM pipeline_input_contents
+WHERE root_batch_id = $1
+ORDER BY content_id;
+
 -- name: EnsurePipelineChildBatch :one
-INSERT INTO batches (id, source_type, trace_id, parent_id, parent_task_id)
-VALUES (sqlc.arg(id), sqlc.arg(source_type), sqlc.arg(trace_id), sqlc.arg(parent_id), sqlc.arg(parent_task_id))
+INSERT INTO batches (id, source_type, trace_id, parent_id, parent_task_id, purpose)
+VALUES (sqlc.arg(id), sqlc.arg(source_type), sqlc.arg(trace_id), sqlc.arg(parent_id), sqlc.arg(parent_task_id), 'ANALYZER_PIPELINE_STAGE')
 ON CONFLICT (parent_task_id) WHERE parent_task_id IS NOT NULL DO UPDATE
 SET updated_at = batches.updated_at
 RETURNING id;
@@ -87,6 +166,7 @@ FROM batches b
 LEFT JOIN tasks t ON t.batch_id = b.id
 WHERE b.completed_at IS NULL
   AND b.n_subtasks IS NOT NULL
+  AND b.purpose = 'ANALYZER_PIPELINE_STAGE'
   AND b.parent_task_id IS NOT NULL
 GROUP BY b.id
 HAVING COUNT(t.id) = b.n_subtasks
@@ -101,6 +181,7 @@ FROM batches b
 LEFT JOIN tasks t ON t.batch_id = b.id
 WHERE b.completed_at IS NULL
   AND b.n_subtasks IS NOT NULL
+  AND b.purpose = 'ANALYZER_PIPELINE_ROOT'
   AND b.parent_id IS NOT NULL
   AND b.parent_task_id IS NULL
 GROUP BY b.id
@@ -134,6 +215,7 @@ SET completed_at = NOW(),
     updated_at = NOW(),
     trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF(sqlc.arg(trace_id), ''))
 WHERE id = sqlc.arg(batch_id)
+  AND purpose = 'ANALYZER_PIPELINE_STAGE'
   AND completed_at IS NULL;
 
 -- name: MarkPipelineRootFinished :execrows
@@ -143,6 +225,7 @@ SET completed_at = NOW(),
     updated_at = NOW(),
     trace_id = COALESCE(NULLIF(trace_id, ''), NULLIF(sqlc.arg(trace_id), ''))
 WHERE id = sqlc.arg(batch_id)
+  AND purpose = 'ANALYZER_PIPELINE_ROOT'
   AND parent_task_id IS NULL
   AND completed_at IS NULL;
 
@@ -151,6 +234,7 @@ UPDATE batches
 SET n_subtasks = COALESCE(n_subtasks, 1),
     updated_at = NOW()
 WHERE id = $1
+  AND purpose = 'ANALYZER_PIPELINE_ROOT'
   AND parent_task_id IS NULL;
 
 -- name: ListReadyPipelineBatches :many
@@ -159,6 +243,7 @@ FROM batches
 WHERE completed_at IS NOT NULL
   AND n_subtasks IS NOT NULL
   AND pipeline_published_at IS NULL
+  AND purpose = 'ANALYZER_PIPELINE_STAGE'
   AND parent_task_id IS NOT NULL
 ORDER BY completed_at ASC, created_at ASC
 LIMIT $1;

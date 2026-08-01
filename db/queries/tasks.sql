@@ -189,6 +189,13 @@ UPDATE tasks
 WHERE id = sqlc.arg(id)
   AND status = 'RUNNING';
 
+-- name: LinkTaskSuccessor :execrows
+UPDATE tasks
+SET next_task_id = sqlc.arg(successor_id),
+    updated_at = NOW()
+WHERE id = sqlc.arg(predecessor_id)
+  AND (next_task_id IS NULL OR next_task_id = sqlc.arg(successor_id));
+
 -- name: FailTask :exec
 -- A claim increments retry_count before execution, so retry_count is the total
 -- number of attempts. Failed attempts below retry_max are made runnable again.

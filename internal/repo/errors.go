@@ -22,3 +22,19 @@ var ErrPipelineInputNotTerminal = errors.New("pipeline input batch is not termin
 // ErrPipelineInputNotFound is returned when pipeline creation references an
 // unknown source batch.
 var ErrPipelineInputNotFound = errors.New("pipeline input batch not found")
+
+// ErrPipelineInputFailed is returned when a source batch completed with an
+// unsuccessful collection result.
+var ErrPipelineInputFailed = errors.New("pipeline input batch failed")
+
+// ErrPipelineIdempotencyConflict is returned when a key is reused for a
+// semantically different pipeline request.
+var ErrPipelineIdempotencyConflict = errors.New("pipeline idempotency key conflicts with an existing request")
+
+// ErrPipelineSnapshotMissing is returned when a Root has no durable input
+// snapshot available to a stage.
+var ErrPipelineSnapshotMissing = errors.New("pipeline input snapshot is missing")
+
+// ErrPipelinePlanConflict is returned when a retry presents a different
+// compiled stage plan for an already-expanded Root.
+var ErrPipelinePlanConflict = errors.New("pipeline plan conflicts with the existing Root")

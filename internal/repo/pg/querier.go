@@ -39,6 +39,7 @@ type Querier interface {
 	DeleteSource(ctx context.Context, abbr string) (Source, error)
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
 	EnsurePipelineChildBatch(ctx context.Context, arg EnsurePipelineChildBatchParams) (uuid.UUID, error)
+	EnsurePipelineRoot(ctx context.Context, arg EnsurePipelineRootParams) error
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
@@ -65,6 +66,7 @@ type Querier interface {
 	GetLatestPromptVersionByName(ctx context.Context, name string) (GetLatestPromptVersionByNameRow, error)
 	GetModelByID(ctx context.Context, id int16) (Model, error)
 	GetModelByNameAndType(ctx context.Context, arg GetModelByNameAndTypeParams) (Model, error)
+	GetPipelineRootByIdempotency(ctx context.Context, arg GetPipelineRootByIdempotencyParams) (Batch, error)
 	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPromptVersionByIDRow, error)
 	GetPromptVersionByNameAndVersion(ctx context.Context, arg GetPromptVersionByNameAndVersionParams) (GetPromptVersionByNameAndVersionRow, error)
 	GetRootToken(ctx context.Context) (Token, error)
@@ -78,6 +80,7 @@ type Querier interface {
 	// items in COMPLETED / FAILED / ALREADY_COMPLETE).
 	GetUserFetchProgress(ctx context.Context, fetchID uuid.UUID) (GetUserFetchProgressRow, error)
 	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
+	LinkTaskSuccessor(ctx context.Context, arg LinkTaskSuccessorParams) (int64, error)
 	ListBatches(ctx context.Context, arg ListBatchesParams) ([]Batch, error)
 	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
 	ListCandidateEmbeddingsGemma2025(ctx context.Context, arg ListCandidateEmbeddingsGemma2025Params) ([]ListCandidateEmbeddingsGemma2025Row, error)
@@ -91,6 +94,8 @@ type Querier interface {
 	ListEntities(ctx context.Context, arg ListEntitiesParams) ([]Entity, error)
 	ListModels(ctx context.Context, arg ListModelsParams) ([]Model, error)
 	ListPendingCompletionBatches(ctx context.Context, arg ListPendingCompletionBatchesParams) ([]Batch, error)
+	ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]ListPipelineInputCandidatesRow, error)
+	ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]ListPipelineInputContentsRow, error)
 	ListPromptVersions(ctx context.Context, arg ListPromptVersionsParams) ([]ListPromptVersionsRow, error)
 	ListPromptVersionsByKey(ctx context.Context, arg ListPromptVersionsByKeyParams) ([]ListPromptVersionsByKeyRow, error)
 	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
@@ -112,6 +117,7 @@ type Querier interface {
 	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) (int64, error)
 	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
 	MarkPipelineBatchFinished(ctx context.Context, arg MarkPipelineBatchFinishedParams) (int64, error)
+	MarkPipelineInputSnapshot(ctx context.Context, rootBatchID uuid.UUID) (int64, error)
 	MarkPipelinePublished(ctx context.Context, id uuid.UUID) error
 	MarkPipelineRootFinished(ctx context.Context, arg MarkPipelineRootFinishedParams) (int64, error)
 	MarkScheduleError(ctx context.Context, arg MarkScheduleErrorParams) error
@@ -144,6 +150,8 @@ type Querier interface {
 	SearchContentsByVector(ctx context.Context, arg SearchContentsByVectorParams) ([]SearchContentsByVectorRow, error)
 	SetBatchNSubtasks(ctx context.Context, arg SetBatchNSubtasksParams) (SetBatchNSubtasksRow, error)
 	SetPipelineRootFailure(ctx context.Context, id uuid.UUID) error
+	SnapshotPipelineCandidates(ctx context.Context, arg SnapshotPipelineCandidatesParams) error
+	SnapshotPipelineContents(ctx context.Context, arg SnapshotPipelineContentsParams) error
 	SoftDeleteContent(ctx context.Context, id uuid.UUID) (Content, error)
 	SoftDeleteContentEmbeddings(ctx context.Context, contentID uuid.UUID) error
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)

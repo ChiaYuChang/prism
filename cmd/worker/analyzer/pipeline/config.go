@@ -25,6 +25,8 @@ type Config struct {
 	Messenger       appconfig.MessengerConfig `mapstructure:"-"`
 }
 
+const deployedPipelineFile = "configs/llm_pipeline.yaml"
+
 func LoadConfig(args []string) (*Config, error) {
 	v := viper.New()
 	v.SetEnvPrefix("PRISM_ANALYZER_PIPELINE_WORKER")
@@ -96,6 +98,9 @@ func LoadConfig(args []string) (*Config, error) {
 	}
 	if err := validate.Struct(config.Messenger); err != nil {
 		return nil, fmt.Errorf("messenger config validation failed: %v", err)
+	}
+	if config.PipelineFile != deployedPipelineFile {
+		return nil, fmt.Errorf("pipeline-file must be %q", deployedPipelineFile)
 	}
 	return &config, nil
 }

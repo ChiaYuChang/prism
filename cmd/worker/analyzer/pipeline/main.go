@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -71,6 +73,12 @@ func main() {
 		logger.Error("failed to load pipeline definition", "error", err)
 		os.Exit(1)
 	}
+	pipelineData, err := os.ReadFile(config.PipelineFile)
+	if err != nil {
+		logger.Error("failed to read pipeline definition for hashing", "error", err)
+		os.Exit(1)
+	}
+	definitionHash := fmt.Sprintf("%x", sha256.Sum256(pipelineData))
 	registry, err := pipeline.NewRegistry(pipeline.EmbedCandidateBuilder{}, pipeline.EmbedContentBuilder{})
 	if err != nil {
 		logger.Error("failed to create pipeline work registry", "error", err)
@@ -81,7 +89,7 @@ func main() {
 		logger.Error("failed to create pipeline coordinator", "error", err)
 		os.Exit(1)
 	}
-	handler, err := pipeline.NewHandler(dbRepo.Tasks(), dbRepo.Scout(), dbRepo.Pipeline(), dbRepo.Scheduler(), dbRepo.PipelineRuntime(), coordinator, config.RetryMax)
+	handler, err := pipeline.NewHandler(dbRepo.Tasks(), dbRepo.Scheduler(), dbRepo.PipelineRuntime(), coordinator, config.RetryMax, definitionHash)
 	if err != nil {
 		logger.Error("failed to create pipeline handler", "error", err)
 		os.Exit(1)

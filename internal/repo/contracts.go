@@ -47,21 +47,31 @@ type FailedTaskSummary struct {
 }
 
 type Batch struct {
-	ID                   uuid.UUID
-	ParentID             *uuid.UUID
-	NSubtasks            *int32
-	ParentTaskID         *uuid.UUID
-	Succeeded            *bool
-	SourceType           string
-	TraceID              *string
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-	CompletedAt          *time.Time
-	PublishedAt          *time.Time
-	LastPublishAttemptAt *time.Time
-	PublishRetryCount    int
-	PublishError         *string
-	StalledAt            *time.Time
+	ID                      uuid.UUID
+	Purpose                 string
+	ParentID                *uuid.UUID
+	NSubtasks               *int32
+	ParentTaskID            *uuid.UUID
+	Succeeded               *bool
+	SourceType              string
+	TraceID                 *string
+	CreatedAt               time.Time
+	UpdatedAt               time.Time
+	CompletedAt             *time.Time
+	PublishedAt             *time.Time
+	LastPublishAttemptAt    *time.Time
+	PublishRetryCount       int
+	PublishError            *string
+	StalledAt               *time.Time
+	PipelineInputSnapshotAt *time.Time
+}
+
+// PipelineInputMember is an immutable candidate or content reference stored
+// for one pipeline Root. Stages use only these references, never live source
+// batch membership.
+type PipelineInputMember struct {
+	ID         uuid.UUID
+	SourceAbbr string
 }
 
 type Source struct {

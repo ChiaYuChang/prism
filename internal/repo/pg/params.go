@@ -18,11 +18,23 @@ func repoListCandidatesParamsToDB(arg repo.ListCandidatesParams) ListCandidatesP
 
 func repoCreateTaskParamsToEnsureBatchExists(arg repo.CreateTaskParams) EnsureBatchExistsParams {
 	return EnsureBatchExistsParams{
-		ID:         arg.BatchID,
-		ParentID:   pgconv.UUIDPtrToPgUUID(arg.ParentBatchID),
+		ID:           arg.BatchID,
+		ParentID:     pgconv.UUIDPtrToPgUUID(arg.ParentBatchID),
 		ParentTaskID: pgconv.UUIDPtrToPgUUID(arg.ParentTaskID),
-		SourceType: SourceType(arg.SourceType),
-		TraceID:    pgconv.StringPtrToPgText(&arg.TraceID),
+		SourceType:   SourceType(arg.SourceType),
+		TraceID:      pgconv.StringPtrToPgText(&arg.TraceID),
+	}
+}
+
+func repoCreateTaskParamsToEnsurePipelineRoot(arg repo.CreateTaskParams) EnsurePipelineRootParams {
+	return EnsurePipelineRootParams{
+		ID:                 arg.BatchID,
+		ParentID:           pgconv.UUIDPtrToPgUUID(arg.ParentBatchID),
+		SourceType:         SourceType(arg.SourceType),
+		TraceID:            pgconv.StringPtrToPgText(&arg.TraceID),
+		DefinitionHash:     pgconv.StringPtrToPgText(&arg.PipelineDefinitionHash),
+		IdempotencyKey:     pgconv.StringPtrToPgText(arg.PipelineIdempotencyKey),
+		RequestFingerprint: pgconv.StringPtrToPgText(&arg.PipelineRequestFingerprint),
 	}
 }
 

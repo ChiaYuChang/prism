@@ -1,10 +1,12 @@
 package pg
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ChiaYuChang/prism/internal/repo"
@@ -154,6 +156,14 @@ func (r *PGPipelineRuntime) InitializePipeline(ctx context.Context, arg repo.Ini
 		if err != nil {
 			return fmt.Errorf("create pipeline control task: %w", err)
 		}
+		if !created.Inserted && (!bytes.Equal(created.Payload, task.Payload) || !created.PreviousTaskID.Valid || created.PreviousTaskID.Bytes != previousID) {
+			return fmt.Errorf("%w: stage %v", repo.ErrPipelinePlanConflict, task.LogicalKey)
+		}
+		if rows, err := qtx.LinkTaskSuccessor(ctx, LinkTaskSuccessorParams{PredecessorID: previousID, SuccessorID: pgconv.UUIDToPgUUID(created.ID)}); err != nil {
+			return fmt.Errorf("link pipeline control task: %w", err)
+		} else if rows != 1 {
+			return repo.ErrPipelinePlanConflict
+		}
 		previousID = created.ID
 	}
 	if _, err := qtx.SetBatchNSubtasks(ctx, SetBatchNSubtasksParams{
@@ -175,14 +185,40 @@ func (r *PGPipelineRuntime) GetPipelineBatch(ctx context.Context, batchID uuid.U
 	if err != nil {
 		return repo.Batch{}, err
 	}
-	return dbBatchToRepoBatch(
-		row.ID, pgconv.PgUUIDToUUIDPtr(row.ParentID), pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+	batch := dbBatchToRepoBatch(
+		row.ID, string(row.Purpose), pgconv.PgUUIDToUUIDPtr(row.ParentID), pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
 		pgconv.PgUUIDToUUIDPtr(row.ParentTaskID), pgconv.PgBoolToBoolPtr(row.Succeeded), string(row.SourceType),
 		pgconv.PgTextToStringPtr(row.TraceID), *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
 		*pgconv.PgTimestamptzToTimePtr(row.UpdatedAt), pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
 		pgconv.PgTimestamptzToTimePtr(row.PublishedAt), pgconv.PgTimestamptzToTimePtr(row.LastPublishAttemptAt),
 		row.PublishRetryCount, pgconv.PgTextToStringPtr(row.PublishError), pgconv.PgTimestamptzToTimePtr(row.StalledAt),
-	), nil
+	)
+	batch.PipelineInputSnapshotAt = pgconv.PgTimestamptzToTimePtr(row.PipelineInputSnapshotAt)
+	return batch, nil
+}
+
+func (r *PGPipelineRuntime) ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]repo.PipelineInputMember, error) {
+	rows, err := r.q.ListPipelineInputCandidates(ctx, rootBatchID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.PipelineInputMember, len(rows))
+	for i, row := range rows {
+		out[i] = repo.PipelineInputMember{ID: row.CandidateID, SourceAbbr: row.SourceAbbr}
+	}
+	return out, nil
+}
+
+func (r *PGPipelineRuntime) ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]repo.PipelineInputMember, error) {
+	rows, err := r.q.ListPipelineInputContents(ctx, rootBatchID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repo.PipelineInputMember, len(rows))
+	for i, row := range rows {
+		out[i] = repo.PipelineInputMember{ID: row.ContentID, SourceAbbr: row.SourceAbbr}
+	}
+	return out, nil
 }
 
 func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.CreateTaskParams) (repo.Task, error) {
@@ -209,8 +245,45 @@ func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.Cre
 	if !input.CompletedAt.Valid {
 		return repo.Task{}, repo.ErrPipelineInputNotTerminal
 	}
-	if err := qtx.EnsureBatchExists(ctx, repoCreateTaskParamsToEnsureBatchExists(arg)); err != nil {
+	if input.Succeeded.Valid && !input.Succeeded.Bool {
+		return repo.Task{}, repo.ErrPipelineInputFailed
+	}
+	var existing Batch
+	if arg.PipelineIdempotencyKey != nil {
+		existing, err = qtx.GetPipelineRootByIdempotency(ctx, GetPipelineRootByIdempotencyParams{
+			ParentID: pgconv.UUIDToPgUUID(*arg.ParentBatchID), IdempotencyKey: pgconv.StringPtrToPgText(arg.PipelineIdempotencyKey),
+		})
+		if err == nil {
+			if strings.TrimSpace(existing.PipelineDefinitionHash.String) != arg.PipelineDefinitionHash || strings.TrimSpace(existing.PipelineRequestFingerprint.String) != arg.PipelineRequestFingerprint {
+				return repo.Task{}, repo.ErrPipelineIdempotencyConflict
+			}
+			if !existing.PipelineInputSnapshotAt.Valid {
+				return repo.Task{}, repo.ErrPipelineSnapshotMissing
+			}
+			row, taskErr := qtx.GetTaskByBatchLogicalKey(ctx, GetTaskByBatchLogicalKeyParams{BatchID: existing.ID, LogicalKey: pgconv.StringPtrToPgText(arg.LogicalKey)})
+			if taskErr != nil {
+				return repo.Task{}, fmt.Errorf("recover pipeline init task: %w", taskErr)
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return repo.Task{}, err
+			}
+			return dbTaskToRepoTask(row), repo.ErrTaskAlreadyActive
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return repo.Task{}, fmt.Errorf("lookup pipeline idempotency key: %w", err)
+		}
+	}
+	if err := qtx.EnsurePipelineRoot(ctx, repoCreateTaskParamsToEnsurePipelineRoot(arg)); err != nil {
 		return repo.Task{}, fmt.Errorf("ensure pipeline root batch: %w", err)
+	}
+	if err := qtx.SnapshotPipelineCandidates(ctx, SnapshotPipelineCandidatesParams{RootBatchID: arg.BatchID, InputBatchID: pgconv.UUIDToPgUUID(*arg.ParentBatchID)}); err != nil {
+		return repo.Task{}, fmt.Errorf("snapshot pipeline candidates: %w", err)
+	}
+	if err := qtx.SnapshotPipelineContents(ctx, SnapshotPipelineContentsParams{RootBatchID: arg.BatchID, InputBatchID: pgconv.UUIDToPgUUID(*arg.ParentBatchID)}); err != nil {
+		return repo.Task{}, fmt.Errorf("snapshot pipeline contents: %w", err)
+	}
+	if _, err := qtx.MarkPipelineInputSnapshot(ctx, arg.BatchID); err != nil {
+		return repo.Task{}, fmt.Errorf("mark pipeline input snapshot: %w", err)
 	}
 	row, err := qtx.CreateTask(ctx, repoCreateTaskParamsToDB(arg))
 	if err != nil {
@@ -317,6 +390,7 @@ func (r *PGPipelineRuntime) FindFinishedBatches(ctx context.Context, limit int32
 	for i, row := range rows {
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
+			string(row.Purpose),
 			pgconv.PgUUIDToUUIDPtr(row.ParentID),
 			pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
 			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),
@@ -343,6 +417,7 @@ func (r *PGPipelineRuntime) SetNSubtasks(ctx context.Context, batchID uuid.UUID,
 	}
 	return dbBatchToRepoBatch(
 		row.ID,
+		string(row.Purpose),
 		pgconv.PgUUIDToUUIDPtr(row.ParentID),
 		pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
 		pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),
@@ -368,7 +443,7 @@ func (r *PGPipelineRuntime) FindFinishedRootBatches(ctx context.Context, limit i
 	out := make([]repo.Batch, len(rows))
 	for i, row := range rows {
 		out[i] = dbBatchToRepoBatch(
-			row.ID, pgconv.PgUUIDToUUIDPtr(row.ParentID), pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+			row.ID, string(row.Purpose), pgconv.PgUUIDToUUIDPtr(row.ParentID), pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
 			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID), &row.CompletionSucceeded, string(row.SourceType),
 			pgconv.PgTextToStringPtr(row.TraceID), *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
 			*pgconv.PgTimestamptzToTimePtr(row.UpdatedAt), pgconv.PgTimestamptzToTimePtr(row.CompletedAt),
@@ -431,7 +506,7 @@ func (r *PGPipelineRuntime) ListReadyPipelineBatches(ctx context.Context, limit 
 	out := make([]repo.Batch, len(rows))
 	for i, row := range rows {
 		out[i] = dbBatchToRepoBatch(
-			row.ID, pgconv.PgUUIDToUUIDPtr(row.ParentID), pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
+			row.ID, string(row.Purpose), pgconv.PgUUIDToUUIDPtr(row.ParentID), pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
 			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID), pgconv.PgBoolToBoolPtr(row.Succeeded),
 			string(row.SourceType), pgconv.PgTextToStringPtr(row.TraceID),
 			*pgconv.PgTimestamptzToTimePtr(row.CreatedAt), *pgconv.PgTimestamptzToTimePtr(row.UpdatedAt),
@@ -962,6 +1037,7 @@ func (r *PGOperator) ListBatches(ctx context.Context, params repo.ListOperatorPa
 	for i, row := range rows {
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
+			string(row.Purpose),
 			pgconv.PgUUIDToUUIDPtr(row.ParentID),
 			pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
 			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),
@@ -1359,6 +1435,7 @@ func (r *PGBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit
 	for i, row := range rows {
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
+			string(row.Purpose),
 			pgconv.PgUUIDToUUIDPtr(row.ParentID),
 			pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
 			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),
@@ -1418,6 +1495,7 @@ func (r *PGBatchTrigger) ListReadyToPublishBatches(ctx context.Context, limit in
 	for i, row := range rows {
 		out[i] = dbBatchToRepoBatch(
 			row.ID,
+			string(row.Purpose),
 			pgconv.PgUUIDToUUIDPtr(row.ParentID),
 			pgconv.PgInt4ToInt32Ptr(row.NSubtasks),
 			pgconv.PgUUIDToUUIDPtr(row.ParentTaskID),

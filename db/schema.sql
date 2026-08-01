@@ -118,6 +118,14 @@ CREATE TYPE public.source_type AS ENUM (
 
 ALTER TYPE public.source_type OWNER TO postgres;
 
+CREATE TYPE public.batch_purpose AS ENUM (
+    'COLLECTION',
+    'ANALYZER_PIPELINE_ROOT',
+    'ANALYZER_PIPELINE_STAGE'
+);
+
+ALTER TYPE public.batch_purpose OWNER TO postgres;
+
 --
 -- Name: task_kind; Type: TYPE; Schema: public; Owner: postgres
 --
@@ -268,7 +276,26 @@ CREATE TABLE public.batches (
     pipeline_published_at timestamp with time zone,
     pipeline_publish_retry_count integer DEFAULT 0 NOT NULL,
     pipeline_publish_error text,
+    purpose public.batch_purpose DEFAULT 'COLLECTION'::public.batch_purpose NOT NULL,
+    pipeline_definition_hash character(64),
+    pipeline_idempotency_key text,
+    pipeline_request_fingerprint character(64),
+    pipeline_input_snapshot_at timestamp with time zone,
     CONSTRAINT batches_n_subtasks_check CHECK ((n_subtasks >= 0))
+);
+
+CREATE TABLE public.pipeline_input_candidates (
+    root_batch_id uuid NOT NULL,
+    candidate_id uuid NOT NULL,
+    source_abbr character varying(16) NOT NULL,
+    CONSTRAINT pipeline_input_candidates_pkey PRIMARY KEY (root_batch_id, candidate_id)
+);
+
+CREATE TABLE public.pipeline_input_contents (
+    root_batch_id uuid NOT NULL,
+    content_id uuid NOT NULL,
+    source_abbr character varying(16) NOT NULL,
+    CONSTRAINT pipeline_input_contents_pkey PRIMARY KEY (root_batch_id, content_id)
 );
 
 
@@ -2006,5 +2033,3 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES 
 --
 -- PostgreSQL database dump complete
 --
-
-

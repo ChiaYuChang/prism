@@ -45,23 +45,26 @@ type ListOperatorParams struct {
 }
 
 type CreateTaskParams struct {
-	BatchID        uuid.UUID      `validate:"required"`
-	ParentBatchID  *uuid.UUID     `validate:"omitempty"`
-	ParentTaskID   *uuid.UUID     `validate:"omitempty"`
-	PreviousTaskID *uuid.UUID     `validate:"omitempty"`
-	NextTaskID     *uuid.UUID     `validate:"omitempty"`
-	LogicalKey     *string        `validate:"omitempty"`
-	Kind           string         `validate:"required"`
-	SourceType     string         `validate:"required"`
-	SourceAbbr     string         `validate:"required"`
-	URL            string         `validate:"required,url"`
-	Payload        []byte         `validate:"omitempty"`
-	PayloadHash    *string        `validate:"omitempty,len=64"`
-	Meta           []byte         `validate:"omitempty"`
-	TraceID        string         `validate:"required"`
-	Frequency      *time.Duration `validate:"omitempty"`
-	NextRunAt      *time.Time     `validate:"omitempty"`
-	ExpiresAt      *time.Time     `validate:"omitempty"`
+	BatchID                    uuid.UUID      `validate:"required"`
+	ParentBatchID              *uuid.UUID     `validate:"omitempty"`
+	ParentTaskID               *uuid.UUID     `validate:"omitempty"`
+	PreviousTaskID             *uuid.UUID     `validate:"omitempty"`
+	NextTaskID                 *uuid.UUID     `validate:"omitempty"`
+	LogicalKey                 *string        `validate:"omitempty"`
+	Kind                       string         `validate:"required"`
+	SourceType                 string         `validate:"required"`
+	SourceAbbr                 string         `validate:"required"`
+	URL                        string         `validate:"required,url"`
+	Payload                    []byte         `validate:"omitempty"`
+	PayloadHash                *string        `validate:"omitempty,len=64"`
+	Meta                       []byte         `validate:"omitempty"`
+	TraceID                    string         `validate:"required"`
+	Frequency                  *time.Duration `validate:"omitempty"`
+	NextRunAt                  *time.Time     `validate:"omitempty"`
+	ExpiresAt                  *time.Time     `validate:"omitempty"`
+	PipelineDefinitionHash     string         `validate:"omitempty,len=64"`
+	PipelineIdempotencyKey     *string        `validate:"omitempty,max=255"`
+	PipelineRequestFingerprint string         `validate:"omitempty,len=64"`
 }
 
 type EnsureBatchParams struct {

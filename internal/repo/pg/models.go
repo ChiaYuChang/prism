@@ -13,6 +13,67 @@ import (
 	pgvector_go "github.com/pgvector/pgvector-go"
 )
 
+type BatchPurpose string
+
+const (
+	BatchPurposeCOLLECTION            BatchPurpose = "COLLECTION"
+	BatchPurposeANALYZERPIPELINEROOT  BatchPurpose = "ANALYZER_PIPELINE_ROOT"
+	BatchPurposeANALYZERPIPELINESTAGE BatchPurpose = "ANALYZER_PIPELINE_STAGE"
+)
+
+func (e *BatchPurpose) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BatchPurpose(s)
+	case string:
+		*e = BatchPurpose(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BatchPurpose: %T", src)
+	}
+	return nil
+}
+
+type NullBatchPurpose struct {
+	BatchPurpose BatchPurpose `json:"batch_purpose"`
+	Valid        bool         `json:"valid"` // Valid is true if BatchPurpose is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBatchPurpose) Scan(value interface{}) error {
+	if value == nil {
+		ns.BatchPurpose, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BatchPurpose.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBatchPurpose) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BatchPurpose), nil
+}
+
+func (e BatchPurpose) Valid() bool {
+	switch e {
+	case BatchPurposeCOLLECTION,
+		BatchPurposeANALYZERPIPELINEROOT,
+		BatchPurposeANALYZERPIPELINESTAGE:
+		return true
+	}
+	return false
+}
+
+func AllBatchPurposeValues() []BatchPurpose {
+	return []BatchPurpose{
+		BatchPurposeCOLLECTION,
+		BatchPurposeANALYZERPIPELINEROOT,
+		BatchPurposeANALYZERPIPELINESTAGE,
+	}
+}
+
 type CandidateIngestionMethod string
 
 const (
@@ -564,9 +625,14 @@ type Batch struct {
 	// Whether a finished batch completed without failed or cancelled direct tasks.
 	Succeeded pgtype.Bool `db:"succeeded" json:"succeeded"`
 	// Pipeline completion notification publish timestamp.
-	PipelinePublishedAt       pgtype.Timestamptz `db:"pipeline_published_at" json:"pipeline_published_at"`
-	PipelinePublishRetryCount int32              `db:"pipeline_publish_retry_count" json:"pipeline_publish_retry_count"`
-	PipelinePublishError      pgtype.Text        `db:"pipeline_publish_error" json:"pipeline_publish_error"`
+	PipelinePublishedAt        pgtype.Timestamptz `db:"pipeline_published_at" json:"pipeline_published_at"`
+	PipelinePublishRetryCount  int32              `db:"pipeline_publish_retry_count" json:"pipeline_publish_retry_count"`
+	PipelinePublishError       pgtype.Text        `db:"pipeline_publish_error" json:"pipeline_publish_error"`
+	Purpose                    BatchPurpose       `db:"purpose" json:"purpose"`
+	PipelineDefinitionHash     pgtype.Text        `db:"pipeline_definition_hash" json:"pipeline_definition_hash"`
+	PipelineIdempotencyKey     pgtype.Text        `db:"pipeline_idempotency_key" json:"pipeline_idempotency_key"`
+	PipelineRequestFingerprint pgtype.Text        `db:"pipeline_request_fingerprint" json:"pipeline_request_fingerprint"`
+	PipelineInputSnapshotAt    pgtype.Timestamptz `db:"pipeline_input_snapshot_at" json:"pipeline_input_snapshot_at"`
 }
 
 // Article briefs (title/url/desc) before full-page fetch. Discovery terminal asset.
@@ -701,6 +767,18 @@ type Model struct {
 	Tag         pgtype.Text        `db:"tag" json:"tag"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	DeletedAt   pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+type PipelineInputCandidate struct {
+	RootBatchID uuid.UUID `db:"root_batch_id" json:"root_batch_id"`
+	CandidateID uuid.UUID `db:"candidate_id" json:"candidate_id"`
+	SourceAbbr  string    `db:"source_abbr" json:"source_abbr"`
+}
+
+type PipelineInputContent struct {
+	RootBatchID uuid.UUID `db:"root_batch_id" json:"root_batch_id"`
+	ContentID   uuid.UUID `db:"content_id" json:"content_id"`
+	SourceAbbr  string    `db:"source_abbr" json:"source_abbr"`
 }
 
 // Prompt asset registry. hash = SHA-256(body), used to pin extraction provenance.

@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/ChiaYuChang/prism/internal/message"
@@ -13,23 +14,22 @@ import (
 // It deliberately keeps Watermill out of the domain package so it is easy to
 // exercise with repository fakes and to reuse from different worker binaries.
 type Handler struct {
-	tasks    repo.Tasks
-	scout    repo.Scout
-	pipeline repo.Pipeline
-	reporter repo.TaskReporter
-	runtime  repo.PipelineRuntime
-	coord    *Coordinator
-	retryMax int
+	tasks          repo.Tasks
+	reporter       repo.TaskReporter
+	runtime        repo.PipelineRuntime
+	coord          *Coordinator
+	retryMax       int
+	definitionHash string
 }
 
-func NewHandler(tasks repo.Tasks, scout repo.Scout, pipeline repo.Pipeline, reporter repo.TaskReporter, runtime repo.PipelineRuntime, coord *Coordinator, retryMax int) (*Handler, error) {
-	if tasks == nil || scout == nil || pipeline == nil || reporter == nil || runtime == nil || coord == nil {
+func NewHandler(tasks repo.Tasks, reporter repo.TaskReporter, runtime repo.PipelineRuntime, coord *Coordinator, retryMax int, definitionHash string) (*Handler, error) {
+	if tasks == nil || reporter == nil || runtime == nil || coord == nil {
 		return nil, fmt.Errorf("pipeline handler dependencies are required")
 	}
 	if retryMax < 1 {
 		return nil, fmt.Errorf("retry max must be positive")
 	}
-	return &Handler{tasks: tasks, scout: scout, pipeline: pipeline, reporter: reporter, runtime: runtime, coord: coord, retryMax: retryMax}, nil
+	return &Handler{tasks: tasks, reporter: reporter, runtime: runtime, coord: coord, retryMax: retryMax, definitionHash: definitionHash}, nil
 }
 
 // HandleTaskSignal handles only pipeline task kinds. The boolean indicates
@@ -75,23 +75,33 @@ func (h *Handler) HandleTaskSignal(ctx context.Context, signal message.TaskSigna
 func (h *Handler) handleTask(ctx context.Context, task repo.Task, kind string, spec PipelineSpec) error {
 	switch kind {
 	case repo.TaskKindPipelineInit:
+		if h.definitionHash != "" {
+			var payload struct {
+				DefinitionHash string `json:"pipeline_definition_hash"`
+			}
+			if err := json.Unmarshal(task.Payload, &payload); err != nil {
+				return fmt.Errorf("decode pipeline definition metadata: %w", err)
+			}
+			if payload.DefinitionHash != h.definitionHash {
+				return fmt.Errorf("pipeline definition hash mismatch: task=%s worker=%s", payload.DefinitionHash, h.definitionHash)
+			}
+		}
 		return h.coord.Initialize(ctx, task, spec)
 	case repo.TaskKindPipelineStage:
-		inputBatchID := task.BatchID
 		root, err := h.runtime.GetPipelineBatch(ctx, task.BatchID)
 		if err != nil {
 			return fmt.Errorf("get pipeline root batch: %w", err)
 		}
-		if root.ParentID != nil {
-			inputBatchID = *root.ParentID
+		if root.PipelineInputSnapshotAt == nil {
+			return repo.ErrPipelineSnapshotMissing
 		}
-		candidates, err := h.scout.ListCandidatesByBatchID(ctx, inputBatchID)
+		candidates, err := h.runtime.ListPipelineInputCandidates(ctx, task.BatchID)
 		if err != nil {
-			return fmt.Errorf("list pipeline candidates: %w", err)
+			return fmt.Errorf("list pipeline input candidates: %w", err)
 		}
-		contents, err := h.pipeline.ListContentsByBatchID(ctx, inputBatchID)
+		contents, err := h.runtime.ListPipelineInputContents(ctx, task.BatchID)
 		if err != nil {
-			return fmt.Errorf("list pipeline contents: %w", err)
+			return fmt.Errorf("list pipeline input contents: %w", err)
 		}
 		input := WorkSetInput{
 			CandidateSourceAbbr: make(map[uuid.UUID]string, len(candidates)),
