@@ -105,19 +105,22 @@ FOR UPDATE;
 -- name: EnsurePipelineRoot :exec
 INSERT INTO batches (
     id, source_type, trace_id, parent_id, purpose,
-    pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint
+    pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint,
+    analysis_execution_id
 )
 VALUES (
     sqlc.arg(id), sqlc.arg(source_type), sqlc.arg(trace_id), sqlc.arg(parent_id),
     'ANALYZER_PIPELINE_ROOT', sqlc.arg(definition_hash),
-    sqlc.narg(idempotency_key), sqlc.arg(request_fingerprint)
+    sqlc.narg(idempotency_key), sqlc.arg(request_fingerprint),
+    sqlc.narg(analysis_execution_id)
 )
 ON CONFLICT (id) DO UPDATE
 SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id),
     purpose = COALESCE(batches.purpose, EXCLUDED.purpose),
-    pipeline_definition_hash = COALESCE(batches.pipeline_definition_hash, EXCLUDED.pipeline_definition_hash),
-    pipeline_idempotency_key = COALESCE(batches.pipeline_idempotency_key, EXCLUDED.pipeline_idempotency_key),
-    pipeline_request_fingerprint = COALESCE(batches.pipeline_request_fingerprint, EXCLUDED.pipeline_request_fingerprint);
+     pipeline_definition_hash = COALESCE(batches.pipeline_definition_hash, EXCLUDED.pipeline_definition_hash),
+     pipeline_idempotency_key = COALESCE(batches.pipeline_idempotency_key, EXCLUDED.pipeline_idempotency_key),
+     pipeline_request_fingerprint = COALESCE(batches.pipeline_request_fingerprint, EXCLUDED.pipeline_request_fingerprint),
+     analysis_execution_id = COALESCE(batches.analysis_execution_id, EXCLUDED.analysis_execution_id);
 
 -- name: MarkPipelineInputSnapshot :execrows
 UPDATE batches
@@ -138,6 +141,18 @@ FROM candidates c
 WHERE c.batch_id = sqlc.arg(input_batch_id)
 ON CONFLICT (root_batch_id, candidate_id) DO NOTHING;
 
+-- name: SnapshotPipelineCandidatesByIDs :exec
+INSERT INTO pipeline_input_candidates (
+    root_batch_id, candidate_id, batch_id, fingerprint, source_abbr, title, url,
+    description, published_at, discovered_at, trace_id, ingestion_method, metadata, created_at
+)
+SELECT
+    sqlc.arg(root_batch_id), c.id, c.batch_id, c.fingerprint, c.source_abbr, c.title, c.url,
+    c.description, c.published_at, c.discovered_at, c.trace_id, c.ingestion_method, c.metadata, c.created_at
+FROM candidates c
+WHERE c.id = ANY(sqlc.arg(candidate_ids)::uuid[])
+ON CONFLICT (root_batch_id, candidate_id) DO NOTHING;
+
 -- name: SnapshotPipelineContents :exec
 INSERT INTO pipeline_input_contents (
     root_batch_id, content_id, batch_id, type, source_abbr, candidate_id, url, title,
@@ -148,6 +163,19 @@ SELECT
     c.content, c.author, c.trace_id, c.published_at, c.fetched_at, c.created_at, c.deleted_at, c.metadata
 FROM contents c
 WHERE c.batch_id = sqlc.arg(input_batch_id)
+  AND c.deleted_at IS NULL
+ON CONFLICT (root_batch_id, content_id) DO NOTHING;
+
+-- name: SnapshotPipelineContentsByIDs :exec
+INSERT INTO pipeline_input_contents (
+    root_batch_id, content_id, batch_id, type, source_abbr, candidate_id, url, title,
+    content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+)
+SELECT
+    sqlc.arg(root_batch_id), c.id, c.batch_id, c.type, c.source_abbr, c.candidate_id, c.url, c.title,
+    c.content, c.author, c.trace_id, c.published_at, c.fetched_at, c.created_at, c.deleted_at, c.metadata
+FROM contents c
+WHERE c.id = ANY(sqlc.arg(content_ids)::uuid[])
   AND c.deleted_at IS NULL
 ON CONFLICT (root_batch_id, content_id) DO NOTHING;
 

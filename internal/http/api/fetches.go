@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -18,11 +19,15 @@ type FetchProgressResponse struct {
 	FetchID         uuid.UUID           `json:"fetch_id"`
 	Total           int64               `json:"total"`
 	Pending         FetchProgressStatus `json:"pending"`
+	Fetching        FetchProgressStatus `json:"fetching"`
+	Ready           FetchProgressStatus `json:"ready"`
 	Running         FetchProgressStatus `json:"running"`
 	Completed       FetchProgressStatus `json:"completed"`
 	Failed          FetchProgressStatus `json:"failed"`
 	AlreadyComplete FetchProgressStatus `json:"already_complete"`
 	Terminal        bool                `json:"terminal"`
+	AnalysisRunID   *uuid.UUID          `json:"analysis_run_id,omitempty"`
+	AnalysisStatus  string              `json:"analysis_status,omitempty"`
 }
 
 // FetchProgressStatus groups candidate IDs for one resolved fetch status.
@@ -81,16 +86,41 @@ func (s *Server) GetFetch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to compute fetch progress")
 		return
 	}
+	var analysisRun *repo.AnalysisRun
+	if s.AnalysisRuns != nil {
+		run, runErr := s.AnalysisRuns.GetByFetchID(ctx, fetchID)
+		if runErr == nil {
+			if progress.Terminal && (run.Status == repo.AnalysisRunStatusFetching || run.Status == repo.AnalysisRunStatusAwaitingResolution) {
+				advanced, advanceErr := s.confirmAnalysisRun(ctx, run)
+				if advanceErr != nil {
+					s.Logger.WarnContext(ctx, "advance analysis run failed", slog.Any("error", advanceErr))
+				} else {
+					run = advanced
+				}
+			}
+			analysisRun = &run
+		} else if !errors.Is(runErr, pgx.ErrNoRows) {
+			s.Logger.WarnContext(ctx, "get analysis run failed", slog.Any("error", runErr))
+		}
+	}
+	readyIDs := append([]uuid.UUID{}, progress.CompletedCandidateIDs...)
+	readyIDs = append(readyIDs, progress.AlreadyCompleteCandidateIDs...)
 
 	resp := FetchProgressResponse{
 		FetchID:         fetchID,
 		Total:           progress.Total,
 		Pending:         fetchProgressStatus(progress.PendingCandidateIDs),
+		Fetching:        fetchProgressStatus(progress.RunningCandidateIDs),
+		Ready:           fetchProgressStatus(readyIDs),
 		Running:         fetchProgressStatus(progress.RunningCandidateIDs),
 		Completed:       fetchProgressStatus(progress.CompletedCandidateIDs),
 		Failed:          fetchProgressStatus(progress.FailedCandidateIDs),
 		AlreadyComplete: fetchProgressStatus(progress.AlreadyCompleteCandidateIDs),
 		Terminal:        progress.Terminal,
+	}
+	if analysisRun != nil {
+		resp.AnalysisRunID = &analysisRun.ID
+		resp.AnalysisStatus = analysisRun.Status
 	}
 	if err := s.Cache.Set(ctx, fetchID, resp); err != nil {
 		s.Logger.WarnContext(ctx, "progress cache set failed",

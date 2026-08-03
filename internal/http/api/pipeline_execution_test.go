@@ -72,7 +72,7 @@ func TestCreateAdminPipelineTaskExecutesWithConfiguredWorker(t *testing.T) {
 	}
 	tasks.EXPECT().GetTaskByID(mock.Anything, task.ID).Return(task, nil).Once()
 	workerRuntime.EXPECT().InitializePipeline(mock.Anything, mock.MatchedBy(func(arg repo.InitializePipelineParams) bool {
-		return arg.BatchID == createdParams.BatchID && arg.NSubtasks == 3 && len(arg.Tasks) == 2
+		return arg.BatchID == createdParams.BatchID && arg.NSubtasks == 4 && len(arg.Tasks) == 3
 	})).Return(nil).Once()
 	spec, err := pipeline.LoadFile(definitionPath)
 	require.NoError(t, err)

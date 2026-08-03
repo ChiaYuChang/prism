@@ -7,6 +7,7 @@ package pg
 import (
 	"database/sql/driver"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -604,6 +605,34 @@ func AllTaskStatusValues() []TaskStatus {
 	}
 }
 
+type AnalysisExecution struct {
+	ID                uuid.UUID          `db:"id" json:"id"`
+	ReportFingerprint string             `db:"report_fingerprint" json:"report_fingerprint"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type AnalysisRun struct {
+	ID                           uuid.UUID          `db:"id" json:"id"`
+	UserID                       pgtype.UUID        `db:"user_id" json:"user_id"`
+	FetchID                      uuid.UUID          `db:"fetch_id" json:"fetch_id"`
+	Topic                        string             `db:"topic" json:"topic"`
+	Brief                        string             `db:"brief" json:"brief"`
+	FetchFailurePolicy           string             `db:"fetch_failure_policy" json:"fetch_failure_policy"`
+	Status                       string             `db:"status" json:"status"`
+	OriginalSelectedCandidateIds []uuid.UUID        `db:"original_selected_candidate_ids" json:"original_selected_candidate_ids"`
+	UnavailableCandidateIds      []uuid.UUID        `db:"unavailable_candidate_ids" json:"unavailable_candidate_ids"`
+	ReadyCandidateIds            []uuid.UUID        `db:"ready_candidate_ids" json:"ready_candidate_ids"`
+	ReadyContentIds              []uuid.UUID        `db:"ready_content_ids" json:"ready_content_ids"`
+	FailedCandidateIds           []uuid.UUID        `db:"failed_candidate_ids" json:"failed_candidate_ids"`
+	RootBatchID                  pgtype.UUID        `db:"root_batch_id" json:"root_batch_id"`
+	FailureCode                  pgtype.Text        `db:"failure_code" json:"failure_code"`
+	ConfirmedAt                  pgtype.Timestamptz `db:"confirmed_at" json:"confirmed_at"`
+	CreatedAt                    time.Time          `db:"created_at" json:"created_at"`
+	UpdatedAt                    time.Time          `db:"updated_at" json:"updated_at"`
+	ExecutionID                  pgtype.UUID        `db:"execution_id" json:"execution_id"`
+	ReportID                     pgtype.UUID        `db:"report_id" json:"report_id"`
+}
+
 // Groups one cron/trigger run so planner can detect completion. id used in tasks.batch_id and copied into candidates/contents.
 type Batch struct {
 	ID                   uuid.UUID          `db:"id" json:"id"`
@@ -633,6 +662,10 @@ type Batch struct {
 	PipelineIdempotencyKey     pgtype.Text        `db:"pipeline_idempotency_key" json:"pipeline_idempotency_key"`
 	PipelineRequestFingerprint pgtype.Text        `db:"pipeline_request_fingerprint" json:"pipeline_request_fingerprint"`
 	PipelineInputSnapshotAt    pgtype.Timestamptz `db:"pipeline_input_snapshot_at" json:"pipeline_input_snapshot_at"`
+	AnalysisExecutionID        pgtype.UUID        `db:"analysis_execution_id" json:"analysis_execution_id"`
+	FailureKind                pgtype.Text        `db:"failure_kind" json:"failure_kind"`
+	FailureTaskID              pgtype.UUID        `db:"failure_task_id" json:"failure_task_id"`
+	FailureRecordedAt          pgtype.Timestamptz `db:"failure_recorded_at" json:"failure_recorded_at"`
 }
 
 // Article briefs (title/url/desc) before full-page fetch. Discovery terminal asset.
@@ -813,6 +846,40 @@ type Prompt struct {
 	Hash      string             `db:"hash" json:"hash"`
 	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Report struct {
+	ID                       uuid.UUID          `db:"id" json:"id"`
+	AnalysisExecutionID      uuid.UUID          `db:"analysis_execution_id" json:"analysis_execution_id"`
+	RootBatchID              uuid.UUID          `db:"root_batch_id" json:"root_batch_id"`
+	StorageUri               string             `db:"storage_uri" json:"storage_uri"`
+	ByteSize                 int64              `db:"byte_size" json:"byte_size"`
+	Sha256                   string             `db:"sha256" json:"sha256"`
+	ExpiresAt                pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ArtifactMissingAt        pgtype.Timestamptz `db:"artifact_missing_at" json:"artifact_missing_at"`
+	ArtifactCorruptAt        pgtype.Timestamptz `db:"artifact_corrupt_at" json:"artifact_corrupt_at"`
+	ArtifactCorruptionReason pgtype.Text        `db:"artifact_corruption_reason" json:"artifact_corruption_reason"`
+	ArtifactRemovedAt        pgtype.Timestamptz `db:"artifact_removed_at" json:"artifact_removed_at"`
+	ArtifactRemovedBy        pgtype.UUID        `db:"artifact_removed_by" json:"artifact_removed_by"`
+	ArtifactRemovalReason    pgtype.Text        `db:"artifact_removal_reason" json:"artifact_removal_reason"`
+	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ReportAuditEvent struct {
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	ReportID            uuid.UUID          `db:"report_id" json:"report_id"`
+	AnalysisExecutionID uuid.UUID          `db:"analysis_execution_id" json:"analysis_execution_id"`
+	EventType           string             `db:"event_type" json:"event_type"`
+	ActorTokenID        pgtype.UUID        `db:"actor_token_id" json:"actor_token_id"`
+	ActorComponent      string             `db:"actor_component" json:"actor_component"`
+	ActorName           pgtype.Text        `db:"actor_name" json:"actor_name"`
+	Reason              pgtype.Text        `db:"reason" json:"reason"`
+	RequestID           pgtype.Text        `db:"request_id" json:"request_id"`
+	StorageUri          string             `db:"storage_uri" json:"storage_uri"`
+	StorageOutcome      string             `db:"storage_outcome" json:"storage_outcome"`
+	StorageError        pgtype.Text        `db:"storage_error" json:"storage_error"`
+	OccurredAt          pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
 }
 
 type Schedule struct {

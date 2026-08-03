@@ -20,6 +20,12 @@ type Handler struct {
 	coord          *Coordinator
 	retryMax       int
 	definitionHash string
+	reportWriter   ReportWriter
+}
+
+// SetReportWriter attaches the final-stage report delivery implementation.
+func (h *Handler) SetReportWriter(writer ReportWriter) {
+	h.reportWriter = writer
 }
 
 func NewHandler(tasks repo.Tasks, reporter repo.TaskReporter, runtime repo.PipelineRuntime, coord *Coordinator, retryMax int, definitionHash string) (*Handler, error) {
@@ -109,6 +115,16 @@ func (h *Handler) handleTask(ctx context.Context, task repo.Task, kind string, s
 			input.ContentIDs = append(input.ContentIDs, content.ID)
 			input.ContentSourceAbbr[content.ID] = content.SourceAbbr
 			input.ContentSnapshots[content.ID] = content.Content
+		}
+		var stage StageSpec
+		if err := json.Unmarshal(task.Payload, &stage); err != nil {
+			return fmt.Errorf("decode pipeline stage %s: %w", task.ID, err)
+		}
+		if taskType, _ := stage.Config["task_type"].(string); taskType == "GENERATE_REPORT" {
+			if h.reportWriter == nil {
+				return fmt.Errorf("report writer is not configured")
+			}
+			return h.reportWriter.Deliver(ctx, task, root, input)
 		}
 		return h.coord.RunStage(ctx, task, input)
 	default:

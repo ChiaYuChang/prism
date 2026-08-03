@@ -47,6 +47,8 @@ auth:
       max-ttl: 168h
 prompts:
   storage-uri: '{{ env "PRISM_PROMPT_STORAGE_URI" "file:///app/runtime/prompts" }}'
+reports:
+  storage-uri: '{{ env "PRISM_REPORT_STORAGE_URI" "file:///app/runtime/reports" }}'
 web:
   enabled: true
   static-dir: /app/assets/static/prismctl-web

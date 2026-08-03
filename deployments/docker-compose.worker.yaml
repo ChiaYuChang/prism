@@ -350,10 +350,13 @@ services:
       PRISM_ANALYZER_PIPELINE_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
       PRISM_ANALYZER_PIPELINE_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_ANALYZER_PIPELINE_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_ANALYZER_PIPELINE_WORKER_REPORT_STORAGE_URI: file:///app/runtime/reports
+      PRISM_ANALYZER_PIPELINE_WORKER_REPORT_CACHE_TTL: 24h
     networks:
       - prism-net
     volumes:
       - ../runtime/logs/analyzer-pipeline:/logs
+      - ../runtime/reports:/app/runtime/reports
     healthcheck:
       test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8097/readyz" ]
       interval: 15s

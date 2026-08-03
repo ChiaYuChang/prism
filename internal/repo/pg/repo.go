@@ -71,6 +71,15 @@ type PGUserFetches struct {
 	q *Queries
 }
 
+type PGAnalysisRuns struct {
+	q *Queries
+}
+
+type PGReports struct {
+	db DBTX
+	q  *Queries
+}
+
 type PGSchedules struct {
 	db DBTX
 	q  *Queries
@@ -110,6 +119,8 @@ var _ repo.Embeddings = (*PGEmbeddings)(nil)
 var _ repo.Analysis = (*PGAnalysis)(nil)
 var _ repo.BatchTrigger = (*PGBatchTrigger)(nil)
 var _ repo.UserFetches = (*PGUserFetches)(nil)
+var _ repo.AnalysisRuns = (*PGAnalysisRuns)(nil)
+var _ repo.Reports = (*PGReports)(nil)
 var _ repo.Schedules = (*PGSchedules)(nil)
 var _ repo.Operator = (*PGOperator)(nil)
 var _ repo.Prompts = (*PGPrompts)(nil)
@@ -136,6 +147,10 @@ func (r *PGRepository) Pipeline() repo.Pipeline {
 
 func (r *PGRepository) PipelineRuntime() repo.PipelineRuntime {
 	return &PGPipelineRuntime{db: r.db, q: r.q}
+}
+
+func (r *PGRepository) Reports() repo.Reports {
+	return &PGReports{db: r.db, q: r.q}
 }
 
 func (r *PGPipelineRuntime) InitializePipeline(ctx context.Context, arg repo.InitializePipelineParams) error {
@@ -201,6 +216,7 @@ func (r *PGPipelineRuntime) GetPipelineBatch(ctx context.Context, batchID uuid.U
 		row.PublishRetryCount, pgconv.PgTextToStringPtr(row.PublishError), pgconv.PgTimestamptzToTimePtr(row.StalledAt),
 	)
 	batch.PipelineInputSnapshotAt = pgconv.PgTimestamptzToTimePtr(row.PipelineInputSnapshotAt)
+	batch.AnalysisExecutionID = pgconv.PgUUIDToUUIDPtr(row.AnalysisExecutionID)
 	return batch, nil
 }
 
@@ -262,21 +278,25 @@ func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.Cre
 		}
 	}
 	qtx := r.q.WithTx(tx)
-	if arg.ParentBatchID == nil {
-		return repo.Task{}, fmt.Errorf("pipeline root input batch is required")
+	if arg.ParentBatchID == nil && len(arg.PipelineInputCandidateIDs) == 0 {
+		return repo.Task{}, fmt.Errorf("pipeline root input batch or selected inputs is required")
 	}
-	input, err := qtx.LockBatchForTaskInsert(ctx, *arg.ParentBatchID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return repo.Task{}, repo.ErrPipelineInputNotFound
+	if arg.ParentBatchID != nil {
+		input, lockErr := qtx.LockBatchForTaskInsert(ctx, *arg.ParentBatchID)
+		if lockErr != nil {
+			if errors.Is(lockErr, pgx.ErrNoRows) {
+				return repo.Task{}, repo.ErrPipelineInputNotFound
+			}
+			return repo.Task{}, fmt.Errorf("lock pipeline input batch %s: %w", *arg.ParentBatchID, lockErr)
 		}
-		return repo.Task{}, fmt.Errorf("lock pipeline input batch %s: %w", *arg.ParentBatchID, err)
-	}
-	if !input.CompletedAt.Valid {
-		return repo.Task{}, repo.ErrPipelineInputNotTerminal
-	}
-	if input.Succeeded.Valid && !input.Succeeded.Bool {
-		return repo.Task{}, repo.ErrPipelineInputFailed
+		if len(arg.PipelineInputCandidateIDs) == 0 {
+			if !input.CompletedAt.Valid {
+				return repo.Task{}, repo.ErrPipelineInputNotTerminal
+			}
+			if input.Succeeded.Valid && !input.Succeeded.Bool {
+				return repo.Task{}, repo.ErrPipelineInputFailed
+			}
+		}
 	}
 	if r.afterPipelineInputLock != nil {
 		if err := r.afterPipelineInputLock(ctx); err != nil {
@@ -316,10 +336,22 @@ func (r *PGPipelineRuntime) CreatePipelineRoot(ctx context.Context, arg repo.Cre
 		}
 		return repo.Task{}, fmt.Errorf("ensure pipeline root batch: %w", err)
 	}
-	if err := qtx.SnapshotPipelineCandidates(ctx, SnapshotPipelineCandidatesParams{RootBatchID: arg.BatchID, InputBatchID: pgconv.UUIDToPgUUID(*arg.ParentBatchID)}); err != nil {
+	if len(arg.PipelineInputCandidateIDs) > 0 {
+		if err := qtx.SnapshotPipelineCandidatesByIDs(ctx, SnapshotPipelineCandidatesByIDsParams{
+			RootBatchID: arg.BatchID, CandidateIds: arg.PipelineInputCandidateIDs,
+		}); err != nil {
+			return repo.Task{}, fmt.Errorf("snapshot selected pipeline candidates: %w", err)
+		}
+	} else if err := qtx.SnapshotPipelineCandidates(ctx, SnapshotPipelineCandidatesParams{RootBatchID: arg.BatchID, InputBatchID: pgconv.UUIDToPgUUID(*arg.ParentBatchID)}); err != nil {
 		return repo.Task{}, fmt.Errorf("snapshot pipeline candidates: %w", err)
 	}
-	if err := qtx.SnapshotPipelineContents(ctx, SnapshotPipelineContentsParams{RootBatchID: arg.BatchID, InputBatchID: pgconv.UUIDToPgUUID(*arg.ParentBatchID)}); err != nil {
+	if len(arg.PipelineInputContentIDs) > 0 {
+		if err := qtx.SnapshotPipelineContentsByIDs(ctx, SnapshotPipelineContentsByIDsParams{
+			RootBatchID: arg.BatchID, ContentIds: arg.PipelineInputContentIDs,
+		}); err != nil {
+			return repo.Task{}, fmt.Errorf("snapshot selected pipeline contents: %w", err)
+		}
+	} else if err := qtx.SnapshotPipelineContents(ctx, SnapshotPipelineContentsParams{RootBatchID: arg.BatchID, InputBatchID: pgconv.UUIDToPgUUID(*arg.ParentBatchID)}); err != nil {
 		return repo.Task{}, fmt.Errorf("snapshot pipeline contents: %w", err)
 	}
 	if _, err := qtx.MarkPipelineInputSnapshot(ctx, arg.BatchID); err != nil {
@@ -422,6 +454,10 @@ func (r *PGRepository) BatchTrigger() repo.BatchTrigger {
 
 func (r *PGRepository) UserFetches() repo.UserFetches {
 	return &PGUserFetches{q: r.q}
+}
+
+func (r *PGRepository) AnalysisRuns() repo.AnalysisRuns {
+	return &PGAnalysisRuns{q: r.q}
 }
 
 func (r *PGRepository) Schedules() repo.Schedules {
@@ -631,6 +667,93 @@ func (r *PGPipelineRuntime) RecordPipelinePublishFailure(ctx context.Context, ba
 	return r.q.RecordPipelinePublishFailure(ctx, RecordPipelinePublishFailureParams{
 		ID: batchID, PipelinePublishError: pgconv.StringPtrToPgText(&message),
 	})
+}
+
+func (r *PGPipelineRuntime) CompleteAnalysisReport(ctx context.Context, arg repo.CompleteAnalysisReportParams) (repo.Report, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return repo.Report{}, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return repo.Report{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := r.q.WithTx(tx)
+
+	task, err := qtx.LockReportTask(ctx, arg.TaskID)
+	if err != nil {
+		return repo.Report{}, fmt.Errorf("lock report task: %w", err)
+	}
+	if task.BatchID != arg.RootBatchID || task.Kind != TaskKindPIPELINESTAGE || task.Url != "pipeline://stage/generate_report" {
+		return repo.Report{}, repo.ErrReportTaskStale
+	}
+
+	if task.Status == TaskStatusCOMPLETED {
+		existing, getErr := qtx.GetReportByExecutionID(ctx, arg.AnalysisExecutionID)
+		if getErr != nil {
+			return repo.Report{}, repo.ErrReportTaskStale
+		}
+		if !reportMatchesParams(existing, arg.Report) {
+			return repo.Report{}, repo.ErrReportConflict
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return repo.Report{}, fmt.Errorf("commit idempotent report completion: %w", err)
+		}
+		return dbReportToRepo(existing), nil
+	}
+	if task.Status != TaskStatusRUNNING {
+		return repo.Report{}, repo.ErrReportTaskStale
+	}
+
+	if _, err := qtx.LockReportRoot(ctx, LockReportRootParams{
+		ID:                  arg.RootBatchID,
+		AnalysisExecutionID: pgconv.UUIDToPgUUID(arg.AnalysisExecutionID),
+	}); err != nil {
+		return repo.Report{}, repo.ErrReportTaskStale
+	}
+	if _, err := qtx.LockAnalysisExecution(ctx, arg.AnalysisExecutionID); err != nil {
+		return repo.Report{}, fmt.Errorf("lock analysis execution: %w", err)
+	}
+
+	existing, getErr := qtx.LockReportByExecutionID(ctx, arg.AnalysisExecutionID)
+	if errors.Is(getErr, pgx.ErrNoRows) {
+		existing, err = qtx.InsertReport(ctx, InsertReportParams{
+			AnalysisExecutionID: arg.Report.AnalysisExecutionID,
+			RootBatchID:         arg.Report.RootBatchID,
+			StorageUri:          arg.Report.StorageURI,
+			ByteSize:            arg.Report.ByteSize,
+			Sha256:              arg.Report.SHA256,
+			ExpiresAt:           pgconv.TimePtrToPgTimestamptz(&arg.Report.ExpiresAt),
+		})
+		if err != nil {
+			return repo.Report{}, fmt.Errorf("insert report link: %w", err)
+		}
+	} else if getErr != nil {
+		return repo.Report{}, fmt.Errorf("lock report link: %w", getErr)
+	}
+	if !reportMatchesParams(existing, arg.Report) {
+		return repo.Report{}, repo.ErrReportConflict
+	}
+
+	rows, err := qtx.CompleteReportTask(ctx, CompleteReportTaskParams{
+		TaskID:              arg.TaskID,
+		RootBatchID:         arg.RootBatchID,
+		AnalysisExecutionID: pgconv.UUIDToPgUUID(arg.AnalysisExecutionID),
+		StorageUri:          arg.Report.StorageURI,
+		ByteSize:            arg.Report.ByteSize,
+		Sha256:              arg.Report.SHA256,
+	})
+	if err != nil {
+		return repo.Report{}, fmt.Errorf("complete report task: %w", err)
+	}
+	if rows != 1 {
+		return repo.Report{}, repo.ErrReportTaskStale
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return repo.Report{}, fmt.Errorf("commit report completion: %w", err)
+	}
+	return dbReportToRepo(existing), nil
 }
 
 // Scheduler repository.
@@ -1908,5 +2031,326 @@ func dbUserFetchItemToRepo(row FetchItem) repo.UserFetchItem {
 		TaskID:         pgconv.PgUUIDToUUIDPtr(row.TaskID),
 		SnapshotStatus: pgconv.PgTextToStringPtr(row.SnapshotStatus),
 		CreatedAt:      *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
+	}
+}
+
+func (r *PGAnalysisRuns) Create(ctx context.Context, arg repo.CreateAnalysisRunParams) (repo.AnalysisRun, error) {
+	row, err := r.q.CreateAnalysisRun(ctx, CreateAnalysisRunParams{
+		ID: arg.ID, UserID: pgconv.UUIDPtrToPgUUID(arg.UserID), FetchID: arg.FetchID,
+		Topic: arg.Topic, Brief: arg.Brief, FetchFailurePolicy: arg.FetchFailurePolicy,
+		Status: arg.Status, OriginalSelectedCandidateIds: arg.OriginalSelectedCandidateIDs,
+		UnavailableCandidateIds: arg.UnavailableCandidateIDs,
+	})
+	if err != nil {
+		return repo.AnalysisRun{}, err
+	}
+	return dbAnalysisRunToRepo(row), nil
+}
+
+func (r *PGAnalysisRuns) GetByID(ctx context.Context, id uuid.UUID) (repo.AnalysisRun, error) {
+	row, err := r.q.GetAnalysisRunByID(ctx, id)
+	if err != nil {
+		return repo.AnalysisRun{}, err
+	}
+	return dbAnalysisRunToRepo(row), nil
+}
+
+func (r *PGAnalysisRuns) GetByFetchID(ctx context.Context, fetchID uuid.UUID) (repo.AnalysisRun, error) {
+	row, err := r.q.GetAnalysisRunByFetchID(ctx, fetchID)
+	if err != nil {
+		return repo.AnalysisRun{}, err
+	}
+	return dbAnalysisRunToRepo(row), nil
+}
+
+func (r *PGAnalysisRuns) ListItems(ctx context.Context, fetchID uuid.UUID) ([]repo.AnalysisRunItem, error) {
+	rows, err := r.q.ListAnalysisRunItems(ctx, fetchID)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]repo.AnalysisRunItem, len(rows))
+	for i, row := range rows {
+		items[i] = repo.AnalysisRunItem{
+			CandidateID:    row.CandidateID,
+			TaskID:         pgconv.PgUUIDToUUIDPtr(row.TaskID),
+			SnapshotStatus: pgconv.PgTextToStringPtr(row.SnapshotStatus),
+			TaskStatus:     taskStatusPtr(row.TaskStatus),
+			ContentID:      pgconv.PgUUIDToUUIDPtr(row.ContentID),
+		}
+	}
+	return items, nil
+}
+
+func (r *PGAnalysisRuns) SetManifest(ctx context.Context, arg repo.SetAnalysisRunManifestParams) (repo.AnalysisRun, error) {
+	row, err := r.q.SetAnalysisRunManifest(ctx, SetAnalysisRunManifestParams{
+		ID: arg.ID, ReadyCandidateIds: arg.ReadyCandidateIDs,
+		ReadyContentIds: arg.ReadyContentIDs, FailedCandidateIds: arg.FailedCandidateIDs,
+	})
+	if err != nil {
+		return repo.AnalysisRun{}, err
+	}
+	return dbAnalysisRunToRepo(row), nil
+}
+
+func (r *PGAnalysisRuns) SetStatus(ctx context.Context, arg repo.SetAnalysisRunStatusParams) (repo.AnalysisRun, error) {
+	row, err := r.q.SetAnalysisRunStatus(ctx, SetAnalysisRunStatusParams{
+		ID: arg.ID, Status: arg.Status, FailedCandidateIds: arg.FailedCandidateIDs,
+		FailureCode: pgconv.StringPtrToPgText(arg.FailureCode),
+	})
+	if err != nil {
+		return repo.AnalysisRun{}, err
+	}
+	return dbAnalysisRunToRepo(row), nil
+}
+
+func (r *PGAnalysisRuns) SetRoot(ctx context.Context, id, rootBatchID uuid.UUID) (repo.AnalysisRun, error) {
+	row, err := r.q.SetAnalysisRunRoot(ctx, SetAnalysisRunRootParams{
+		ID: id, RootBatchID: pgconv.UUIDToPgUUID(rootBatchID),
+	})
+	if err != nil {
+		return repo.AnalysisRun{}, err
+	}
+	return dbAnalysisRunToRepo(row), nil
+}
+
+func (r *PGAnalysisRuns) SetExecution(ctx context.Context, id, executionID uuid.UUID) (repo.AnalysisRun, error) {
+	row, err := r.q.SetAnalysisRunExecution(ctx, SetAnalysisRunExecutionParams{
+		ExecutionID: pgconv.UUIDToPgUUID(executionID), ID: id,
+	})
+	if err != nil {
+		return repo.AnalysisRun{}, err
+	}
+	return dbAnalysisRunToRepo(row), nil
+}
+
+func (r *PGAnalysisRuns) CancelItems(ctx context.Context, fetchID uuid.UUID) error {
+	return r.q.CancelAnalysisRunItems(ctx, fetchID)
+}
+
+func (r *PGReports) GetByID(ctx context.Context, id uuid.UUID) (repo.Report, error) {
+	row, err := r.q.GetReportByID(ctx, id)
+	if err != nil {
+		return repo.Report{}, err
+	}
+	return dbReportToRepo(row), nil
+}
+
+func (r *PGReports) EnsureExecution(ctx context.Context, id uuid.UUID, fingerprint string) error {
+	return r.q.EnsureAnalysisExecution(ctx, EnsureAnalysisExecutionParams{
+		ID: id, ReportFingerprint: fingerprint,
+	})
+}
+
+func (r *PGReports) GetByExecutionID(ctx context.Context, id uuid.UUID) (repo.Report, error) {
+	row, err := r.q.GetReportByExecutionID(ctx, id)
+	if err != nil {
+		return repo.Report{}, err
+	}
+	return dbReportToRepo(row), nil
+}
+
+func (r *PGReports) FindCacheHit(ctx context.Context, id uuid.UUID) (repo.Report, error) {
+	row, err := r.q.FindReportCacheHit(ctx, id)
+	if err != nil {
+		return repo.Report{}, err
+	}
+	return dbReportToRepo(row), nil
+}
+
+func (r *PGReports) MarkMissing(ctx context.Context, id uuid.UUID, requestID *string) (bool, error) {
+	return r.markAvailability(ctx, id, requestID, "ARTIFACT_MISSING", "report-read", func(q *Queries) (int64, error) {
+		return q.MarkReportMissing(ctx, id)
+	})
+}
+
+func (r *PGReports) MarkCorrupt(ctx context.Context, arg repo.MarkReportCorruptParams) (bool, error) {
+	return r.markAvailability(ctx, arg.ReportID, arg.RequestID, "ARTIFACT_CORRUPT", "report-read", func(q *Queries) (int64, error) {
+		return q.MarkReportCorrupt(ctx, MarkReportCorruptParams{
+			ID:                       arg.ReportID,
+			ArtifactCorruptionReason: pgconv.StringPtrToPgText(&arg.Reason),
+		})
+	})
+}
+
+func (r *PGReports) markAvailability(ctx context.Context, id uuid.UUID, requestID *string, eventType, component string, mark func(*Queries) (int64, error)) (bool, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return false, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := r.q.WithTx(tx)
+	rows, err := mark(qtx)
+	if err != nil {
+		return false, err
+	}
+	if rows == 1 {
+		report, err := qtx.GetReportByID(ctx, id)
+		if err != nil {
+			return false, err
+		}
+		if err := qtx.InsertReportAuditEvent(ctx, reportAuditEventParams(repo.ReportAuditEventParams{
+			ReportID:            report.ID,
+			AnalysisExecutionID: report.AnalysisExecutionID,
+			EventType:           eventType,
+			ActorComponent:      component,
+			RequestID:           requestID,
+			StorageURI:          report.StorageUri,
+			StorageOutcome:      "NOT_ATTEMPTED",
+		})); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return rows == 1, nil
+}
+
+func (r *PGReports) BeginRemoval(ctx context.Context, arg repo.BeginReportRemovalParams) (repo.Report, error) {
+	beginner, ok := r.db.(pgBeginner)
+	if !ok {
+		return repo.Report{}, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return repo.Report{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := r.q.WithTx(tx)
+	report, err := qtx.LockReportForRemoval(ctx, arg.AnalysisExecutionID)
+	if err != nil {
+		return repo.Report{}, err
+	}
+	if report.ArtifactRemovedAt.Valid {
+		if err := tx.Commit(ctx); err != nil {
+			return repo.Report{}, err
+		}
+		return dbReportToRepo(report), nil
+	}
+	if rows, err := qtx.MarkReportRemoved(ctx, MarkReportRemovedParams{
+		ActorTokenID: pgconv.UUIDToPgUUID(arg.ActorTokenID),
+		Reason:       pgconv.StringPtrToPgText(&arg.Reason),
+		ID:           report.ID,
+	}); err != nil {
+		return repo.Report{}, err
+	} else if rows != 1 {
+		return repo.Report{}, repo.ErrReportTaskStale
+	}
+	if err := qtx.InsertReportAuditEvent(ctx, reportAuditEventParams(repo.ReportAuditEventParams{
+		ReportID:            report.ID,
+		AnalysisExecutionID: report.AnalysisExecutionID,
+		EventType:           "ADMIN_REMOVE",
+		ActorTokenID:        &arg.ActorTokenID,
+		ActorComponent:      "operator",
+		ActorName:           arg.ActorName,
+		Reason:              &arg.Reason,
+		RequestID:           arg.RequestID,
+		StorageURI:          report.StorageUri,
+		StorageOutcome:      "NOT_ATTEMPTED",
+	})); err != nil {
+		return repo.Report{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return repo.Report{}, err
+	}
+	updated, err := r.q.GetReportByExecutionID(ctx, arg.AnalysisExecutionID)
+	if err != nil {
+		return repo.Report{}, err
+	}
+	report = updated
+	return dbReportToRepo(report), nil
+}
+
+func (r *PGReports) RecordAuditEvent(ctx context.Context, arg repo.ReportAuditEventParams) error {
+	return r.q.InsertReportAuditEvent(ctx, reportAuditEventParams(arg))
+}
+
+func reportAuditEventParams(arg repo.ReportAuditEventParams) InsertReportAuditEventParams {
+	return InsertReportAuditEventParams{
+		ReportID:            arg.ReportID,
+		AnalysisExecutionID: arg.AnalysisExecutionID,
+		EventType:           arg.EventType,
+		ActorTokenID:        pgconv.UUIDPtrToPgUUID(arg.ActorTokenID),
+		ActorComponent:      arg.ActorComponent,
+		ActorName:           pgconv.StringPtrToPgText(arg.ActorName),
+		Reason:              pgconv.StringPtrToPgText(arg.Reason),
+		RequestID:           pgconv.StringPtrToPgText(arg.RequestID),
+		StorageUri:          arg.StorageURI,
+		StorageOutcome:      arg.StorageOutcome,
+		StorageError:        pgconv.StringPtrToPgText(arg.StorageError),
+	}
+}
+
+func dbReportToRepo(row Report) repo.Report {
+	return repo.Report{
+		ID:                       row.ID,
+		AnalysisExecutionID:      row.AnalysisExecutionID,
+		RootBatchID:              row.RootBatchID,
+		StorageURI:               row.StorageUri,
+		ByteSize:                 row.ByteSize,
+		SHA256:                   row.Sha256,
+		ExpiresAt:                row.ExpiresAt.Time,
+		ArtifactMissingAt:        pgconv.PgTimestamptzToTimePtr(row.ArtifactMissingAt),
+		ArtifactCorruptAt:        pgconv.PgTimestamptzToTimePtr(row.ArtifactCorruptAt),
+		ArtifactCorruptionReason: pgconv.PgTextToStringPtr(row.ArtifactCorruptionReason),
+		ArtifactRemovedAt:        pgconv.PgTimestamptzToTimePtr(row.ArtifactRemovedAt),
+		ArtifactRemovedBy:        pgconv.PgUUIDToUUIDPtr(row.ArtifactRemovedBy),
+		ArtifactRemovalReason:    pgconv.PgTextToStringPtr(row.ArtifactRemovalReason),
+		CreatedAt:                row.CreatedAt.Time,
+		UpdatedAt:                row.UpdatedAt.Time,
+	}
+}
+
+func reportMatchesParams(row Report, arg repo.CreateReportParams) bool {
+	return row.AnalysisExecutionID == arg.AnalysisExecutionID &&
+		row.RootBatchID == arg.RootBatchID &&
+		row.StorageUri == arg.StorageURI &&
+		row.ByteSize == arg.ByteSize &&
+		row.Sha256 == arg.SHA256
+}
+
+func dbAnalysisRunToRepo(row AnalysisRun) repo.AnalysisRun {
+	return repo.AnalysisRun{
+		ID:                           row.ID,
+		UserID:                       pgconv.PgUUIDToUUIDPtr(row.UserID),
+		FetchID:                      row.FetchID,
+		Topic:                        row.Topic,
+		Brief:                        row.Brief,
+		FetchFailurePolicy:           row.FetchFailurePolicy,
+		Status:                       row.Status,
+		OriginalSelectedCandidateIDs: row.OriginalSelectedCandidateIds,
+		UnavailableCandidateIDs:      row.UnavailableCandidateIds,
+		ReadyCandidateIDs:            row.ReadyCandidateIds,
+		ReadyContentIDs:              row.ReadyContentIds,
+		FailedCandidateIDs:           row.FailedCandidateIds,
+		RootBatchID:                  pgconv.PgUUIDToUUIDPtr(row.RootBatchID),
+		ExecutionID:                  pgconv.PgUUIDToUUIDPtr(row.ExecutionID),
+		ReportID:                     pgconv.PgUUIDToUUIDPtr(row.ReportID),
+		FailureCode:                  pgconv.PgTextToStringPtr(row.FailureCode),
+		ConfirmedAt:                  pgconv.PgTimestamptzToTimePtr(row.ConfirmedAt),
+		CreatedAt:                    row.CreatedAt,
+		UpdatedAt:                    row.UpdatedAt,
+	}
+}
+
+func stringPtrIfNotEmpty(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func taskStatusPtr(value any) *string {
+	switch typed := value.(type) {
+	case string:
+		return stringPtrIfNotEmpty(typed)
+	case []byte:
+		return stringPtrIfNotEmpty(string(typed))
+	default:
+		return nil
 	}
 }

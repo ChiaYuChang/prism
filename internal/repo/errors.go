@@ -38,3 +38,11 @@ var ErrPipelineSnapshotMissing = errors.New("pipeline input snapshot is missing"
 // ErrPipelinePlanConflict is returned when a retry presents a different
 // compiled stage plan for an already-expanded Root.
 var ErrPipelinePlanConflict = errors.New("pipeline plan conflicts with the existing Root")
+
+// ErrReportTaskStale indicates that a report worker lost the task completion
+// race or tried to complete a task that no longer belongs to an open Root.
+var ErrReportTaskStale = errors.New("report task is stale")
+
+// ErrReportConflict indicates that the deterministic report identity already
+// points at different Root or artifact metadata.
+var ErrReportConflict = errors.New("report metadata conflicts with existing report")

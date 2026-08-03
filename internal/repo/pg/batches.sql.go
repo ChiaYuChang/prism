@@ -44,29 +44,33 @@ func (q *Queries) EnsurePipelineChildBatch(ctx context.Context, arg EnsurePipeli
 const ensurePipelineRoot = `-- name: EnsurePipelineRoot :exec
 INSERT INTO batches (
     id, source_type, trace_id, parent_id, purpose,
-    pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint
+    pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint,
+    analysis_execution_id
 )
 VALUES (
     $1, $2, $3, $4,
     'ANALYZER_PIPELINE_ROOT', $5,
-    $6, $7
+    $6, $7,
+    $8
 )
 ON CONFLICT (id) DO UPDATE
 SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id),
     purpose = COALESCE(batches.purpose, EXCLUDED.purpose),
-    pipeline_definition_hash = COALESCE(batches.pipeline_definition_hash, EXCLUDED.pipeline_definition_hash),
-    pipeline_idempotency_key = COALESCE(batches.pipeline_idempotency_key, EXCLUDED.pipeline_idempotency_key),
-    pipeline_request_fingerprint = COALESCE(batches.pipeline_request_fingerprint, EXCLUDED.pipeline_request_fingerprint)
+     pipeline_definition_hash = COALESCE(batches.pipeline_definition_hash, EXCLUDED.pipeline_definition_hash),
+     pipeline_idempotency_key = COALESCE(batches.pipeline_idempotency_key, EXCLUDED.pipeline_idempotency_key),
+     pipeline_request_fingerprint = COALESCE(batches.pipeline_request_fingerprint, EXCLUDED.pipeline_request_fingerprint),
+     analysis_execution_id = COALESCE(batches.analysis_execution_id, EXCLUDED.analysis_execution_id)
 `
 
 type EnsurePipelineRootParams struct {
-	ID                 uuid.UUID   `db:"id" json:"id"`
-	SourceType         SourceType  `db:"source_type" json:"source_type"`
-	TraceID            pgtype.Text `db:"trace_id" json:"trace_id"`
-	ParentID           pgtype.UUID `db:"parent_id" json:"parent_id"`
-	DefinitionHash     pgtype.Text `db:"definition_hash" json:"definition_hash"`
-	IdempotencyKey     pgtype.Text `db:"idempotency_key" json:"idempotency_key"`
-	RequestFingerprint pgtype.Text `db:"request_fingerprint" json:"request_fingerprint"`
+	ID                  uuid.UUID   `db:"id" json:"id"`
+	SourceType          SourceType  `db:"source_type" json:"source_type"`
+	TraceID             pgtype.Text `db:"trace_id" json:"trace_id"`
+	ParentID            pgtype.UUID `db:"parent_id" json:"parent_id"`
+	DefinitionHash      pgtype.Text `db:"definition_hash" json:"definition_hash"`
+	IdempotencyKey      pgtype.Text `db:"idempotency_key" json:"idempotency_key"`
+	RequestFingerprint  pgtype.Text `db:"request_fingerprint" json:"request_fingerprint"`
+	AnalysisExecutionID pgtype.UUID `db:"analysis_execution_id" json:"analysis_execution_id"`
 }
 
 func (q *Queries) EnsurePipelineRoot(ctx context.Context, arg EnsurePipelineRootParams) error {
@@ -78,12 +82,13 @@ func (q *Queries) EnsurePipelineRoot(ctx context.Context, arg EnsurePipelineRoot
 		arg.DefinitionHash,
 		arg.IdempotencyKey,
 		arg.RequestFingerprint,
+		arg.AnalysisExecutionID,
 	)
 	return err
 }
 
 const findFinishedPipelineBatches = `-- name: FindFinishedPipelineBatches :many
-SELECT b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded, b.pipeline_published_at, b.pipeline_publish_retry_count, b.pipeline_publish_error, b.purpose, b.pipeline_definition_hash, b.pipeline_idempotency_key, b.pipeline_request_fingerprint, b.pipeline_input_snapshot_at,
+SELECT b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded, b.pipeline_published_at, b.pipeline_publish_retry_count, b.pipeline_publish_error, b.purpose, b.pipeline_definition_hash, b.pipeline_idempotency_key, b.pipeline_request_fingerprint, b.pipeline_input_snapshot_at, b.analysis_execution_id, b.failure_kind, b.failure_task_id, b.failure_recorded_at,
        COUNT(t.id) FILTER (WHERE t.status IN ('FAILED', 'CANCELLED')) = 0 AS completion_succeeded
 FROM batches b
 LEFT JOIN tasks t ON t.batch_id = b.id
@@ -122,6 +127,10 @@ type FindFinishedPipelineBatchesRow struct {
 	PipelineIdempotencyKey     pgtype.Text        `db:"pipeline_idempotency_key" json:"pipeline_idempotency_key"`
 	PipelineRequestFingerprint pgtype.Text        `db:"pipeline_request_fingerprint" json:"pipeline_request_fingerprint"`
 	PipelineInputSnapshotAt    pgtype.Timestamptz `db:"pipeline_input_snapshot_at" json:"pipeline_input_snapshot_at"`
+	AnalysisExecutionID        pgtype.UUID        `db:"analysis_execution_id" json:"analysis_execution_id"`
+	FailureKind                pgtype.Text        `db:"failure_kind" json:"failure_kind"`
+	FailureTaskID              pgtype.UUID        `db:"failure_task_id" json:"failure_task_id"`
+	FailureRecordedAt          pgtype.Timestamptz `db:"failure_recorded_at" json:"failure_recorded_at"`
 	CompletionSucceeded        bool               `db:"completion_succeeded" json:"completion_succeeded"`
 }
 
@@ -158,6 +167,10 @@ func (q *Queries) FindFinishedPipelineBatches(ctx context.Context, limit int32) 
 			&i.PipelineIdempotencyKey,
 			&i.PipelineRequestFingerprint,
 			&i.PipelineInputSnapshotAt,
+			&i.AnalysisExecutionID,
+			&i.FailureKind,
+			&i.FailureTaskID,
+			&i.FailureRecordedAt,
 			&i.CompletionSucceeded,
 		); err != nil {
 			return nil, err
@@ -171,7 +184,7 @@ func (q *Queries) FindFinishedPipelineBatches(ctx context.Context, limit int32) 
 }
 
 const findFinishedPipelineRootBatches = `-- name: FindFinishedPipelineRootBatches :many
-SELECT b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded, b.pipeline_published_at, b.pipeline_publish_retry_count, b.pipeline_publish_error, b.purpose, b.pipeline_definition_hash, b.pipeline_idempotency_key, b.pipeline_request_fingerprint, b.pipeline_input_snapshot_at,
+SELECT b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded, b.pipeline_published_at, b.pipeline_publish_retry_count, b.pipeline_publish_error, b.purpose, b.pipeline_definition_hash, b.pipeline_idempotency_key, b.pipeline_request_fingerprint, b.pipeline_input_snapshot_at, b.analysis_execution_id, b.failure_kind, b.failure_task_id, b.failure_recorded_at,
        COUNT(t.id) FILTER (WHERE t.status IN ('FAILED', 'CANCELLED')) = 0 AS completion_succeeded
 FROM batches b
 LEFT JOIN tasks t ON t.batch_id = b.id
@@ -211,6 +224,10 @@ type FindFinishedPipelineRootBatchesRow struct {
 	PipelineIdempotencyKey     pgtype.Text        `db:"pipeline_idempotency_key" json:"pipeline_idempotency_key"`
 	PipelineRequestFingerprint pgtype.Text        `db:"pipeline_request_fingerprint" json:"pipeline_request_fingerprint"`
 	PipelineInputSnapshotAt    pgtype.Timestamptz `db:"pipeline_input_snapshot_at" json:"pipeline_input_snapshot_at"`
+	AnalysisExecutionID        pgtype.UUID        `db:"analysis_execution_id" json:"analysis_execution_id"`
+	FailureKind                pgtype.Text        `db:"failure_kind" json:"failure_kind"`
+	FailureTaskID              pgtype.UUID        `db:"failure_task_id" json:"failure_task_id"`
+	FailureRecordedAt          pgtype.Timestamptz `db:"failure_recorded_at" json:"failure_recorded_at"`
 	CompletionSucceeded        bool               `db:"completion_succeeded" json:"completion_succeeded"`
 }
 
@@ -247,6 +264,10 @@ func (q *Queries) FindFinishedPipelineRootBatches(ctx context.Context, limit int
 			&i.PipelineIdempotencyKey,
 			&i.PipelineRequestFingerprint,
 			&i.PipelineInputSnapshotAt,
+			&i.AnalysisExecutionID,
+			&i.FailureKind,
+			&i.FailureTaskID,
+			&i.FailureRecordedAt,
 			&i.CompletionSucceeded,
 		); err != nil {
 			return nil, err
@@ -318,7 +339,7 @@ func (q *Queries) FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCo
 }
 
 const getBatchByID = `-- name: GetBatchByID :one
-SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at, analysis_execution_id, failure_kind, failure_task_id, failure_recorded_at
 FROM batches
 WHERE id = $1
 `
@@ -350,12 +371,16 @@ func (q *Queries) GetBatchByID(ctx context.Context, id uuid.UUID) (Batch, error)
 		&i.PipelineIdempotencyKey,
 		&i.PipelineRequestFingerprint,
 		&i.PipelineInputSnapshotAt,
+		&i.AnalysisExecutionID,
+		&i.FailureKind,
+		&i.FailureTaskID,
+		&i.FailureRecordedAt,
 	)
 	return i, err
 }
 
 const getPipelineRootByIdempotency = `-- name: GetPipelineRootByIdempotency :one
-SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at, analysis_execution_id, failure_kind, failure_task_id, failure_recorded_at
 FROM batches
 WHERE parent_id = $1
   AND purpose = 'ANALYZER_PIPELINE_ROOT'
@@ -395,12 +420,16 @@ func (q *Queries) GetPipelineRootByIdempotency(ctx context.Context, arg GetPipel
 		&i.PipelineIdempotencyKey,
 		&i.PipelineRequestFingerprint,
 		&i.PipelineInputSnapshotAt,
+		&i.AnalysisExecutionID,
+		&i.FailureKind,
+		&i.FailureTaskID,
+		&i.FailureRecordedAt,
 	)
 	return i, err
 }
 
 const listBatches = `-- name: ListBatches :many
-SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at, analysis_execution_id, failure_kind, failure_task_id, failure_recorded_at
 FROM batches
 ORDER BY created_at DESC, id DESC
 LIMIT $2
@@ -445,6 +474,10 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Bat
 			&i.PipelineIdempotencyKey,
 			&i.PipelineRequestFingerprint,
 			&i.PipelineInputSnapshotAt,
+			&i.AnalysisExecutionID,
+			&i.FailureKind,
+			&i.FailureTaskID,
+			&i.FailureRecordedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -457,7 +490,7 @@ func (q *Queries) ListBatches(ctx context.Context, arg ListBatchesParams) ([]Bat
 }
 
 const listChildBatchesByParentID = `-- name: ListChildBatchesByParentID :many
-SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at, analysis_execution_id, failure_kind, failure_task_id, failure_recorded_at
 FROM batches
 WHERE parent_id = $1
 ORDER BY created_at ASC
@@ -496,6 +529,10 @@ func (q *Queries) ListChildBatchesByParentID(ctx context.Context, parentID pgtyp
 			&i.PipelineIdempotencyKey,
 			&i.PipelineRequestFingerprint,
 			&i.PipelineInputSnapshotAt,
+			&i.AnalysisExecutionID,
+			&i.FailureKind,
+			&i.FailureTaskID,
+			&i.FailureRecordedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -508,7 +545,7 @@ func (q *Queries) ListChildBatchesByParentID(ctx context.Context, parentID pgtyp
 }
 
 const listPendingCompletionBatches = `-- name: ListPendingCompletionBatches :many
-SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at, analysis_execution_id, failure_kind, failure_task_id, failure_recorded_at
 FROM batches
 WHERE completed_at IS NULL
   AND source_type = $1
@@ -555,6 +592,10 @@ func (q *Queries) ListPendingCompletionBatches(ctx context.Context, arg ListPend
 			&i.PipelineIdempotencyKey,
 			&i.PipelineRequestFingerprint,
 			&i.PipelineInputSnapshotAt,
+			&i.AnalysisExecutionID,
+			&i.FailureKind,
+			&i.FailureTaskID,
+			&i.FailureRecordedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -687,7 +728,7 @@ func (q *Queries) ListPipelineInputContents(ctx context.Context, rootBatchID uui
 }
 
 const listReadyPipelineBatches = `-- name: ListReadyPipelineBatches :many
-SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at, analysis_execution_id, failure_kind, failure_task_id, failure_recorded_at
 FROM batches
 WHERE completed_at IS NOT NULL
   AND n_subtasks IS NOT NULL
@@ -731,6 +772,10 @@ func (q *Queries) ListReadyPipelineBatches(ctx context.Context, limit int32) ([]
 			&i.PipelineIdempotencyKey,
 			&i.PipelineRequestFingerprint,
 			&i.PipelineInputSnapshotAt,
+			&i.AnalysisExecutionID,
+			&i.FailureKind,
+			&i.FailureTaskID,
+			&i.FailureRecordedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -743,7 +788,7 @@ func (q *Queries) ListReadyPipelineBatches(ctx context.Context, limit int32) ([]
 }
 
 const listReadyToPublishBatches = `-- name: ListReadyToPublishBatches :many
-SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at, analysis_execution_id, failure_kind, failure_task_id, failure_recorded_at
 FROM batches
 WHERE completed_at IS NOT NULL
   AND published_at IS NULL
@@ -791,6 +836,10 @@ func (q *Queries) ListReadyToPublishBatches(ctx context.Context, arg ListReadyTo
 			&i.PipelineIdempotencyKey,
 			&i.PipelineRequestFingerprint,
 			&i.PipelineInputSnapshotAt,
+			&i.AnalysisExecutionID,
+			&i.FailureKind,
+			&i.FailureTaskID,
+			&i.FailureRecordedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1011,9 +1060,9 @@ WITH locked AS (
       AND locked.completed_at IS NULL
       AND (locked.n_subtasks IS NULL OR locked.n_subtasks = $2)
       AND (SELECT COUNT(*) FROM tasks t WHERE t.batch_id = b.id) <= $2
-    RETURNING b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded, b.pipeline_published_at, b.pipeline_publish_retry_count, b.pipeline_publish_error, b.purpose, b.pipeline_definition_hash, b.pipeline_idempotency_key, b.pipeline_request_fingerprint, b.pipeline_input_snapshot_at
+    RETURNING b.id, b.source_type, b.trace_id, b.created_at, b.updated_at, b.completed_at, b.published_at, b.last_publish_attempt_at, b.publish_retry_count, b.publish_error, b.stalled_at, b.n_subtasks, b.parent_id, b.parent_task_id, b.succeeded, b.pipeline_published_at, b.pipeline_publish_retry_count, b.pipeline_publish_error, b.purpose, b.pipeline_definition_hash, b.pipeline_idempotency_key, b.pipeline_request_fingerprint, b.pipeline_input_snapshot_at, b.analysis_execution_id, b.failure_kind, b.failure_task_id, b.failure_recorded_at
 )
-SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at FROM updated
+SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at, analysis_execution_id, failure_kind, failure_task_id, failure_recorded_at FROM updated
 `
 
 type SetBatchNSubtasksParams struct {
@@ -1045,6 +1094,10 @@ type SetBatchNSubtasksRow struct {
 	PipelineIdempotencyKey     pgtype.Text        `db:"pipeline_idempotency_key" json:"pipeline_idempotency_key"`
 	PipelineRequestFingerprint pgtype.Text        `db:"pipeline_request_fingerprint" json:"pipeline_request_fingerprint"`
 	PipelineInputSnapshotAt    pgtype.Timestamptz `db:"pipeline_input_snapshot_at" json:"pipeline_input_snapshot_at"`
+	AnalysisExecutionID        pgtype.UUID        `db:"analysis_execution_id" json:"analysis_execution_id"`
+	FailureKind                pgtype.Text        `db:"failure_kind" json:"failure_kind"`
+	FailureTaskID              pgtype.UUID        `db:"failure_task_id" json:"failure_task_id"`
+	FailureRecordedAt          pgtype.Timestamptz `db:"failure_recorded_at" json:"failure_recorded_at"`
 }
 
 func (q *Queries) SetBatchNSubtasks(ctx context.Context, arg SetBatchNSubtasksParams) (SetBatchNSubtasksRow, error) {
@@ -1074,6 +1127,10 @@ func (q *Queries) SetBatchNSubtasks(ctx context.Context, arg SetBatchNSubtasksPa
 		&i.PipelineIdempotencyKey,
 		&i.PipelineRequestFingerprint,
 		&i.PipelineInputSnapshotAt,
+		&i.AnalysisExecutionID,
+		&i.FailureKind,
+		&i.FailureTaskID,
+		&i.FailureRecordedAt,
 	)
 	return i, err
 }
@@ -1115,6 +1172,29 @@ func (q *Queries) SnapshotPipelineCandidates(ctx context.Context, arg SnapshotPi
 	return err
 }
 
+const snapshotPipelineCandidatesByIDs = `-- name: SnapshotPipelineCandidatesByIDs :exec
+INSERT INTO pipeline_input_candidates (
+    root_batch_id, candidate_id, batch_id, fingerprint, source_abbr, title, url,
+    description, published_at, discovered_at, trace_id, ingestion_method, metadata, created_at
+)
+SELECT
+    $1, c.id, c.batch_id, c.fingerprint, c.source_abbr, c.title, c.url,
+    c.description, c.published_at, c.discovered_at, c.trace_id, c.ingestion_method, c.metadata, c.created_at
+FROM candidates c
+WHERE c.id = ANY($2::uuid[])
+ON CONFLICT (root_batch_id, candidate_id) DO NOTHING
+`
+
+type SnapshotPipelineCandidatesByIDsParams struct {
+	RootBatchID  uuid.UUID   `db:"root_batch_id" json:"root_batch_id"`
+	CandidateIds []uuid.UUID `db:"candidate_ids" json:"candidate_ids"`
+}
+
+func (q *Queries) SnapshotPipelineCandidatesByIDs(ctx context.Context, arg SnapshotPipelineCandidatesByIDsParams) error {
+	_, err := q.db.Exec(ctx, snapshotPipelineCandidatesByIDs, arg.RootBatchID, arg.CandidateIds)
+	return err
+}
+
 const snapshotPipelineContents = `-- name: SnapshotPipelineContents :exec
 INSERT INTO pipeline_input_contents (
     root_batch_id, content_id, batch_id, type, source_abbr, candidate_id, url, title,
@@ -1136,5 +1216,29 @@ type SnapshotPipelineContentsParams struct {
 
 func (q *Queries) SnapshotPipelineContents(ctx context.Context, arg SnapshotPipelineContentsParams) error {
 	_, err := q.db.Exec(ctx, snapshotPipelineContents, arg.RootBatchID, arg.InputBatchID)
+	return err
+}
+
+const snapshotPipelineContentsByIDs = `-- name: SnapshotPipelineContentsByIDs :exec
+INSERT INTO pipeline_input_contents (
+    root_batch_id, content_id, batch_id, type, source_abbr, candidate_id, url, title,
+    content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+)
+SELECT
+    $1, c.id, c.batch_id, c.type, c.source_abbr, c.candidate_id, c.url, c.title,
+    c.content, c.author, c.trace_id, c.published_at, c.fetched_at, c.created_at, c.deleted_at, c.metadata
+FROM contents c
+WHERE c.id = ANY($2::uuid[])
+  AND c.deleted_at IS NULL
+ON CONFLICT (root_batch_id, content_id) DO NOTHING
+`
+
+type SnapshotPipelineContentsByIDsParams struct {
+	RootBatchID uuid.UUID   `db:"root_batch_id" json:"root_batch_id"`
+	ContentIds  []uuid.UUID `db:"content_ids" json:"content_ids"`
+}
+
+func (q *Queries) SnapshotPipelineContentsByIDs(ctx context.Context, arg SnapshotPipelineContentsByIDsParams) error {
+	_, err := q.db.Exec(ctx, snapshotPipelineContentsByIDs, arg.RootBatchID, arg.ContentIds)
 	return err
 }

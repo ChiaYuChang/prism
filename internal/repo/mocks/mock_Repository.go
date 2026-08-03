@@ -82,6 +82,52 @@ func (_c *MockRepository_Analysis_Call) RunAndReturn(run func() repo.Analysis) *
 	return _c
 }
 
+// AnalysisRuns provides a mock function for the type MockRepository
+func (_mock *MockRepository) AnalysisRuns() repo.AnalysisRuns {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for AnalysisRuns")
+	}
+
+	var r0 repo.AnalysisRuns
+	if returnFunc, ok := ret.Get(0).(func() repo.AnalysisRuns); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.AnalysisRuns)
+		}
+	}
+	return r0
+}
+
+// MockRepository_AnalysisRuns_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AnalysisRuns'
+type MockRepository_AnalysisRuns_Call struct {
+	*mock.Call
+}
+
+// AnalysisRuns is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) AnalysisRuns() *MockRepository_AnalysisRuns_Call {
+	return &MockRepository_AnalysisRuns_Call{Call: _e.mock.On("AnalysisRuns")}
+}
+
+func (_c *MockRepository_AnalysisRuns_Call) Run(run func()) *MockRepository_AnalysisRuns_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_AnalysisRuns_Call) Return(analysisRuns repo.AnalysisRuns) *MockRepository_AnalysisRuns_Call {
+	_c.Call.Return(analysisRuns)
+	return _c
+}
+
+func (_c *MockRepository_AnalysisRuns_Call) RunAndReturn(run func() repo.AnalysisRuns) *MockRepository_AnalysisRuns_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // BatchTrigger provides a mock function for the type MockRepository
 func (_mock *MockRepository) BatchTrigger() repo.BatchTrigger {
 	ret := _mock.Called()
@@ -446,6 +492,52 @@ func (_c *MockRepository_Prompts_Call) Return(prompts repo.Prompts) *MockReposit
 }
 
 func (_c *MockRepository_Prompts_Call) RunAndReturn(run func() repo.Prompts) *MockRepository_Prompts_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Reports provides a mock function for the type MockRepository
+func (_mock *MockRepository) Reports() repo.Reports {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Reports")
+	}
+
+	var r0 repo.Reports
+	if returnFunc, ok := ret.Get(0).(func() repo.Reports); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Reports)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Reports_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Reports'
+type MockRepository_Reports_Call struct {
+	*mock.Call
+}
+
+// Reports is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Reports() *MockRepository_Reports_Call {
+	return &MockRepository_Reports_Call{Call: _e.mock.On("Reports")}
+}
+
+func (_c *MockRepository_Reports_Call) Run(run func()) *MockRepository_Reports_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Reports_Call) Return(reports repo.Reports) *MockRepository_Reports_Call {
+	_c.Call.Return(reports)
+	return _c
+}
+
+func (_c *MockRepository_Reports_Call) RunAndReturn(run func() repo.Reports) *MockRepository_Reports_Call {
 	_c.Call.Return(run)
 	return _c
 }

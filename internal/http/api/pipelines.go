@@ -90,9 +90,19 @@ func (s *Server) CreateAdminPipeline(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid pipeline payload")
 		return
 	}
+	var executionID *uuid.UUID
+	if s.Reports != nil {
+		id := uuid.NewSHA1(uuid.NameSpaceURL, []byte("prism/execution/v1/"+requestFingerprint))
+		if err := s.Reports.EnsureExecution(r.Context(), id, requestFingerprint); err != nil {
+			s.Logger.ErrorContext(r.Context(), "ensure pipeline execution failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to create pipeline execution")
+			return
+		}
+		executionID = &id
+	}
 	logicalKey := "pipeline:init"
 	task, err := s.PipelineRuntime.CreatePipelineRoot(r.Context(), repo.CreateTaskParams{
-		BatchID: rootID, ParentBatchID: &req.InputBatchID, Kind: repo.TaskKindPipelineInit, SourceType: strings.TrimSpace(req.SourceType),
+		BatchID: rootID, AnalysisExecutionID: executionID, ParentBatchID: &req.InputBatchID, Kind: repo.TaskKindPipelineInit, SourceType: strings.TrimSpace(req.SourceType),
 		SourceAbbr: strings.TrimSpace(req.SourceAbbr), URL: "pipeline://init/" + rootID.String(),
 		Payload: payload, TraceID: strings.TrimSpace(req.TraceID), LogicalKey: &logicalKey,
 		PipelineDefinitionHash: definitionHash, PipelineIdempotencyKey: optionalString(idempotencyKey),

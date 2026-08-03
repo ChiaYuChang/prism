@@ -28,13 +28,14 @@ func repoCreateTaskParamsToEnsureBatchExists(arg repo.CreateTaskParams) EnsureBa
 
 func repoCreateTaskParamsToEnsurePipelineRoot(arg repo.CreateTaskParams) EnsurePipelineRootParams {
 	return EnsurePipelineRootParams{
-		ID:                 arg.BatchID,
-		ParentID:           pgconv.UUIDPtrToPgUUID(arg.ParentBatchID),
-		SourceType:         SourceType(arg.SourceType),
-		TraceID:            pgconv.StringPtrToPgText(&arg.TraceID),
-		DefinitionHash:     pgconv.StringPtrToPgText(&arg.PipelineDefinitionHash),
-		IdempotencyKey:     pgconv.StringPtrToPgText(arg.PipelineIdempotencyKey),
-		RequestFingerprint: pgconv.StringPtrToPgText(&arg.PipelineRequestFingerprint),
+		ID:                  arg.BatchID,
+		AnalysisExecutionID: pgconv.UUIDPtrToPgUUID(arg.AnalysisExecutionID),
+		ParentID:            pgconv.UUIDPtrToPgUUID(arg.ParentBatchID),
+		SourceType:          SourceType(arg.SourceType),
+		TraceID:             pgconv.StringPtrToPgText(&arg.TraceID),
+		DefinitionHash:      pgconv.StringPtrToPgText(&arg.PipelineDefinitionHash),
+		IdempotencyKey:      pgconv.StringPtrToPgText(arg.PipelineIdempotencyKey),
+		RequestFingerprint:  pgconv.StringPtrToPgText(&arg.PipelineRequestFingerprint),
 	}
 }
 

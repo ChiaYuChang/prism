@@ -2054,6 +2054,140 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENC
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO prism;
 
 
+-- Analysis confirmation state. Kept separate from fetches so the fetch layer
+-- remains reusable by legacy callers while analysis owns policy and manifest.
+CREATE TABLE public.analysis_runs (
+    id uuid PRIMARY KEY DEFAULT uuidv7(),
+    user_id uuid,
+    fetch_id uuid NOT NULL UNIQUE REFERENCES public.fetches(id) ON DELETE CASCADE,
+    topic text NOT NULL DEFAULT '',
+    brief text NOT NULL DEFAULT '',
+    fetch_failure_policy text NOT NULL CHECK (fetch_failure_policy IN ('STOP', 'IGNORE_FAILED')),
+    status text NOT NULL CHECK (status IN (
+        'DRAFT', 'PREFLIGHT', 'WAITING_FOR_CONFIRMATION', 'FETCHING',
+        'AWAITING_RESOLUTION', 'READY_TO_ANALYZE', 'ANALYZING', 'COMPLETED',
+        'FAILED', 'CANCELLED'
+    )),
+    original_selected_candidate_ids uuid[] NOT NULL,
+    unavailable_candidate_ids uuid[] NOT NULL DEFAULT '{}'::uuid[],
+    ready_candidate_ids uuid[] NOT NULL DEFAULT '{}'::uuid[],
+    ready_content_ids uuid[] NOT NULL DEFAULT '{}'::uuid[],
+    failed_candidate_ids uuid[] NOT NULL DEFAULT '{}'::uuid[],
+    root_batch_id uuid,
+    failure_code text,
+    confirmed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_analysis_runs_user_created ON public.analysis_runs(user_id, created_at DESC);
+CREATE INDEX idx_analysis_runs_status ON public.analysis_runs(status, updated_at);
+
+CREATE TABLE public.analysis_executions (
+    id uuid NOT NULL,
+    report_fingerprint character(64) NOT NULL,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT analysis_executions_pkey PRIMARY KEY (id),
+    CONSTRAINT analysis_executions_report_fingerprint_key UNIQUE (report_fingerprint)
+);
+
+ALTER TABLE public.batches
+    ADD COLUMN analysis_execution_id uuid,
+    ADD COLUMN failure_kind text,
+    ADD COLUMN failure_task_id uuid,
+    ADD COLUMN failure_recorded_at timestamp with time zone;
+
+ALTER TABLE ONLY public.batches
+    ADD CONSTRAINT batches_analysis_execution_purpose_check
+    CHECK ((analysis_execution_id IS NULL) OR (purpose = 'ANALYZER_PIPELINE_ROOT'::batch_purpose)),
+    ADD CONSTRAINT batches_execution_id_key UNIQUE (analysis_execution_id, id),
+    ADD CONSTRAINT batches_analysis_execution_id_fkey
+    FOREIGN KEY (analysis_execution_id) REFERENCES public.analysis_executions(id);
+
+CREATE TABLE public.reports (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    analysis_execution_id uuid NOT NULL,
+    root_batch_id uuid NOT NULL,
+    storage_uri text NOT NULL,
+    byte_size bigint NOT NULL,
+    sha256 character(64) NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    artifact_missing_at timestamp with time zone,
+    artifact_corrupt_at timestamp with time zone,
+    artifact_corruption_reason text,
+    artifact_removed_at timestamp with time zone,
+    artifact_removed_by uuid,
+    artifact_removal_reason text,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT reports_pkey PRIMARY KEY (id),
+    CONSTRAINT reports_analysis_execution_id_key UNIQUE (analysis_execution_id),
+    CONSTRAINT reports_storage_uri_key UNIQUE (storage_uri),
+    CONSTRAINT reports_execution_id_key UNIQUE (analysis_execution_id, id),
+    CONSTRAINT reports_execution_root_key UNIQUE (analysis_execution_id, root_batch_id),
+    CONSTRAINT reports_root_key UNIQUE (root_batch_id),
+    CONSTRAINT reports_byte_size_check CHECK ((byte_size >= 0) AND (byte_size <= 1048576)),
+    CONSTRAINT reports_sha256_check CHECK (sha256 ~ '^[0-9a-f]{64}$'::text),
+    CONSTRAINT reports_uri_check CHECK (storage_uri = ('reports/'::text || (analysis_execution_id)::text || '.md'::text)),
+    CONSTRAINT reports_expiry_check CHECK (expires_at > created_at),
+    CONSTRAINT reports_corrupt_reason_check CHECK (((artifact_corrupt_at IS NULL) AND (artifact_corruption_reason IS NULL)) OR ((artifact_corrupt_at IS NOT NULL) AND (length(btrim(artifact_corruption_reason)) BETWEEN 1 AND 1024))),
+    CONSTRAINT reports_removed_fields_check CHECK (((artifact_removed_at IS NULL) AND (artifact_removed_by IS NULL) AND (artifact_removal_reason IS NULL)) OR ((artifact_removed_at IS NOT NULL) AND (artifact_removed_by IS NOT NULL) AND (length(btrim(artifact_removal_reason)) BETWEEN 1 AND 1024))),
+    CONSTRAINT reports_missing_corrupt_exclusive_check CHECK (NOT ((artifact_missing_at IS NOT NULL) AND (artifact_corrupt_at IS NOT NULL)))
+);
+
+CREATE INDEX idx_reports_expires_at ON public.reports(expires_at);
+CREATE INDEX idx_reports_missing_at ON public.reports(artifact_missing_at) WHERE artifact_missing_at IS NOT NULL;
+CREATE INDEX idx_reports_removed_at ON public.reports(artifact_removed_at) WHERE artifact_removed_at IS NOT NULL;
+
+ALTER TABLE ONLY public.reports
+    ADD CONSTRAINT reports_analysis_execution_id_fkey
+    FOREIGN KEY (analysis_execution_id) REFERENCES public.analysis_executions(id),
+    ADD CONSTRAINT reports_root_fk
+    FOREIGN KEY (analysis_execution_id, root_batch_id) REFERENCES public.batches(analysis_execution_id, id),
+    ADD CONSTRAINT reports_artifact_removed_by_fkey
+    FOREIGN KEY (artifact_removed_by) REFERENCES public.tokens(id);
+
+ALTER TABLE public.analysis_runs
+    ADD COLUMN execution_id uuid,
+    ADD COLUMN report_id uuid;
+
+ALTER TABLE ONLY public.analysis_runs
+    ADD CONSTRAINT analysis_runs_execution_fk
+    FOREIGN KEY (execution_id) REFERENCES public.analysis_executions(id),
+    ADD CONSTRAINT analysis_runs_root_execution_fk
+    FOREIGN KEY (execution_id, root_batch_id) REFERENCES public.batches(analysis_execution_id, id) MATCH FULL,
+    ADD CONSTRAINT analysis_runs_report_execution_fk
+    FOREIGN KEY (execution_id, report_id) REFERENCES public.reports(analysis_execution_id, id) MATCH FULL,
+    ADD CONSTRAINT analysis_runs_root_execution_pair_check CHECK ((root_batch_id IS NULL) OR (execution_id IS NOT NULL)),
+    ADD CONSTRAINT analysis_runs_report_execution_pair_check CHECK ((report_id IS NULL) OR (execution_id IS NOT NULL));
+
+CREATE TABLE public.report_audit_events (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    report_id uuid NOT NULL,
+    analysis_execution_id uuid NOT NULL,
+    event_type text NOT NULL,
+    actor_token_id uuid,
+    actor_component text NOT NULL,
+    actor_name text,
+    reason text,
+    request_id text,
+    storage_uri text NOT NULL,
+    storage_outcome text NOT NULL,
+    storage_error text,
+    occurred_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT report_audit_events_pkey PRIMARY KEY (id),
+    CONSTRAINT report_audit_event_type_check CHECK (event_type = ANY (ARRAY['ADMIN_REMOVE'::text, 'ADMIN_REMOVE_ATTEMPT'::text, 'ARTIFACT_MISSING'::text, 'ARTIFACT_CORRUPT'::text, 'ARTIFACT_REPAIRED'::text])),
+    CONSTRAINT report_audit_actor_component_check CHECK (actor_component = ANY (ARRAY['operator'::text, 'report-read'::text, 'report-recovery'::text])),
+    CONSTRAINT report_audit_storage_outcome_check CHECK (storage_outcome = ANY (ARRAY['NOT_ATTEMPTED'::text, 'PENDING'::text, 'DELETED'::text, 'NOT_FOUND'::text, 'FAILED'::text])),
+    CONSTRAINT report_audit_report_fk FOREIGN KEY (analysis_execution_id, report_id) REFERENCES public.reports(analysis_execution_id, id),
+    CONSTRAINT report_audit_reason_check CHECK ((event_type <> ALL (ARRAY['ADMIN_REMOVE'::text, 'ARTIFACT_REPAIRED'::text])) OR ((length(btrim(reason)) >= 1) AND (length(btrim(reason)) <= 1024))),
+    CONSTRAINT report_audit_actor_check CHECK ((event_type <> 'ADMIN_REMOVE'::text) OR ((actor_token_id IS NOT NULL) AND (actor_component = 'operator'::text)))
+);
+
+CREATE UNIQUE INDEX uq_report_admin_remove_event ON public.report_audit_events(report_id) WHERE event_type = 'ADMIN_REMOVE'::text;
+CREATE UNIQUE INDEX uq_report_availability_observation_event ON public.report_audit_events(report_id, event_type) WHERE event_type = ANY (ARRAY['ARTIFACT_MISSING'::text, 'ARTIFACT_CORRUPT'::text]);
+CREATE INDEX idx_report_audit_events_report_time ON public.report_audit_events(report_id, occurred_at DESC);
+
 --
 -- PostgreSQL database dump complete
 --

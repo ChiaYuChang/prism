@@ -222,18 +222,25 @@ The planned user-facing path is separate and must precede that Root creation:
 
 ```
 candidate selection
- └─► synchronous availability preflight
-      └─► per-analysis acquisition session using shared PAGE_FETCH tasks
-           └─► terminal failure-policy resolution
-                └─► confirmed READY manifest
-                     └─► Root/P0 creation and analysis
+  └─► synchronous availability preflight
+       └─► per-analysis acquisition session using shared PAGE_FETCH tasks
+            └─► terminal failure-policy resolution
+                 └─► confirmed READY manifest
+                      └─► report-cache lookup
+                           ├─► cached successful report
+                           ├─► attach to active analysis Root
+                           └─► create Root/P0 under an execution bridge
 ```
 
 The manifest freezes the selected READY candidates and contents, topic, brief,
-failure policy, and excluded IDs for provenance. A later stage must fail with
-`INPUT_CANDIDATE_MISSING` rather than silently replacing or omitting a confirmed
-input. This flow is planned server work; client applications are external to
-this repository. The detailed contract is in `pre-analysis.md`.
+failure policy, and excluded IDs for provenance. Equivalent manifests share an
+immutable execution bridge; Root batches retain retry history beneath that bridge
+and only a successful Root creates a reusable `report.md` cache entry. Requests
+retain their own observed Root/report and never have their prior result rewritten
+without explicit rerun. A later stage must fail with `INPUT_CANDIDATE_MISSING`
+rather than silently replacing or omitting a confirmed input. This flow is
+planned server work; client applications are external to this repository. The
+detailed contract is in `pre-analysis.md`.
 
 ## 6. Current Design Clarifications
 

@@ -24,28 +24,42 @@ Detailed server-side contract and acceptance tests: [`pre-analysis.md`](../../..
 Client implementation is outside this repository; the API remains defensive
 against malformed client requests.
 
-- [ ] Add `POST /analysis/preflight` to classify selected IDs as available or
+- [ ] Add `POST /analyses/preflight` to classify selected IDs as available or
   unavailable without creating work. A candidate is available only when it
   exists and its URL can be normalized into a canonical URL.
-- [ ] Add analysis-run persistence for topic, brief, selected IDs, failure
-  policy, acquisition session, state, and report provenance.
+- [ ] Add analysis persistence for a client-created UUIDv7 `analysis_id`, topic,
+  brief, selected IDs, failure policy, acquisition session, state, request
+  fingerprint, observed Root/report, and report provenance. Add immutable
+  ownerless executions keyed by `report_fingerprint`; Root history belongs to
+  `batches.analysis_execution_id`, while successful `reports` cache
+  `report.md` artifacts. Use `/analyses` externally; retain `analysis_runs` only
+  as an internal table/type name.
+- [ ] Use the client `analysis_id` as the durable idempotency identity. An
+  identical replay returns `200 ANALYSIS_ALREADY_CREATED`; a different request
+  using the same ID returns `409 ANALYSIS_REQUEST_CONFLICT`.
 - [ ] Reject an empty candidate-ID list with `ANALYSIS_INPUT_EMPTY`; create no
   fetch session/item, analysis run, pipeline Root, or P0.
 - [ ] Create/reuse shared `PAGE_FETCH` tasks by canonical URL while keeping
-  each analysis run's fetch-item membership private and cancellable.
+  each analysis run's fetch-item membership private.
 - [ ] Expand `GET /fetches/{id}` to return grouped candidate IDs in the
   user-facing `PENDING`, `FETCHING`, `READY`, and `FAILED` states.
 - [ ] Implement terminal resolution: `STOP` -> `AWAITING_RESOLUTION` on
   failures; `IGNORE_FAILED` starts only with at least one READY input; zero
   READY inputs fails the run without Root/P0.
-- [ ] Add retry/ignore/cancel resolution APIs. Cancelling a run detaches only
-  its fetch items and never cancels globally shared `PAGE_FETCH` work.
+- [ ] Add retry/ignore failure-resolution APIs. Once an analysis is created,
+  acquisition and analysis work are not user-cancellable.
+- [ ] Add owner-scoped `GET /analyses/{id}` for lifecycle, manifest, Root, and
+  failure state. Keep `GET /fetches/{id}` acquisition-progress-only.
 - [ ] Persist and revalidate the confirmed READY manifest atomically with
-  Root/P0 creation. If a confirmed input disappears, fail with
-  `INPUT_CANDIDATE_MISSING`; never substitute a newer input.
+  execution-bridge/Root/P0 creation. Attach equivalent requests to an active
+  Root (`completed_at IS NULL`); create a success-only report cache entry when a
+  Root completes; use explicit rerun for retryable failed Roots. If a confirmed
+  input disappears, fail with `INPUT_CANDIDATE_MISSING`; never substitute a newer
+  input.
 - [ ] Add PostgreSQL-backed acceptance tests for preflight, shared work,
-  progress grouping, failure policy, cancellation isolation, and manifest
-  revalidation.
+  progress grouping, failure policy, ownership isolation, and manifest
+  revalidation, active Root attachment, Root retry history, and report cache
+  reuse.
 
 ## Analysis Assets
 
@@ -56,8 +70,8 @@ to `EMBED_CANDIDATE` and `EMBED_CONTENT`.
 - [ ] Persist `content_extractions`, extracted entities, topics, and phrases.
 - [ ] Define and implement corpus-dependent analysis stages after the
   pre-analysis confirmed-manifest gate exists.
-- [ ] Add summarization, semantic distance, clustering, and report persistence
-  over the confirmed corpus.
+- [ ] Add summarization, semantic distance, clustering, and `report.md`
+  persistence over the confirmed corpus.
 
 ## Monitoring And Operations
 

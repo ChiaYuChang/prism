@@ -2,7 +2,7 @@ version: "3"
 
 tasks:
   auth:bootstrap:
-    desc: initialize root and admin token files after migrations
+    desc: initialize root/admin tokens through gated root control (requires pg-rootctl)
     cmds:
       - ./script/bootstrap-auth.sh
 

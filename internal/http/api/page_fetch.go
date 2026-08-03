@@ -142,6 +142,10 @@ func (s *Server) PageFetch(w http.ResponseWriter, r *http.Request) {
 // by design (collector ordering CreateContent → CompleteTask), so any
 // remaining miss is an invariant violation and surfaces as 500.
 func (s *Server) recordPageFetchItem(ctx context.Context, fetchID uuid.UUID, c repo.Candidate) (string, error) {
+	canonicalURL, err := normalizeCandidateURL(c.URL)
+	if err != nil {
+		return "", err
+	}
 	meta, err := json.Marshal(map[string]any{"candidate_id": c.ID.String()})
 	if err != nil {
 		return "", err
@@ -152,7 +156,7 @@ func (s *Server) recordPageFetchItem(ctx context.Context, fetchID uuid.UUID, c r
 		Kind:       repo.TaskKindPageFetch,
 		SourceType: repo.SourceTypeMedia,
 		SourceAbbr: c.SourceAbbr,
-		URL:        c.URL,
+		URL:        canonicalURL,
 		Meta:       meta,
 		TraceID:    c.TraceID,
 	})
@@ -185,7 +189,7 @@ func (s *Server) recordPageFetchItem(ctx context.Context, fetchID uuid.UUID, c r
 		// PENDING/RUNNING by recovery-SELECT time. Collector ordering
 		// (CreateContent → CompleteTask) means the contents row must
 		// exist by now.
-		content, contentErr := s.Pipeline.GetContentByURL(ctx, c.URL)
+		content, contentErr := s.Pipeline.GetContentByURL(ctx, canonicalURL)
 		if contentErr != nil {
 			if errors.Is(contentErr, pgx.ErrNoRows) {
 				return "", errors.New("page_fetch race: active task drained without contents row (design invariant)")

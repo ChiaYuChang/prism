@@ -27,6 +27,49 @@ pre-analysis work is in `todo.md` and `pre-analysis.md`.
 * [ ] RSS and official API ingestion for additional media sources that support them.
 * [ ] More robust search-provider abstraction and quota management.
 * [ ] LLM-assisted quality control for parser drift detection.
+* [ ] **Multi-tenant analysis credentials and cancellation.** The current
+  internal-tool deployment uses service-owned LLM/provider credentials and does
+  not allow users to cancel an accepted analysis. Before accepting per-user
+  provider keys, design encrypted key storage, tenant-scoped billing/audit,
+  key revocation, worker credential lookup, and a safe cancellation model for
+  fetch, Root, stage, and report work. Do not add user key submission or
+  mid-pipeline cancellation piecemeal.
+* [ ] **Optional database-level content immutability.** Current policy is that
+  public API and repository paths never update `contents.content`; a trusted
+  operator may use direct SQL after taking a Postgres backup and recording the
+  affected content IDs. Revisit stronger enforcement when multiple operators,
+  public admin editing, or article-version history make application convention
+  insufficient.
+  * **Option A:** a `BEFORE UPDATE` trigger rejects changes to
+    `NEW.content`. This is small and protects against accidental application
+    updates, but adds per-update comparison work and makes repairs/migrations
+    less convenient.
+  * **Option B:** split immutable article payload from mutable operational
+    metadata (`ETag`, `Last-Modified`, `last_checked_at`, `deleted_at`) and use
+    separate database roles/column privileges. This is the cleaner strict model
+    but adds joins, transactional dual writes, and schema complexity.
+  * **Decision now:** implement neither option. Do not add a body-update API;
+    strengthen backup/restore operations before relying on direct admin SQL.
+* [ ] **Article version history and admin refresh.** Keep `candidate -> content`
+  one-to-one. An admin-only refresh may conditionally refetch a URL and, when
+  its normalized body differs, create a new candidate/content version rather
+  than update the old body. Model lineage with
+  `candidates.previous_candidate_id`; default candidate queries return only
+  chain tips, while history queries traverse predecessors. The versioning phase
+  adds `contents.body_sha256`, replaces `UNIQUE(contents.url)` with
+  `UNIQUE(url, body_sha256)`, preserves `UNIQUE(candidate_id)`, and uses HTTP
+  validators only as a fetch optimization. No public refresh API or background
+  refresh polling is planned.
+* [ ] **Shared report result isolation.** The active analysis model has
+  user-owned requests linked N:1 to immutable ownerless execution bridges,
+  active Root attachment, and success-only reports cached by report fingerprint.
+  Before exposing the same report across user/tenant boundaries, decide
+  visibility and isolation, provider credential scope, and policies such as
+  `GLOBAL`, `REQUEST_ONLY`, and `SAME_USER`. An analysis Root remains
+  `batches.parent_id = NULL`: `parent_id` is batch lineage and cannot hold an
+  analysis request UUID. Request-local observed Root/report references provide
+  provenance; future report authorization is evaluated through the requesting
+  user's link, not a Root parent or a first-creator ownership field.
 * [ ] **Dedup `LLMTargetNodeList.Value()` by trimmed value before joining.** Currently when an LLM returns the same text via multiple selectors (e.g. headline available through `<title>`, `<h1>`, and `<meta property="og:title">`, all yielding "Breaking News"), `Value()` joins them with `\n\n` separator and produces "Breaking News\n\nBreaking News\n\nBreaking News". Should keep first occurrence and drop subsequent matches. DOM order is preserved because LLM-returned nodes are already in reading order (per `article_parser.md` prompt). Not blocking; surfaces as visual duplication in extracted Title/Author/Content fields.
 * [ ] TUI and Web dashboard.
   * TUI: `cmd/tui` (2.8) — Bubble Tea, single Go binary for operator use.

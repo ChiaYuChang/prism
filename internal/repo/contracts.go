@@ -48,6 +48,7 @@ type FailedTaskSummary struct {
 
 type Batch struct {
 	ID                      uuid.UUID
+	AnalysisExecutionID     *uuid.UUID
 	Purpose                 string
 	ParentID                *uuid.UUID
 	NSubtasks               *int32
@@ -240,6 +241,86 @@ type UserFetchProgress struct {
 	Terminal                    bool
 }
 
+type AnalysisRun struct {
+	ID                           uuid.UUID
+	UserID                       *uuid.UUID
+	FetchID                      uuid.UUID
+	Topic                        string
+	Brief                        string
+	FetchFailurePolicy           string
+	Status                       string
+	OriginalSelectedCandidateIDs []uuid.UUID
+	UnavailableCandidateIDs      []uuid.UUID
+	ReadyCandidateIDs            []uuid.UUID
+	ReadyContentIDs              []uuid.UUID
+	FailedCandidateIDs           []uuid.UUID
+	RootBatchID                  *uuid.UUID
+	ExecutionID                  *uuid.UUID
+	ReportID                     *uuid.UUID
+	FailureCode                  *string
+	ConfirmedAt                  *time.Time
+	CreatedAt                    time.Time
+	UpdatedAt                    time.Time
+}
+
+// Report is the durable link between an analysis execution and its immutable
+// Markdown artifact. Availability markers are lifecycle evidence, not report
+// states; a row is inserted only after the artifact is verified.
+type Report struct {
+	ID                       uuid.UUID
+	AnalysisExecutionID      uuid.UUID
+	RootBatchID              uuid.UUID
+	StorageURI               string
+	ByteSize                 int64
+	SHA256                   string
+	ExpiresAt                time.Time
+	ArtifactMissingAt        *time.Time
+	ArtifactCorruptAt        *time.Time
+	ArtifactCorruptionReason *string
+	ArtifactRemovedAt        *time.Time
+	ArtifactRemovedBy        *uuid.UUID
+	ArtifactRemovalReason    *string
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+}
+
+// ReportAvailability is derived from persisted report metadata without
+// contacting object storage.
+type ReportAvailability string
+
+const (
+	ReportAvailabilityAvailable ReportAvailability = "AVAILABLE"
+	ReportAvailabilityExpired   ReportAvailability = "EXPIRED"
+	ReportAvailabilityMissing   ReportAvailability = "MISSING"
+	ReportAvailabilityCorrupt   ReportAvailability = "CORRUPT"
+	ReportAvailabilityRemoved   ReportAvailability = "REMOVED"
+)
+
+// ReportAuditEvent records an availability observation or operator action.
+type ReportAuditEvent struct {
+	ID                  uuid.UUID
+	ReportID            uuid.UUID
+	AnalysisExecutionID uuid.UUID
+	EventType           string
+	ActorTokenID        *uuid.UUID
+	ActorComponent      string
+	ActorName           *string
+	Reason              *string
+	RequestID           *string
+	StorageURI          string
+	StorageOutcome      string
+	StorageError        *string
+	OccurredAt          time.Time
+}
+
+type AnalysisRunItem struct {
+	CandidateID    uuid.UUID
+	TaskID         *uuid.UUID
+	SnapshotStatus *string
+	TaskStatus     *string
+	ContentID      *uuid.UUID
+}
+
 type Schedule struct {
 	ID                     uuid.UUID
 	Name                   string
@@ -272,3 +353,15 @@ type ScheduleMaterialization struct {
 // Items in this state were promoted to contents before the request was
 // created, so they do not reference an active task.
 const UserFetchItemSnapshotAlreadyComplete = "ALREADY_COMPLETE"
+
+const (
+	AnalysisRunStatusFetching           = "FETCHING"
+	AnalysisRunStatusAwaitingResolution = "AWAITING_RESOLUTION"
+	AnalysisRunStatusReadyToAnalyze     = "READY_TO_ANALYZE"
+	AnalysisRunStatusAnalyzing          = "ANALYZING"
+	AnalysisRunStatusCompleted          = "COMPLETED"
+	AnalysisRunStatusFailed             = "FAILED"
+	AnalysisRunStatusCancelled          = "CANCELLED"
+	AnalysisFailurePolicyStop           = "STOP"
+	AnalysisFailurePolicyIgnoreFailed   = "IGNORE_FAILED"
+)

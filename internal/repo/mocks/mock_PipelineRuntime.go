@@ -39,6 +39,72 @@ func (_m *MockPipelineRuntime) EXPECT() *MockPipelineRuntime_Expecter {
 	return &MockPipelineRuntime_Expecter{mock: &_m.Mock}
 }
 
+// CompleteAnalysisReport provides a mock function for the type MockPipelineRuntime
+func (_mock *MockPipelineRuntime) CompleteAnalysisReport(ctx context.Context, arg repo.CompleteAnalysisReportParams) (repo.Report, error) {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CompleteAnalysisReport")
+	}
+
+	var r0 repo.Report
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CompleteAnalysisReportParams) (repo.Report, error)); ok {
+		return returnFunc(ctx, arg)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CompleteAnalysisReportParams) repo.Report); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repo.Report)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CompleteAnalysisReportParams) error); ok {
+		r1 = returnFunc(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPipelineRuntime_CompleteAnalysisReport_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CompleteAnalysisReport'
+type MockPipelineRuntime_CompleteAnalysisReport_Call struct {
+	*mock.Call
+}
+
+// CompleteAnalysisReport is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.CompleteAnalysisReportParams
+func (_e *MockPipelineRuntime_Expecter) CompleteAnalysisReport(ctx interface{}, arg interface{}) *MockPipelineRuntime_CompleteAnalysisReport_Call {
+	return &MockPipelineRuntime_CompleteAnalysisReport_Call{Call: _e.mock.On("CompleteAnalysisReport", ctx, arg)}
+}
+
+func (_c *MockPipelineRuntime_CompleteAnalysisReport_Call) Run(run func(ctx context.Context, arg repo.CompleteAnalysisReportParams)) *MockPipelineRuntime_CompleteAnalysisReport_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.CompleteAnalysisReportParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.CompleteAnalysisReportParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipelineRuntime_CompleteAnalysisReport_Call) Return(report repo.Report, err error) *MockPipelineRuntime_CompleteAnalysisReport_Call {
+	_c.Call.Return(report, err)
+	return _c
+}
+
+func (_c *MockPipelineRuntime_CompleteAnalysisReport_Call) RunAndReturn(run func(ctx context.Context, arg repo.CompleteAnalysisReportParams) (repo.Report, error)) *MockPipelineRuntime_CompleteAnalysisReport_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ConvergePipelineFailure provides a mock function for the type MockPipelineRuntime
 func (_mock *MockPipelineRuntime) ConvergePipelineFailure(ctx context.Context, taskID uuid.UUID, rootBatchID uuid.UUID, reason string) error {
 	ret := _mock.Called(ctx, taskID, rootBatchID, reason)

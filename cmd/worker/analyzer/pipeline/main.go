@@ -16,6 +16,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
+	"github.com/ChiaYuChang/prism/internal/storage"
 	wm "github.com/ThreeDotsLabs/watermill/message"
 )
 
@@ -84,6 +85,21 @@ func main() {
 		logger.Error("failed to create pipeline work registry", "error", err)
 		os.Exit(1)
 	}
+	reportStore, err := appconfig.NewStorage(ctx, config.ReportStorageURI, config.S3)
+	if err != nil {
+		logger.Error("failed to initialize report storage", "error", err)
+		os.Exit(1)
+	}
+	immutableStore, ok := reportStore.(storage.ImmutableStore)
+	if !ok {
+		logger.Error("report storage does not support immutable writes")
+		os.Exit(1)
+	}
+	reportWriter, err := pipeline.NewMarkdownReportWriter(immutableStore, dbRepo.PipelineRuntime(), config.ReportCacheTTL)
+	if err != nil {
+		logger.Error("failed to create report writer", "error", err)
+		os.Exit(1)
+	}
 	coordinator, err := pipeline.NewCoordinator(dbRepo.Tasks(), dbRepo.PipelineRuntime(), dbRepo.Scheduler(), registry)
 	if err != nil {
 		logger.Error("failed to create pipeline coordinator", "error", err)
@@ -94,6 +110,7 @@ func main() {
 		logger.Error("failed to create pipeline handler", "error", err)
 		os.Exit(1)
 	}
+	handler.SetReportWriter(reportWriter)
 	taskMessages, err := msgr.Subscribe(ctx, message.TaskTopic)
 	if err != nil {
 		logger.Error("failed to subscribe task topic", "error", err)

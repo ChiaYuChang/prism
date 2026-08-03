@@ -17,6 +17,8 @@ type Repository interface {
 	Analysis() Analysis
 	BatchTrigger() BatchTrigger
 	UserFetches() UserFetches
+	AnalysisRuns() AnalysisRuns
+	Reports() Reports
 	Schedules() Schedules
 	Operator() Operator
 	Prompts() Prompts
@@ -164,6 +166,7 @@ type PipelineRuntime interface {
 	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
 	MarkPipelinePublished(ctx context.Context, batchID uuid.UUID) error
 	RecordPipelinePublishFailure(ctx context.Context, batchID uuid.UUID, message string) error
+	CompleteAnalysisReport(ctx context.Context, arg CompleteAnalysisReportParams) (Report, error)
 }
 
 type BatchTrigger interface {
@@ -208,6 +211,29 @@ type UserFetches interface {
 	// v1 callers compute terminal on-the-fly from GetProgress and may
 	// skip this entirely.
 	MarkCompleted(ctx context.Context, fetchID uuid.UUID) error
+}
+
+type AnalysisRuns interface {
+	Create(ctx context.Context, arg CreateAnalysisRunParams) (AnalysisRun, error)
+	GetByID(ctx context.Context, id uuid.UUID) (AnalysisRun, error)
+	GetByFetchID(ctx context.Context, fetchID uuid.UUID) (AnalysisRun, error)
+	ListItems(ctx context.Context, fetchID uuid.UUID) ([]AnalysisRunItem, error)
+	SetManifest(ctx context.Context, arg SetAnalysisRunManifestParams) (AnalysisRun, error)
+	SetStatus(ctx context.Context, arg SetAnalysisRunStatusParams) (AnalysisRun, error)
+	SetRoot(ctx context.Context, id, rootBatchID uuid.UUID) (AnalysisRun, error)
+	SetExecution(ctx context.Context, id, executionID uuid.UUID) (AnalysisRun, error)
+	CancelItems(ctx context.Context, fetchID uuid.UUID) error
+}
+
+type Reports interface {
+	EnsureExecution(ctx context.Context, id uuid.UUID, fingerprint string) error
+	GetByID(ctx context.Context, id uuid.UUID) (Report, error)
+	GetByExecutionID(ctx context.Context, id uuid.UUID) (Report, error)
+	FindCacheHit(ctx context.Context, id uuid.UUID) (Report, error)
+	MarkMissing(ctx context.Context, id uuid.UUID, requestID *string) (bool, error)
+	MarkCorrupt(ctx context.Context, arg MarkReportCorruptParams) (bool, error)
+	BeginRemoval(ctx context.Context, arg BeginReportRemovalParams) (Report, error)
+	RecordAuditEvent(ctx context.Context, arg ReportAuditEventParams) error
 }
 
 type Analysis interface {

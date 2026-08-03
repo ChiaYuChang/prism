@@ -47,6 +47,7 @@ WITH resolved AS (
     FROM fetch_items i
     LEFT JOIN tasks t ON t.id = i.task_id
     WHERE i.fetch_id = $1
+      AND i.snapshot_status IS DISTINCT FROM 'CANCELLED'
 )
 SELECT
     (SELECT COUNT(*) FROM resolved)                                            AS total,
