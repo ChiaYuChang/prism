@@ -99,6 +99,19 @@ func TestLocalArchiver_Layout(t *testing.T) {
 	require.NoError(t, err, "LocalArchiver must write to {baseDir}/archives/{YYYY/MM/DD}/{traceID}.data")
 }
 
+func TestLocalArchiver_UsesArchiveIDWhenProvided(t *testing.T) {
+	dir := t.TempDir()
+	a, err := archiver.NewLocalArchiver(dir, testutils.Logger())
+	require.NoError(t, err)
+	now := time.Now()
+	require.NoError(t, a.Save(context.Background(), collector.Archive{
+		ID: "content-id", URL: "https://x.com", Payload: "p", TraceID: "shared-trace", Timestamp: now,
+	}))
+
+	_, err = os.Stat(filepath.Join(dir, "archives", now.Format("2006/01/02"), "content-id.data"))
+	require.NoError(t, err)
+}
+
 func TestLocalArchiver_Scan_FilterByPayloadKind(t *testing.T) {
 	dir := t.TempDir()
 	a, err := archiver.NewLocalArchiver(dir, testutils.Logger())

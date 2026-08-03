@@ -19,6 +19,8 @@ func repoListCandidatesParamsToDB(arg repo.ListCandidatesParams) ListCandidatesP
 func repoCreateTaskParamsToEnsureBatchExists(arg repo.CreateTaskParams) EnsureBatchExistsParams {
 	return EnsureBatchExistsParams{
 		ID:         arg.BatchID,
+		ParentID:   pgconv.UUIDPtrToPgUUID(arg.ParentBatchID),
+		ParentTaskID: pgconv.UUIDPtrToPgUUID(arg.ParentTaskID),
 		SourceType: SourceType(arg.SourceType),
 		TraceID:    pgconv.StringPtrToPgText(&arg.TraceID),
 	}
@@ -26,18 +28,21 @@ func repoCreateTaskParamsToEnsureBatchExists(arg repo.CreateTaskParams) EnsureBa
 
 func repoCreateTaskParamsToDB(arg repo.CreateTaskParams) CreateTaskParams {
 	return CreateTaskParams{
-		BatchID:     arg.BatchID,
-		Kind:        TaskKind(arg.Kind),
-		SourceType:  SourceType(arg.SourceType),
-		SourceAbbr:  arg.SourceAbbr,
-		Url:         arg.URL,
-		Payload:     arg.Payload,
-		PayloadHash: pgconv.StringPtrToPgText(arg.PayloadHash),
-		Meta:        arg.Meta,
-		TraceID:     arg.TraceID,
-		Frequency:   pgconv.DurationPtrToPgInterval(arg.Frequency),
-		NextRunAt:   pgconv.TimePtrToPgTimestamptz(arg.NextRunAt),
-		ExpiresAt:   pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
+		BatchID:        arg.BatchID,
+		Kind:           TaskKind(arg.Kind),
+		SourceType:     SourceType(arg.SourceType),
+		SourceAbbr:     arg.SourceAbbr,
+		Url:            arg.URL,
+		Payload:        arg.Payload,
+		PayloadHash:    pgconv.StringPtrToPgText(arg.PayloadHash),
+		Meta:           arg.Meta,
+		TraceID:        arg.TraceID,
+		PreviousTaskID: pgconv.UUIDPtrToPgUUID(arg.PreviousTaskID),
+		NextTaskID:     pgconv.UUIDPtrToPgUUID(arg.NextTaskID),
+		LogicalKey:     pgconv.StringPtrToPgText(arg.LogicalKey),
+		Frequency:      pgconv.DurationPtrToPgInterval(arg.Frequency),
+		NextRunAt:      pgconv.TimePtrToPgTimestamptz(arg.NextRunAt),
+		ExpiresAt:      pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
 	}
 }
 
@@ -47,6 +52,23 @@ func repoExtendActiveTaskExpiryParamsToDB(arg repo.ExtendActiveTaskExpiryParams)
 		Kind:        TaskKind(arg.Kind),
 		PayloadHash: pgconv.StringPtrToPgText(&arg.PayloadHash),
 		ExpiresAt:   pgconv.TimePtrToPgTimestamptz(arg.ExpiresAt),
+	}
+}
+
+func repoUpsertScheduleParamsToDB(arg repo.UpsertScheduleParams) UpsertScheduleParams {
+	return UpsertScheduleParams{
+		ID:          arg.ID,
+		Name:        arg.Name,
+		Enabled:     arg.Enabled,
+		ConfigHash:  arg.ConfigHash,
+		Kind:        TaskKind(arg.Kind),
+		SourceType:  SourceType(arg.SourceType),
+		SourceAbbr:  arg.SourceAbbr,
+		Url:         arg.URL,
+		Payload:     arg.Payload,
+		Meta:        arg.Meta,
+		Frequency:   pgconv.DurationPtrToPgInterval(&arg.Frequency),
+		RunOnInsert: arg.RunOnInsert,
 	}
 }
 

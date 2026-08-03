@@ -164,7 +164,7 @@ func main() {
 	pflag.StringVarP(&sourceName, "source", "s", "dpp", "Source name in scouts.yaml")
 	pflag.StringVar(&customName, "name", "", "Custom name for output directory (defaults to source)")
 	pflag.IntVarP(&maxPages, "max-pages", "n", 1, "Maximum directory pages to crawl")
-	pflag.StringVarP(&configPath, "config", "c", "configs/worker/discovery/scouts.yaml", "Path to scouts.yaml")
+	pflag.StringVarP(&configPath, "config", "c", "configs/worker/discovery/candidate/scouts.yaml", "Path to scouts.yaml")
 	pflag.StringVar(&bfConfigPath, "backfill-config", "configs/backfiller/backfillers.yaml", "Path to backfillers.yaml")
 	pflag.StringVarP(&outputDir, "output", "o", "testdata/real", "Base directory for local-only mirrored HTML")
 	pflag.StringVar(&startURL, "start-url", "", "Override start URL (supports Go template {{.Value}})")

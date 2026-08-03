@@ -7,6 +7,7 @@ import (
 
 	app "github.com/ChiaYuChang/prism/internal/appconfig"
 	"github.com/ChiaYuChang/prism/internal/obs"
+	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/go-playground/validator/v10"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -14,16 +15,20 @@ import (
 
 // Config holds the scheduler's runtime configuration.
 type Config struct {
-	Interval      time.Duration       `mapstructure:"interval"       validate:"required,min=1s"`
-	HealthPort    int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	Valkey        app.ValkeyConfig    `mapstructure:"valkey"`
-	Logger        obs.LoggingConfig   `mapstructure:"logger"`
-	Telemetry     obs.TelemetryConfig `mapstructure:"telemetry"`
-	BatchSize     int                 `mapstructure:"batch-size"     validate:"required,min=1,max=200"`
-	Kinds         []string            `mapstructure:"kinds"          validate:"required,min=1,dive,oneof=DIRECTORY_FETCH KEYWORD_SEARCH PAGE_FETCH"`
-	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
-	MessengerType string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
-	Messenger     app.MessengerConfig `mapstructure:"-"`
+	Interval        time.Duration       `mapstructure:"interval"         validate:"required,min=1s"`
+	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
+	Health          obs.HealthConfig    `mapstructure:"health"`
+	Valkey          app.ValkeyConfig    `mapstructure:"valkey"`
+	Logger          obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
+	BatchSize       int                 `mapstructure:"batch-size"       validate:"required,min=1,max=200"`
+	RetryMax        int                 `mapstructure:"retry-max"        validate:"required,min=1"`
+	SchedulerName   string              `mapstructure:"scheduler-name"   validate:"required"`
+	StartPaused     bool                `mapstructure:"start-paused"`
+	Kinds           []string            `mapstructure:"kinds"            validate:"required,min=1,dive,oneof=DIRECTORY_FETCH KEYWORD_SEARCH PAGE_FETCH EMBED_CANDIDATE EMBED_CONTENT PIPELINE_INIT PIPELINE_STAGE"`
+	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
+	MessengerType   string              `mapstructure:"messenger-type"   validate:"oneof=nats gochannel"`
+	Messenger       app.MessengerConfig `mapstructure:"-"`
 
 	// LockKey is the Valkey key used for the distributed scheduler lock.
 	// Different scheduler instances (fast/slow) must use different keys.
@@ -57,7 +62,8 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 
 	fs.Duration("interval", 10*time.Minute, "The ticker interval for the scheduler (min: 1s, default: 10m)")
-	fs.Int("health-port", 8090, "The port for the health check server (default: 8090)")
+	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
+	obs.RegisterHealthFlags(fs, obs.DefaultHealthConfig(8090))
 	fs.String("valkey-host", "localhost", "The host of the Valkey/Redis instance")
 	fs.Int("valkey-port", 6379, "The port of the Valkey/Redis instance")
 	fs.String("valkey-username", "", "The username for the Valkey/Redis instance")
@@ -89,6 +95,9 @@ func LoadConfig(args []string) (*Config, error) {
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.scheduler"))
 	fs.String("messenger-type", "nats", "The messenger backend type (nats, gochannel, default: nats)")
 	fs.Int("batch-size", 100, "Number of tasks to claim per tick (max: 200, default: 100)")
+	fs.Int("retry-max", repo.DefaultTaskRetryMax, "Maximum total task attempts before terminal failure")
+	fs.String("scheduler-name", "default", "Runtime scheduler toggle name")
+	fs.Bool("start-paused", false, "Start without claiming or publishing tasks")
 	fs.StringSlice("kinds", []string{"DIRECTORY_FETCH", "KEYWORD_SEARCH"}, "Task kinds this scheduler instance will claim (comma-separated)")
 	fs.String("lock-key", "", "Valkey lock key for this scheduler instance (derived from kinds if empty)")
 	fs.Int("media-quota", 0, "Reserved PAGE_FETCH+MEDIA slots per tick; 0 disables priority split")
@@ -110,6 +119,9 @@ func LoadConfig(args []string) (*Config, error) {
 	// 2. Bind flags to viper (Flags override file values)
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
+	}
+	if err := obs.BindHealthFlags(v, fs); err != nil {
+		return nil, fmt.Errorf("failed to bind health flags: %w", err)
 	}
 
 	var config Config

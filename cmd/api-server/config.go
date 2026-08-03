@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -33,74 +32,54 @@ type RateLimitConfig struct {
 // AuthConfig groups API authentication methods. JWT can be added alongside
 // token auth without changing middleware wiring.
 type AuthConfig struct {
-	Token TokenAuthConfig `mapstructure:"token"`
+	HashAlgorithm string                     `mapstructure:"hash-algorithm" validate:"required"`
+	TokenTypes    map[string]TokenTypeConfig `mapstructure:"token-types"`
 }
 
-// TokenAuthConfig configures X-PRISM-TOKEN allow-list authentication.
-type TokenAuthConfig struct {
-	Tokens []string `mapstructure:"tokens"`
-	File   string   `mapstructure:"file"`
+type TokenTypeConfig struct {
+	DefaultTTL time.Duration `mapstructure:"default-ttl" validate:"required,min=1s"`
+	MaxTTL     time.Duration `mapstructure:"max-ttl"     validate:"required,min=1s"`
 }
 
-func (c TokenAuthConfig) Enabled() bool {
-	if strings.TrimSpace(c.File) != "" {
-		return true
-	}
-	for _, token := range c.Tokens {
-		if strings.TrimSpace(token) != "" {
-			return true
-		}
-	}
-	return false
+type PromptConfig struct {
+	StorageURI string `mapstructure:"storage-uri" validate:"required"`
 }
 
-func (c TokenAuthConfig) TokenSet() (map[string]struct{}, error) {
-	if !c.Enabled() {
-		return nil, nil
-	}
-
-	tokens := make(map[string]struct{})
-	addTokens(tokens, c.Tokens)
-
-	file := strings.TrimSpace(c.File)
-	if file != "" {
-		b, err := os.ReadFile(file)
-		if err != nil {
-			return nil, fmt.Errorf("read auth token file %q: %w", file, err)
-		}
-		addTokens(tokens, strings.Split(string(b), "\n"))
-	}
-	if len(tokens) == 0 {
-		return nil, fmt.Errorf("auth token config has no usable tokens")
-	}
-	return tokens, nil
-}
-
-func addTokens(dst map[string]struct{}, tokens []string) {
-	for _, token := range tokens {
-		token = strings.TrimSpace(token)
-		if token == "" {
-			continue
-		}
-		dst[token] = struct{}{}
-	}
+type WebConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
+	StaticDir string `mapstructure:"static-dir" validate:"required_if=Enabled true"`
 }
 
 // Config is the runtime configuration for the API server.
 type Config struct {
-	Port            int                 `mapstructure:"port"              validate:"required,min=1024,max=65535"`
-	ReadTimeout     time.Duration       `mapstructure:"read-timeout"      validate:"required,min=1s"`
-	WriteTimeout    time.Duration       `mapstructure:"write-timeout"     validate:"required,min=1s"`
-	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout"  validate:"required,min=1s"`
-	CORSOrigins     []string            `mapstructure:"cors-origins"`
-	Logger          obs.LoggingConfig   `mapstructure:"logger"`
-	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
-	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
-	Valkey          app.ValkeyConfig    `mapstructure:"valkey"`
-	Cache           CacheConfig         `mapstructure:"cache"`
-	RateLimit       RateLimitConfig     `mapstructure:"rate-limit"`
-	Auth            AuthConfig          `mapstructure:"auth"`
-	Monitoring      MonitoringConfig    `mapstructure:"monitoring"`
+	Port             int                    `mapstructure:"port"              validate:"required,min=1024,max=65535"`
+	Admin            AdminConfig            `mapstructure:"admin"`
+	ReadTimeout      time.Duration          `mapstructure:"read-timeout"      validate:"required,min=1s"`
+	WriteTimeout     time.Duration          `mapstructure:"write-timeout"     validate:"required,min=1s"`
+	ShutdownTimeout  time.Duration          `mapstructure:"shutdown-timeout"  validate:"required,min=1s"`
+	CORSOrigins      []string               `mapstructure:"cors-origins"`
+	Logger           obs.LoggingConfig      `mapstructure:"logger"`
+	Telemetry        obs.TelemetryConfig    `mapstructure:"telemetry"`
+	Postgres         app.PostgresConfig     `mapstructure:"postgres"`
+	S3               app.S3Config           `mapstructure:"s3"`
+	Valkey           app.ValkeyConfig       `mapstructure:"valkey"`
+	NATS             app.NatsConfig         `mapstructure:"nats"`
+	Cache            CacheConfig            `mapstructure:"cache"`
+	RateLimit        RateLimitConfig        `mapstructure:"rate-limit"`
+	Auth             AuthConfig             `mapstructure:"auth"`
+	Prompts          PromptConfig           `mapstructure:"prompts"`
+	Web              WebConfig              `mapstructure:"web"`
+	Monitoring       MonitoringConfig       `mapstructure:"monitoring"`
+	SchedulerControl SchedulerControlConfig `mapstructure:"scheduler-control"`
+}
+
+type SchedulerControlConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+}
+
+type AdminConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	Port    int  `mapstructure:"port" validate:"required,min=1024,max=65535"`
 }
 
 type MonitoringTarget struct {
@@ -147,11 +126,27 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetDefault("monitoring.timeout", 2*time.Second)
 	v.SetDefault("monitoring.status-key", "api:status")
 	v.SetDefault("monitoring.internal-port", 8089)
+	v.SetDefault("admin.enabled", true)
+	v.SetDefault("admin.port", 8091)
+	v.SetDefault("prompts.storage-uri", "file://runtime/prompts")
+	v.SetDefault("web.enabled", false)
+	v.SetDefault("web.static-dir", "assets/static/prismctl-web")
+	v.SetDefault("nats.nats-host", "nats")
+	v.SetDefault("nats.nats-port", 4222)
+	v.SetDefault("auth.hash-algorithm", "sha256")
+	v.SetDefault("auth.token-types.admin.prefix", "padm")
+	v.SetDefault("auth.token-types.admin.default-ttl", 720*time.Hour)
+	v.SetDefault("auth.token-types.admin.max-ttl", 2160*time.Hour)
+	v.SetDefault("auth.token-types.user.prefix", "pusr")
+	v.SetDefault("auth.token-types.user.default-ttl", 24*time.Hour)
+	v.SetDefault("auth.token-types.user.max-ttl", 168*time.Hour)
 
 	fs := pflag.NewFlagSet("api-server", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 
 	fs.Int("port", 8090, "HTTP listen port")
+	fs.Bool("admin-enabled", true, "Enable admin HTTP listener")
+	fs.Int("admin-port", 8091, "Admin HTTP listen port")
 	fs.Int("monitoring-internal-port", 8089, "HTTP listen port for internal administration and status updates")
 	fs.Duration("read-timeout", 10*time.Second, "HTTP server read timeout")
 	fs.Duration("write-timeout", 30*time.Second, "HTTP server write timeout")
@@ -174,6 +169,13 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.String("valkey-password", "", "Valkey/Redis password")
 	fs.String("valkey-password-file", "", "Path to file containing the Valkey password")
 	fs.Int("valkey-db", 0, "Valkey/Redis DB index")
+	fs.String("nats-host", "nats", "NATS host")
+	fs.Int("nats-port", 4222, "NATS client port")
+	fs.String("nats-username", "", "NATS username")
+	fs.String("nats-password", "", "NATS password")
+	fs.String("nats-token", "", "NATS authentication token")
+	fs.String("nats-password-file", "", "Path to file containing the NATS password")
+	fs.String("nats-token-file", "", "Path to file containing the NATS token")
 
 	fs.Bool("cache-enabled", false, "Enable Valkey-backed progress cache for GET /fetches/{id}")
 	fs.Duration("cache-live-ttl", 2*time.Second, "Progress cache TTL for non-terminal responses")
@@ -184,8 +186,14 @@ func LoadConfig(args []string) (*Config, error) {
 	fs.Int("rate-limit-burst", 10, "Per-IP burst capacity")
 	fs.Int("rate-limit-ip-cache-size", 4096, "Max distinct IPs tracked by the rate limiter (LRU)")
 
-	fs.StringSlice("auth-token", []string{}, "Allowed X-PRISM-TOKEN values (comma-separated or repeated)")
-	fs.String("auth-token-file", "", "Path to allowed X-PRISM-TOKEN file (one token per line)")
+	fs.String("auth-hash-algorithm", "sha256", "Token hash algorithm")
+	fs.String("prompts-storage-uri", "file://runtime/prompts", "Storage URI for uploaded prompt objects")
+	fs.String("s3-endpoint", "", "S3 endpoint URL")
+	fs.String("s3-region", "us-east-1", "S3 region")
+	fs.String("s3-access-key", "", "S3 access key")
+	fs.String("s3-secret-key", "", "S3 secret key")
+	fs.String("s3-secret-key-file", "", "Path to file containing the S3 secret key")
+	fs.Bool("s3-use-path-style", true, "Use path style addressing")
 
 	fs.String("monitoring-mode", "pull", "Monitoring mode: pull or push")
 	fs.String("monitoring-backend", "memory", "Monitoring status backend: memory or valkey")
@@ -219,6 +227,9 @@ func LoadConfig(args []string) (*Config, error) {
 	if err := cfg.Valkey.BindFlags(v, fs); err != nil {
 		return nil, err
 	}
+	if err := cfg.S3.BindFlags(v, fs); err != nil {
+		return nil, err
+	}
 	if err := bindCacheFlags(v, fs); err != nil {
 		return nil, err
 	}
@@ -226,6 +237,12 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	if err := bindAuthFlags(v, fs); err != nil {
+		return nil, err
+	}
+	if err := bindPromptFlags(v, fs); err != nil {
+		return nil, err
+	}
+	if err := bindNATSFlags(v, fs); err != nil {
 		return nil, err
 	}
 	if err := bindMonitoringFlags(v, fs); err != nil {
@@ -244,6 +261,12 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Telemetry = telemetryCfg
+	if err := cfg.S3.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("s3 secrets: %w", err)
+	}
+	if err := cfg.NATS.ResolveSecrets(); err != nil {
+		return nil, fmt.Errorf("nats secrets: %w", err)
+	}
 
 	if cfg.Cache.Enabled || cfg.Monitoring.Backend == "valkey" {
 		if err := cfg.Valkey.ResolveSecrets(); err != nil {
@@ -264,6 +287,12 @@ func LoadConfig(args []string) (*Config, error) {
 	validate := validator.New()
 	if err := validate.Struct(&cfg); err != nil {
 		return nil, fmt.Errorf("config validation failed: %v", err)
+	}
+	if cfg.Monitoring.Mode == "push" {
+		return nil, fmt.Errorf("monitoring.mode=push is not supported")
+	}
+	if cfg.Port == cfg.Admin.Port || cfg.Port == cfg.Monitoring.InternalPort || cfg.Admin.Port == cfg.Monitoring.InternalPort {
+		return nil, fmt.Errorf("API, admin, and internal ports must be distinct")
 	}
 
 	if err := validateMonitoringTargets(validate, cfg.Monitoring.Targets); err != nil {
@@ -317,8 +346,33 @@ func bindRateLimitFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 
 func bindAuthFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 	for flag, key := range map[string]string{
-		"auth-token":      "auth.token.tokens",
-		"auth-token-file": "auth.token.file",
+		"auth-hash-algorithm": "auth.hash-algorithm",
+		"admin-enabled":       "admin.enabled",
+		"admin-port":          "admin.port",
+	} {
+		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
+			return fmt.Errorf("bind %s: %w", key, err)
+		}
+	}
+	return nil
+}
+
+func bindPromptFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	if err := v.BindPFlag("prompts.storage-uri", fs.Lookup("prompts-storage-uri")); err != nil {
+		return fmt.Errorf("bind prompts.storage-uri: %w", err)
+	}
+	return nil
+}
+
+func bindNATSFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	for flag, key := range map[string]string{
+		"nats-host":          "nats.nats-host",
+		"nats-port":          "nats.nats-port",
+		"nats-username":      "nats.nats-username",
+		"nats-password":      "nats.nats-password",
+		"nats-token":         "nats.nats-token",
+		"nats-password-file": "nats.nats-password-file",
+		"nats-token-file":    "nats.nats-token-file",
 	} {
 		if err := v.BindPFlag(key, fs.Lookup(flag)); err != nil {
 			return fmt.Errorf("bind %s: %w", key, err)

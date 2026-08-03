@@ -28,6 +28,36 @@ tasks:
     cmds:
       - ENV={{.ENV}} PROFILES={{.COMPOSE_PROFILES}} ./script/compose-bake.sh
 
+  secrets:sync:
+    desc: sync local secrets from the unlocked RBW vault
+    summary: |
+      Retrieves the configured Prism secrets from rbw and materializes them
+      under an owner-only .secrets/ directory with container-readable files
+      for Docker Compose mounts.
+      Existing generated root/admin token files are preserved.
+      Set PRISM_SECRETS_SYNC=0 to use already-materialized .secrets/ files when
+      the RBW vault is unavailable.
+    cmds:
+      - |
+        if [ "${PRISM_SECRETS_SYNC:-1}" = "0" ]; then
+          printf '%s\n' 'skipping RBW secret sync; using existing .secrets files'
+        else
+          go run ./cmd/prism-secrets
+        fi
+
+  secrets:sync-root:
+    desc: sync routine secrets plus the gated rootctl credential
+    preconditions:
+      - sh: test "${PRISM_BREAK_GLASS:-0}" = "1"
+        msg: "refuse root secret sync: set PRISM_BREAK_GLASS=1"
+    cmds:
+      - |
+        if [ "${PRISM_SECRETS_SYNC:-1}" = "0" ]; then
+          test -s .secrets/pg-rootctl
+        else
+          PRISM_SECRETS_INCLUDE_ROOTCTL=1 go run ./cmd/prism-secrets
+        fi
+
   bake:clean:
     desc: remove all per-(ENV,PROFILES) merged compose files
     summary: |
@@ -37,13 +67,12 @@ tasks:
     cmds:
       - rm -f .*-*.docker-compose.merged.yaml
 
-  up:
-    desc: start all services (project = {NAME}-{MODE}; refuses if .task/mode exists)
+  infra:
+    desc: start infrastructure services (project = {NAME}-{MODE}; refuses if .task/mode exists)
     summary: |
-      Starts the core infra stack plus any enabled profile services for the
-      selected MODE. Records the active mode/profile in .task/ so later down
-      and clean commands target the same Compose project.
-    deps: [ bake ]
+      Starts Postgres, NATS, Valkey, SeaweedFS, and enabled dev/observability
+      services for the selected MODE. Records the active mode/profile in .task/
+      so later down and clean commands target the same Compose project.
     preconditions:
       - sh: |
           if [ -f {{.MODE_FILE}} ]; then
@@ -53,10 +82,38 @@ tasks:
     env:
       COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
       COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
+      NATS_AUTH_TOKEN:
+        sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
+      POSTGRES_APP_PASSWORD:
+        sh: "cat {{.POSTGRES_APP_PASSWORD_FILE}}"
+      VALKEY_APP_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
+      POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
+      VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
     cmds:
+      - task: secrets:sync
+      - task: bake
       - mkdir -p {{.TASK_DIR}}
-      - mkdir -p runtime/logs/{api-server,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
-      - chmod 0777 runtime/logs runtime/logs/{api-server,batch-detector,batch-publisher,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - mkdir -p runtime/prompts runtime/logs/{api-server,cron-trigger,batch-detector,batch-publisher,analyzer-pipeline,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - chmod 0777 runtime/logs runtime/logs/{api-server,cron-trigger,batch-detector,batch-publisher,analyzer-pipeline,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - chmod 0777 runtime/prompts
+      - |
+        docker run --rm \
+          --env HOST_UID="$(id -u)" \
+          --env HOST_GID="$(id -g)" \
+          -v "$PWD/runtime/logs:/logs" \
+          -v "$PWD/runtime/prompts:/prompts" \
+          alpine:3.20 sh -c \
+          'chown -R "$HOST_UID:$HOST_GID" /logs /prompts && chmod -R a+rwX /logs /prompts'
+      - |
+        if [[ ",{{.COMPOSE_PROFILES}}," == *",obs,"* ]]; then
+          docker volume create "{{.PROJECT}}_otel_storage" >/dev/null
+          docker volume create "{{.PROJECT}}_otel_backup" >/dev/null
+          docker run --rm \
+            -v "{{.PROJECT}}_otel_storage:/var/lib/otelcol" \
+            -v "{{.PROJECT}}_otel_backup:/var/log/app" \
+            alpine:3.20 chown -R 10001:10001 /var/lib/otelcol /var/log/app
+        fi
       - docker compose -f {{.COMPOSE_MERGED}} up -d
       - "echo {{.MODE}} > {{.MODE_FILE}}"
       - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"
@@ -76,6 +133,14 @@ tasks:
     env:
       COMPOSE_PROJECT_NAME: "{{.PROJECT}}"
       COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
+      NATS_AUTH_TOKEN:
+        sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
+      POSTGRES_APP_PASSWORD:
+        sh: "cat {{.POSTGRES_APP_PASSWORD_FILE}}"
+      VALKEY_APP_PASSWORD: "{{.VALKEY_APP_PASSWORD}}"
+      POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
+      POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
+      VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
     cmds:
       - |
         SERVICES=(postgres nats valkey seaweedfs)
@@ -129,7 +194,7 @@ tasks:
     desc: list all service logs
     summary: |
       Follows logs for the currently baked stack using the active or requested
-      Compose project name. Useful after compose:up when multiple service logs
+      Compose project name. Useful after compose:infra or compose:up when multiple service logs
       need to be inspected together.
     deps: [ bake ]
     env:
@@ -138,42 +203,55 @@ tasks:
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f
 
-  start:
-    desc: start full containerized stack
+  up:
+    desc: start the ready-to-go containerized stack
     summary: |
       Starts the deployable local stack: core infra, enabled dev/observability
-      profile services, database migrations, and containerized app services.
+      profile services, database migrations, API and trigger services,
+      collection workers, and the planner.
       Fixture replay services are intentionally excluded from this real-world
       collection path.
     cmds:
-      - for: [start:up, start:migrate:up, start:worker, start:app]
+      - for: [up:infra, up:migrate:up, up:app, up:nats:bootstrap, up:worker, up:planner]
         task: "{{.ITEM}}"
 
-  start:up:
+  up:infra:
     internal: true
     cmds:
-      - task: up
+      - task: infra
         vars:
           COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
 
-  start:migrate:up:
+  up:migrate:up:
     internal: true
     cmds:
       - task: :migrate:up
 
-  start:worker:
+  up:worker:
     internal: true
     cmds:
       - task: worker
         vars:
           COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
 
-  start:app:
+  up:nats:bootstrap:
+    internal: true
+    cmds:
+      - task: :app:nats:bootstrap
+
+  up:app:
     internal: true
     cmds:
       - task: app
         vars:
           COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}},worker"
+
+  up:planner:
+    internal: true
+    cmds:
+      - task: planner
+        vars:
+          COMPOSE_PROFILES: "{{.COMPOSE_PROFILES}}"
 
   migrate:up:
     internal: true
@@ -200,7 +278,7 @@ tasks:
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
-        msg: "infra stack is not up. Run 'task compose:up' first."
+        msg: "infra stack is not up. Run 'task compose:infra' first."
     env:
       COMPOSE_PROFILES: "{{.APP_PROFILES}}"
       NATS_AUTH_TOKEN:
@@ -212,18 +290,19 @@ tasks:
       POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
       VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
       WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
+      API_INTERNAL_PORT: '{{.API_INTERNAL_PORT | default "8089"}}'
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} build batch-detector
-        batch-publisher prism-api
-      - docker compose -f {{.COMPOSE_MERGED}} up -d batch-detector
-        batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} build cron-trigger
+        batch-detector batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} up -d cron-trigger
+        batch-detector batch-publisher prism-api
       - "echo {{.APP_PROFILES}} > {{.PROFILES_FILE}}"
 
   worker:
     desc: build and start containerized workers (requires infra stack to be up)
     summary: |
       Bakes the worker profile, builds container images for scheduler,
-      discovery, and collector workers, and starts them alongside an already
+      discovery, collector, and archive workers, and starts them alongside an already
       running infra stack. App/API services are managed separately by
       compose:app.
     deps:
@@ -240,7 +319,7 @@ tasks:
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
-        msg: "infra stack is not up. Run 'task compose:up' first."
+        msg: "infra stack is not up. Run 'task compose:infra' first."
     env:
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
       NATS_AUTH_TOKEN:
@@ -251,12 +330,14 @@ tasks:
       POSTGRES_APP_USER: "{{.POSTGRES_APP_USER}}"
       POSTGRES_APP_DB: "{{.POSTGRES_APP_DB}}"
       VALKEY_APP_USER: "{{.VALKEY_APP_USER}}"
+      SEAWEEDFS_SECRET_KEY:
+        sh: "cat {{.SEAWEEDFS_SECRET_KEY_FILE}}"
       WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} build scheduler-slow discovery
-        collector
+        collector archive analyzer-pipeline
       - docker compose -f {{.COMPOSE_MERGED}} up -d scheduler-slow scheduler-fast
-        discovery collector
+        discovery collector archive analyzer-pipeline
       - "echo {{.WORKER_PROFILES}} > {{.PROFILES_FILE}}"
 
   app:down:
@@ -279,8 +360,8 @@ tasks:
     env:
       COMPOSE_PROFILES: "{{.APP_PROFILES}}"
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} stop batch-detector batch-publisher prism-api
-      - docker compose -f {{.COMPOSE_MERGED}} rm -f batch-detector batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} stop cron-trigger batch-detector batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} rm -f cron-trigger batch-detector batch-publisher prism-api
 
   app:logs:
     desc: tail logs from containerized app services
@@ -302,8 +383,8 @@ tasks:
     env:
       COMPOSE_PROFILES: "{{.APP_PROFILES}}"
     cmds:
-      - docker compose -f {{.COMPOSE_MERGED}} logs -f batch-detector
-        batch-publisher prism-api
+      - docker compose -f {{.COMPOSE_MERGED}} logs -f cron-trigger
+        batch-detector batch-publisher prism-api
 
   fixture:
     desc: build and start containerized fixture server (replay/e2e only)
@@ -325,7 +406,7 @@ tasks:
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
-        msg: "infra stack is not up. Run 'task compose:up' first."
+        msg: "infra stack is not up. Run 'task compose:infra' first."
     env:
       COMPOSE_PROFILES: "{{.FIXTURE_PROFILES}}"
       WORKER_RUNTIME_IMAGE: "{{.WORKER_RUNTIME_IMAGE}}"
@@ -335,11 +416,10 @@ tasks:
       - "echo {{.FIXTURE_PROFILES}} > {{.PROFILES_FILE}}"
 
   planner:
-    desc: build and start containerized planner worker (requires LLM key)
+    desc: build and start the containerized planner worker
     summary: |
-      Starts the LLM-backed planner worker. This is kept out of compose:app so
-      real-world PARTY collection can run without an LLM key; enable it when
-      downstream MEDIA planning is needed.
+      Starts the LLM-backed planner worker using the provider configured in the
+      planner configuration. It is part of the normal ready-to-go stack.
     deps:
       - task: bake
         vars:
@@ -354,13 +434,9 @@ tasks:
       COMPOSE_MERGED: '.{{.ENV}}-{{.PROFILES_SLUG}}.docker-compose.merged.yaml'
     preconditions:
       - sh: "test -f {{.MODE_FILE}}"
-        msg: "infra stack is not up. Run 'task compose:up' first."
-      - sh: "test -f {{.GEMINI_API_KEY_FILE}}"
-        msg: "missing GEMINI_API_KEY_FILE={{.GEMINI_API_KEY_FILE}}"
+        msg: "infra stack is not up. Run 'task compose:infra' first."
     env:
       COMPOSE_PROFILES: "{{.PLANNER_PROFILES}}"
-      GEMINI_API_KEY:
-        sh: "test -f {{.GEMINI_API_KEY_FILE}} && cat {{.GEMINI_API_KEY_FILE}} || true"
       NATS_AUTH_TOKEN:
         sh: "cat {{.NATS_AUTH_TOKEN_FILE}}"
       POSTGRES_APP_PASSWORD:
@@ -392,16 +468,16 @@ tasks:
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} stop scheduler-slow scheduler-fast
-        discovery collector
+        discovery collector archive
       - docker compose -f {{.COMPOSE_MERGED}} rm -f scheduler-slow scheduler-fast
-        discovery collector
+        discovery collector archive
       - "echo {{.COMPOSE_PROFILES}} > {{.PROFILES_FILE}}"
 
   worker:logs:
     desc: tail logs from containerized workers
     summary: |
       Follows logs for the containerized worker services in the worker profile.
-      This is scoped to scheduler, discovery, and collector containers rather
+      This is scoped to scheduler, discovery, collector, and archive containers rather
       than the full infra stack.
     deps:
       - task: bake
@@ -417,7 +493,7 @@ tasks:
       COMPOSE_PROFILES: "{{.WORKER_PROFILES}}"
     cmds:
       - docker compose -f {{.COMPOSE_MERGED}} logs -f scheduler-slow
-        scheduler-fast discovery collector
+        scheduler-fast discovery collector archive
 
   tools:down:
     desc: stop profile-gated tool containers (dev/obs) while leaving core infra running

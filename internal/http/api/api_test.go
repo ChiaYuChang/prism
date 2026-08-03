@@ -7,15 +7,22 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	prismauth "github.com/ChiaYuChang/prism/internal/auth"
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
+	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
 	"github.com/ChiaYuChang/prism/internal/http/api"
+	"github.com/ChiaYuChang/prism/internal/http/middleware"
+	"github.com/ChiaYuChang/prism/internal/infra/natsdiag"
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/mocks"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -46,11 +53,21 @@ type denyAllLimiter struct{}
 
 func (denyAllLimiter) Allow(string) bool { return false }
 
+type fakeNATSInspector struct {
+	snapshot natsdiag.Snapshot
+	err      error
+}
+
+func (f fakeNATSInspector) Snapshot(context.Context) (natsdiag.Snapshot, error) {
+	return f.snapshot, f.err
+}
+
 type testServerMocks struct {
 	scout       *mocks.MockScout
 	tasks       *mocks.MockTasks
 	pipeline    *mocks.MockPipeline
 	userFetches *mocks.MockUserFetches
+	operator    *mocks.MockOperator
 }
 
 func newTestServer(t *testing.T) (*api.Server, *testServerMocks) {
@@ -60,9 +77,10 @@ func newTestServer(t *testing.T) (*api.Server, *testServerMocks) {
 		tasks:       mocks.NewMockTasks(t),
 		pipeline:    mocks.NewMockPipeline(t),
 		userFetches: mocks.NewMockUserFetches(t),
+		operator:    mocks.NewMockOperator(t),
 	}
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches)
+	srv, err := api.NewServer(logger, m.scout, m.tasks, m.pipeline, m.userFetches, api.WithOperator(m.operator))
 	require.NoError(t, err)
 	return srv, m
 }
@@ -102,6 +120,69 @@ func TestListCandidates_HappyPath(t *testing.T) {
 	require.EqualValues(t, 10, body.Offset)
 }
 
+func TestGetAdminNATS_ReturnsReadOnlySnapshot(t *testing.T) {
+	m := &testServerMocks{
+		scout:       mocks.NewMockScout(t),
+		tasks:       mocks.NewMockTasks(t),
+		pipeline:    mocks.NewMockPipeline(t),
+		userFetches: mocks.NewMockUserFetches(t),
+		operator:    mocks.NewMockOperator(t),
+	}
+	srv, err := api.NewServer(
+		slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		m.scout, m.tasks, m.pipeline, m.userFetches,
+		api.WithNATSInspector(fakeNATSInspector{snapshot: natsdiag.Snapshot{Streams: []natsdiag.StreamInfo{{Name: "prism_task", Messages: 3}}}}),
+	)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/nats", nil)
+	rec := httptest.NewRecorder()
+	srv.GetAdminNATS(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got natsdiag.Snapshot
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&got))
+	require.Len(t, got.Streams, 1)
+	require.Equal(t, uint64(3), got.Streams[0].Messages)
+}
+
+func TestCreateAdminTask_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+	batchID := uuid.Must(uuid.NewV7())
+	taskID := uuid.Must(uuid.NewV7())
+	body := []byte(`{"query":"fixture"}`)
+
+	m.tasks.EXPECT().CreateTask(mock.Anything, mock.MatchedBy(func(p repo.CreateTaskParams) bool {
+		return p.BatchID == batchID &&
+			p.Kind == repo.TaskKindDirectoryFetch &&
+			p.SourceType == repo.SourceTypeParty &&
+			p.SourceAbbr == "dpp" &&
+			p.URL == "https://www.dpp.org.tw/media/00" &&
+			string(p.Payload) == string(body) &&
+			p.TraceID == "prismctl-test"
+	})).Return(repo.Task{ID: taskID, BatchID: batchID, Kind: repo.TaskKindDirectoryFetch}, nil).Once()
+
+	requestBody := map[string]any{
+		"batch_id":    batchID,
+		"kind":        repo.TaskKindDirectoryFetch,
+		"source_type": repo.SourceTypeParty,
+		"source_abbr": "dpp",
+		"url":         "https://www.dpp.org.tw/media/00",
+		"payload":     json.RawMessage(body),
+		"trace_id":    "prismctl-test",
+	}
+	encoded, err := json.Marshal(requestBody)
+	require.NoError(t, err)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/tasks", bytes.NewReader(encoded))
+	rec := httptest.NewRecorder()
+	srv.CreateAdminTask(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var out api.AdminTask
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&out))
+	require.Equal(t, taskID, out.ID)
+}
+
 func TestListCandidates_InvalidSince(t *testing.T) {
 	srv, _ := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/candidates?since=not-a-time", nil)
@@ -110,13 +191,336 @@ func TestListCandidates_InvalidSince(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestGetAdminTask_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	taskID := uuid.Must(uuid.NewV7())
+	batchID := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC()
+	m.tasks.EXPECT().GetTaskByID(mock.Anything, taskID).Return(repo.Task{
+		ID:         taskID,
+		BatchID:    batchID,
+		TraceID:    "trace-task",
+		Kind:       repo.TaskKindPageFetch,
+		SourceType: repo.SourceTypeMedia,
+		SourceAbbr: "yahoo",
+		URL:        "https://news.example/a",
+		Payload:    []byte(`{"candidate_id":"abc"}`),
+		Meta:       []byte(`{"source":"test"}`),
+		NextRunAt:  now,
+		Status:     repo.TaskStatusPending,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/tasks/"+taskID.String(), nil)
+	req.SetPathValue("id", taskID.String())
+	rec := httptest.NewRecorder()
+	srv.GetAdminTask(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AdminTask
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, taskID, body.ID)
+	require.Equal(t, batchID, body.BatchID)
+	require.Equal(t, repo.TaskStatusPending, body.Status)
+	require.JSONEq(t, `{"candidate_id":"abc"}`, string(body.Payload))
+}
+
+func TestRetryAdminTask_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	taskID := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC()
+	m.tasks.EXPECT().RetryFailedTask(mock.Anything, taskID).Return(repo.Task{
+		ID:         taskID,
+		NextRunAt:  now,
+		Status:     repo.TaskStatusPending,
+		RetryCount: 3,
+		LastRunAt:  &now,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodPost, "/tasks/"+taskID.String()+"/retry", nil)
+	req.SetPathValue("id", taskID.String())
+	rec := httptest.NewRecorder()
+	srv.RetryAdminTask(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AdminTask
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, repo.TaskStatusPending, body.Status)
+	require.Equal(t, 3, body.RetryCount)
+	require.Equal(t, now, *body.LastRunAt)
+}
+
+func TestRetryAdminTask_NotFailed(t *testing.T) {
+	srv, m := newTestServer(t)
+	taskID := uuid.Must(uuid.NewV7())
+	m.tasks.EXPECT().RetryFailedTask(mock.Anything, taskID).Return(repo.Task{}, repo.ErrTaskNotFailed).Once()
+
+	req := httptest.NewRequest(http.MethodPost, "/tasks/"+taskID.String()+"/retry", nil)
+	req.SetPathValue("id", taskID.String())
+	rec := httptest.NewRecorder()
+	srv.RetryAdminTask(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestRegisterV1Admin_RetryTaskRequiresAdmin(t *testing.T) {
+	srv, m := newTestServer(t)
+	mux := http.NewServeMux()
+	srv.RegisterV1Admin(mux)
+
+	taskID := uuid.Must(uuid.NewV7())
+	req := httptest.NewRequest(http.MethodPost, "/tasks/"+taskID.String()+"/retry", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+
+	now := time.Now().UTC()
+	m.tasks.EXPECT().RetryFailedTask(mock.Anything, taskID).Return(repo.Task{
+		ID:        taskID,
+		NextRunAt: now,
+		Status:    repo.TaskStatusPending,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil).Once()
+	adminReq := req.WithContext(middleware.WithPrincipal(req.Context(), middleware.Principal{
+		TokenID:     uuid.Must(uuid.NewV7()),
+		Type:        authtoken.TypeAdmin,
+		Permissions: permission.DefaultAdmin,
+	}))
+	adminRec := httptest.NewRecorder()
+	mux.ServeHTTP(adminRec, adminReq)
+	require.Equal(t, http.StatusOK, adminRec.Code)
+}
+
+func TestRegisterV1Admin_CreateTokenRequiresTokenAdmin(t *testing.T) {
+	tokens := mocks.NewMockTokens(t)
+	hasher, err := authtoken.NewHasher("sha256")
+	require.NoError(t, err)
+	service, err := prismauth.NewService(prismauth.ServiceParams{
+		Tokens: tokens,
+		Hasher: hasher,
+		TokenTypes: map[authtoken.Type]prismauth.TokenTypeConfig{
+			authtoken.TypeUser: {DefaultTTL: time.Hour, MaxTTL: 24 * time.Hour},
+		},
+	})
+	require.NoError(t, err)
+
+	srv, _ := newTestServer(t)
+	// Rebuild the server with the token service while retaining the test dependencies.
+	srv, err = api.NewServer(srv.Logger, srv.Scout, srv.Tasks, srv.Pipeline, srv.UserFetches, api.WithTokenService(service))
+	require.NoError(t, err)
+	mux := http.NewServeMux()
+	srv.RegisterV1Admin(mux)
+	req := httptest.NewRequest(http.MethodPost, "/tokens", strings.NewReader(`{"type":"user","name":"reader"}`))
+	req = req.WithContext(middleware.WithPrincipal(req.Context(), middleware.Principal{
+		Type:        authtoken.TypeAdmin,
+		Permissions: permission.AdminAPI,
+	}))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestListAdminTasks_ByBatchID(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	batchID := uuid.Must(uuid.NewV7())
+	taskID := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC()
+	m.tasks.EXPECT().ListTasksByBatchID(mock.Anything, batchID).Return([]repo.Task{{
+		ID:        taskID,
+		BatchID:   batchID,
+		TraceID:   "trace-task",
+		Kind:      repo.TaskKindDirectoryFetch,
+		NextRunAt: now,
+		Status:    repo.TaskStatusCompleted,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/tasks?batch_id="+batchID.String(), nil)
+	rec := httptest.NewRecorder()
+	srv.ListAdminTasks(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AdminListTasksResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, batchID, body.BatchID)
+	require.Equal(t, 1, body.Count)
+	require.Equal(t, taskID, body.Items[0].ID)
+}
+
+func TestGetAdminCandidate_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	candidateID := uuid.Must(uuid.NewV7())
+	batchID := uuid.Must(uuid.NewV7())
+	now := time.Now().UTC()
+	m.scout.EXPECT().GetCandidateByID(mock.Anything, candidateID).Return(repo.Candidate{
+		ID:              candidateID,
+		BatchID:         batchID,
+		Fingerprint:     "fingerprint",
+		SourceAbbr:      "tpp",
+		Title:           "Title",
+		URL:             "https://example.com/candidate",
+		DiscoveredAt:    now,
+		TraceID:         "trace-candidate",
+		IngestionMethod: repo.IngestionMethodDirectory,
+		Metadata:        []byte(`{"k":"v"}`),
+		CreatedAt:       now,
+	}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/candidates/"+candidateID.String(), nil)
+	req.SetPathValue("id", candidateID.String())
+	rec := httptest.NewRecorder()
+	srv.GetAdminCandidate(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AdminCandidate
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, candidateID, body.ID)
+	require.Equal(t, "fingerprint", body.Fingerprint)
+	require.JSONEq(t, `{"k":"v"}`, string(body.Metadata))
+}
+
+func TestGetAdminCandidate_NotFound(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	candidateID := uuid.Must(uuid.NewV7())
+	m.scout.EXPECT().GetCandidateByID(mock.Anything, candidateID).Return(repo.Candidate{}, pgx.ErrNoRows).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/candidates/"+candidateID.String(), nil)
+	req.SetPathValue("id", candidateID.String())
+	rec := httptest.NewRecorder()
+	srv.GetAdminCandidate(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestListAdminModels_HappyPath(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	now := time.Now().UTC()
+	m.operator.EXPECT().ListModels(mock.Anything, repo.ListOperatorParams{Limit: 25, Next: 11}).Return([]repo.Model{{
+		ID:        1,
+		Name:      "gemma-2025",
+		Provider:  "gemini",
+		Type:      "EMBEDDER",
+		CreatedAt: now,
+	}}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/models?limit=25&next=11", nil)
+	rec := httptest.NewRecorder()
+	srv.ListAdminModels(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Items []api.AdminModel `json:"items"`
+		Limit int32            `json:"limit"`
+		Next  int32            `json:"next"`
+		Count int              `json:"count"`
+	}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.EqualValues(t, 25, body.Limit)
+	require.EqualValues(t, 11, body.Next)
+	require.Equal(t, 1, body.Count)
+	require.Equal(t, "gemma-2025", body.Items[0].Name)
+}
+
+func TestCreateAdminModel(t *testing.T) {
+	srv, m := newTestServer(t)
+	now := time.Now().UTC()
+	m.operator.EXPECT().CreateModel(mock.Anything, repo.CreateModelParams{
+		Name:     "gemma4:31b-cloud",
+		Provider: "ollama",
+		Type:     "EXTRACTOR",
+	}).Return(repo.Model{ID: 2, Name: "gemma4:31b-cloud", Provider: "ollama", Type: "EXTRACTOR", CreatedAt: now}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodPost, "/models", bytes.NewBufferString(`{"name":"gemma4:31b-cloud","provider":"ollama","type":"extractor"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.CreateAdminModel(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var body api.AdminModel
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, int16(2), body.ID)
+	assert.Equal(t, "EXTRACTOR", body.Type)
+}
+
+func TestListAdminEmbeddings_Gemma2025(t *testing.T) {
+	srv, m := newTestServer(t)
+
+	now := time.Now().UTC()
+	candidateID := uuid.Must(uuid.NewV7())
+	contentID := uuid.Must(uuid.NewV7())
+	params := repo.ListOperatorParams{Limit: 5, Next: 1}
+	m.operator.EXPECT().ListCandidateEmbeddingsGemma2025(mock.Anything, params).Return([]repo.EmbeddingRecord{{
+		ID:        10,
+		TargetID:  candidateID,
+		ModelID:   1,
+		Category:  "BRIEF",
+		TraceID:   "trace-candidate",
+		CreatedAt: now,
+	}}, nil).Once()
+	m.operator.EXPECT().ListContentEmbeddingsGemma2025(mock.Anything, params).Return([]repo.EmbeddingRecord{{
+		ID:        20,
+		TargetID:  contentID,
+		ModelID:   1,
+		Category:  "CONTENT",
+		TraceID:   "trace-content",
+		CreatedAt: now,
+	}}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/embedding/embeddings_gemma_2025?limit=5", nil)
+	req.SetPathValue("model_name", "embeddings_gemma_2025")
+	rec := httptest.NewRecorder()
+	srv.ListAdminEmbeddings(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body api.AdminEmbeddingListResponse
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	require.Equal(t, "embeddings_gemma_2025", body.ModelName)
+	require.Equal(t, 2, body.Count)
+	require.Equal(t, candidateID, body.CandidateEmbeddings[0].TargetID)
+	require.Equal(t, contentID, body.ContentEmbeddings[0].TargetID)
+}
+
+func TestListAdminEmbeddings_UnsupportedModel(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/embedding/unknown", nil)
+	req.SetPathValue("model_name", "unknown")
+	rec := httptest.NewRecorder()
+	srv.ListAdminEmbeddings(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
 // expectCreateFetch stubs UserFetches.Create with a fresh fetch_id.
-func expectCreateFetch(t *testing.T, m *testServerMocks) uuid.UUID {
+func expectCreateFetch(t *testing.T, m *testServerMocks, userID uuid.UUID) uuid.UUID {
 	t.Helper()
 	fetchID := uuid.Must(uuid.NewV7())
-	m.userFetches.EXPECT().Create(mock.Anything, repo.CreateUserFetchParams{UserID: nil}).
+	m.userFetches.EXPECT().Create(mock.Anything, mock.MatchedBy(func(p repo.CreateUserFetchParams) bool {
+		return p.UserID != nil && *p.UserID == userID
+	})).
 		Return(repo.UserFetch{ID: fetchID}, nil).Once()
 	return fetchID
+}
+
+func withUserPrincipal(req *http.Request, id uuid.UUID) *http.Request {
+	return req.WithContext(middleware.WithPrincipal(req.Context(), middleware.Principal{
+		TokenID:     id,
+		Type:        authtoken.TypeUser,
+		Permissions: permission.UserAPI,
+	}))
 }
 
 func TestPageFetch_CreatesTaskForFoundCandidate(t *testing.T) {
@@ -126,6 +530,7 @@ func TestPageFetch_CreatesTaskForFoundCandidate(t *testing.T) {
 	missingID := uuid.Must(uuid.NewV7())
 	batch := uuid.Must(uuid.NewV7())
 	taskID := uuid.Must(uuid.NewV7())
+	userID := uuid.Must(uuid.NewV7())
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, []uuid.UUID{candID, missingID}).
 		Return([]repo.Candidate{{
@@ -136,7 +541,7 @@ func TestPageFetch_CreatesTaskForFoundCandidate(t *testing.T) {
 			TraceID:    "trace-2",
 		}}, nil).Once()
 
-	fetchID := expectCreateFetch(t, m)
+	fetchID := expectCreateFetch(t, m, userID)
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.MatchedBy(func(p repo.CreateTaskParams) bool {
 		return p.Kind == repo.TaskKindPageFetch &&
@@ -153,7 +558,7 @@ func TestPageFetch_CreatesTaskForFoundCandidate(t *testing.T) {
 	})).Return(repo.UserFetchItem{}, nil).Once()
 
 	body, _ := json.Marshal(api.PageFetchRequest{CandidateIDs: []uuid.UUID{candID, missingID}})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body))
+	req := withUserPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body)), userID)
 	rec := httptest.NewRecorder()
 	srv.PageFetch(rec, req)
 
@@ -178,6 +583,7 @@ func TestPageFetch_AlreadyActiveCollapsesToCreated(t *testing.T) {
 
 	candID := uuid.Must(uuid.NewV7())
 	existingTaskID := uuid.Must(uuid.NewV7())
+	userID := uuid.Must(uuid.NewV7())
 	url := "https://news.example/x"
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, mock.Anything).
@@ -186,7 +592,7 @@ func TestPageFetch_AlreadyActiveCollapsesToCreated(t *testing.T) {
 			SourceAbbr: "yahoo", URL: url, TraceID: "t",
 		}}, nil).Once()
 
-	fetchID := expectCreateFetch(t, m)
+	fetchID := expectCreateFetch(t, m, userID)
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).
 		Return(repo.Task{ID: existingTaskID}, repo.ErrTaskAlreadyActive).Once()
@@ -196,7 +602,7 @@ func TestPageFetch_AlreadyActiveCollapsesToCreated(t *testing.T) {
 	})).Return(repo.UserFetchItem{}, nil).Once()
 
 	body, _ := json.Marshal(api.PageFetchRequest{CandidateIDs: []uuid.UUID{candID}})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body))
+	req := withUserPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body)), userID)
 	rec := httptest.NewRecorder()
 	srv.PageFetch(rec, req)
 
@@ -215,6 +621,7 @@ func TestPageFetch_AlreadyCompleteSnapshot(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	candID := uuid.Must(uuid.NewV7())
+	userID := uuid.Must(uuid.NewV7())
 	url := "https://news.example/done"
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, mock.Anything).
@@ -223,7 +630,7 @@ func TestPageFetch_AlreadyCompleteSnapshot(t *testing.T) {
 			SourceAbbr: "yahoo", URL: url, TraceID: "t",
 		}}, nil).Once()
 
-	fetchID := expectCreateFetch(t, m)
+	fetchID := expectCreateFetch(t, m, userID)
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).
 		Return(repo.Task{}, repo.ErrTaskAlreadyActive).Once()
@@ -236,7 +643,7 @@ func TestPageFetch_AlreadyCompleteSnapshot(t *testing.T) {
 	})).Return(repo.UserFetchItem{}, nil).Once()
 
 	body, _ := json.Marshal(api.PageFetchRequest{CandidateIDs: []uuid.UUID{candID}})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body))
+	req := withUserPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body)), userID)
 	rec := httptest.NewRecorder()
 	srv.PageFetch(rec, req)
 
@@ -250,6 +657,7 @@ func TestPageFetch_RaceMissReturns500(t *testing.T) {
 	srv, m := newTestServer(t)
 
 	candID := uuid.Must(uuid.NewV7())
+	userID := uuid.Must(uuid.NewV7())
 	url := "https://news.example/race"
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, mock.Anything).
@@ -258,7 +666,7 @@ func TestPageFetch_RaceMissReturns500(t *testing.T) {
 			SourceAbbr: "yahoo", URL: url, TraceID: "t",
 		}}, nil).Once()
 
-	expectCreateFetch(t, m)
+	expectCreateFetch(t, m, userID)
 
 	m.tasks.EXPECT().CreateTask(mock.Anything, mock.Anything).
 		Return(repo.Task{}, repo.ErrTaskAlreadyActive).Once()
@@ -266,7 +674,7 @@ func TestPageFetch_RaceMissReturns500(t *testing.T) {
 		Return(repo.Content{}, pgx.ErrNoRows).Once()
 
 	body, _ := json.Marshal(api.PageFetchRequest{CandidateIDs: []uuid.UUID{candID}})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body))
+	req := withUserPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/page_fetch", bytes.NewReader(body)), userID)
 	rec := httptest.NewRecorder()
 	srv.PageFetch(rec, req)
 
@@ -433,10 +841,10 @@ func TestGetFetch_RateLimit_Returns429(t *testing.T) {
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()
-	srv.RegisterPublic(mux)
+	srv.RegisterV1(mux)
 
 	fetchID := uuid.Must(uuid.NewV7())
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/fetches/"+fetchID.String(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/fetches/"+fetchID.String(), nil)
 	req.RemoteAddr = "10.0.0.1:1234"
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -603,9 +1011,9 @@ func TestGetStatus_PushMode(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	publicMux := http.NewServeMux()
-	srv.RegisterPublic(publicMux)
+	srv.RegisterV1(publicMux)
 
-	reqGet := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	reqGet := httptest.NewRequest(http.MethodGet, "/status", nil)
 	recGet := httptest.NewRecorder()
 	publicMux.ServeHTTP(recGet, reqGet)
 

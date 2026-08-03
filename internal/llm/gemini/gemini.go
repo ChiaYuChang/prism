@@ -29,6 +29,25 @@ type Config struct {
 	HttpHeader map[string]string `json:"http_header" mod:"trim"`
 }
 
+// Decoder decodes raw provider config for Gemini.
+type Decoder struct{}
+
+// Decode converts raw provider config into a typed Gemini config.
+func (Decoder) Decode(raw map[string]any) (llm.ProviderConfig, error) {
+	var cfg Config
+	if err := llm.DecodeProviderConfig(raw, &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// Build constructs a Gemini provider from config and shared dependencies.
+func (cfg Config) Build(ctx context.Context, deps llm.BuildDeps, buildCfg llm.BuildConfig) (llm.Provider, error) {
+	cfg.APIKey = buildCfg.Key
+	cfg.Timeout = buildCfg.Timeout
+	return New(ctx, deps.Logger, deps.Tracer, deps.Validator, deps.Transformer, deps.HTTPClient, cfg)
+}
+
 // Provider implements both llm.Generator and llm.Embedder for Google Gemini.
 type Provider struct {
 	client      *genai.Client
@@ -179,8 +198,8 @@ func (p *Provider) Embed(ctx context.Context, req *llm.EmbedRequest) (*llm.Embed
 	}
 
 	config := &genai.EmbedContentConfig{}
-	if req.Dimentions > 0 {
-		config.OutputDimensionality = utils.Ptr(int32(req.Dimentions))
+	if req.Dimensions > 0 {
+		config.OutputDimensionality = utils.Ptr(int32(req.Dimensions))
 	}
 
 	resp, err := p.client.Models.EmbedContent(ctx, req.Model, contents, config)

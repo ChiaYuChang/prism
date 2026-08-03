@@ -1,7 +1,10 @@
 interval: '{{ env "PRISM_BATCH_INTERVAL" "1m" }}'
+shutdown-timeout: 30s
 once: false
 recent-limit: 100
-health-port: 8083
+health:
+  enabled: true
+  port: 8083
 postgres:
   host: '{{ env "POSTGRES_HOST" "postgres" }}'
   port: {{ env "POSTGRES_PORT" "5432" }}

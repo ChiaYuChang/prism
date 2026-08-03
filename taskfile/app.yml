@@ -1,6 +1,11 @@
 version: "3"
 
 tasks:
+  auth:bootstrap:
+    desc: initialize root and admin token files after migrations
+    cmds:
+      - ./script/bootstrap-auth.sh
+
   scheduler:
     desc: run scheduler on host
     cmds:
@@ -9,9 +14,19 @@ tasks:
   discovery:
     desc: run discovery worker on host
     cmds:
-      - go run cmd/worker/discovery/main.go
+      - go run ./cmd/worker/discovery/candidate
 
   pipeline:
     desc: run pipeline worker on host
     cmds:
       - go run cmd/pipeline-worker/main.go
+
+  sources:bootstrap:
+    desc: synchronize the source registry through the API
+    cmds:
+      - ./script/bootstrap-sources.sh
+
+  nats:bootstrap:
+    desc: create or update JetStream resources through the API
+    cmds:
+      - ./script/bootstrap-jetstream.sh

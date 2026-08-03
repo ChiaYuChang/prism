@@ -18,7 +18,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	assert.Equal(t, time.Minute, cfg.Interval)
 	assert.False(t, cfg.Once)
 	assert.Equal(t, int32(100), cfg.RecentLimit)
-	assert.Equal(t, 8084, cfg.HealthPort)
+	assert.Equal(t, 8084, cfg.Health.Port)
 	assert.Equal(t, "localhost", cfg.Postgres.Host)
 	assert.Equal(t, "nats", cfg.MessengerType)
 

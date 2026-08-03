@@ -62,6 +62,7 @@ INSERT INTO candidates (
 )
 ON CONFLICT (fingerprint) DO UPDATE
 SET discovered_at = NOW(),
+    description = COALESCE(candidates.description, EXCLUDED.description),
     trace_id = EXCLUDED.trace_id
 RETURNING *;
 
@@ -85,6 +86,12 @@ OFFSET $3;
 SELECT COUNT(*)
 FROM candidates
 WHERE batch_id = $1;
+
+-- name: ListCandidatesByBatchID :many
+SELECT *
+FROM candidates
+WHERE batch_id = $1
+ORDER BY id;
 
 -- name: ListCandidates :many
 SELECT *

@@ -273,6 +273,68 @@ func (q *Queries) ListRecentSeedContents(ctx context.Context, limit int32) ([]Co
 	return items, nil
 }
 
+const restoreContent = `-- name: RestoreContent :one
+UPDATE contents
+SET deleted_at = NULL
+WHERE id = $1
+  AND deleted_at IS NOT NULL
+RETURNING id, batch_id, type, source_abbr, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+`
+
+func (q *Queries) RestoreContent(ctx context.Context, id uuid.UUID) (Content, error) {
+	row := q.db.QueryRow(ctx, restoreContent, id)
+	var i Content
+	err := row.Scan(
+		&i.ID,
+		&i.BatchID,
+		&i.Type,
+		&i.SourceAbbr,
+		&i.CandidateID,
+		&i.Url,
+		&i.Title,
+		&i.Content,
+		&i.Author,
+		&i.TraceID,
+		&i.PublishedAt,
+		&i.FetchedAt,
+		&i.CreatedAt,
+		&i.DeletedAt,
+		&i.Metadata,
+	)
+	return i, err
+}
+
+const softDeleteContent = `-- name: SoftDeleteContent :one
+UPDATE contents
+SET deleted_at = NOW()
+WHERE id = $1
+  AND deleted_at IS NULL
+RETURNING id, batch_id, type, source_abbr, candidate_id, url, title, content, author, trace_id, published_at, fetched_at, created_at, deleted_at, metadata
+`
+
+func (q *Queries) SoftDeleteContent(ctx context.Context, id uuid.UUID) (Content, error) {
+	row := q.db.QueryRow(ctx, softDeleteContent, id)
+	var i Content
+	err := row.Scan(
+		&i.ID,
+		&i.BatchID,
+		&i.Type,
+		&i.SourceAbbr,
+		&i.CandidateID,
+		&i.Url,
+		&i.Title,
+		&i.Content,
+		&i.Author,
+		&i.TraceID,
+		&i.PublishedAt,
+		&i.FetchedAt,
+		&i.CreatedAt,
+		&i.DeletedAt,
+		&i.Metadata,
+	)
+	return i, err
+}
+
 const updateContentMetadata = `-- name: UpdateContentMetadata :one
 UPDATE contents
 SET author = COALESCE($1, author),

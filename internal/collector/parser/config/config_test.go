@@ -210,7 +210,8 @@ fallback:
   enable: true
   prompt_file: ` + promptPath + `
   llm:
-    provider: gemini
+    provider:
+      gemini: {}
     model: gemini-2.0-flash
     key_file: ` + keyPath + `
 parsers: {}
@@ -218,7 +219,9 @@ parsers: {}
 	cfg, err := config.LoadConfig(writeTempYAML(t, body))
 	require.NoError(t, err)
 	assert.True(t, cfg.Fallback.Enable)
-	assert.Equal(t, "gemini", cfg.Fallback.LLM.Provider)
+	providerName, err := cfg.Fallback.LLM.ProviderName()
+	require.NoError(t, err)
+	assert.Equal(t, "gemini", providerName)
 	assert.Equal(t, "gemini-2.0-flash", cfg.Fallback.LLM.Model)
 	assert.Equal(t, "secret-from-file", cfg.Fallback.LLM.Key,
 		"ResolveSecrets should override Key with the contents of KeyFile")
@@ -231,7 +234,8 @@ version: 1
 fallback:
   enable: true
   llm:
-    provider: gemini
+    provider:
+      gemini: {}
     model: gemini-2.0-flash
     key: inline-key
 parsers: {}

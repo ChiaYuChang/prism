@@ -1,0 +1,31 @@
+version: "3"
+
+vars:
+  TOOL_COMPOSE: ".{{.ENV}}-tool.docker-compose.merged.yaml"
+  ROOT_COMPOSE: ".{{.ENV}}-root.docker-compose.merged.yaml"
+
+tasks:
+  cli:
+    desc: run the API-only Prism operator CLI in an ephemeral container
+    preconditions:
+      - sh: test -f .secrets/prism_admin_token
+        msg: "missing .secrets/prism_admin_token"
+    cmds:
+      - ENV={{.ENV}} PROFILES=tool ./script/compose-bake.sh
+      - docker compose -f {{.TOOL_COMPOSE}} run --rm prismctl-cli {{.CLI_ARGS}}
+
+  root:
+    desc: run gated root control in an ephemeral container
+    preconditions:
+      - sh: test "${PRISM_BREAK_GLASS:-0}" = "1"
+        msg: "refuse root control: set PRISM_BREAK_GLASS=1"
+      - sh: test -f .secrets/prism_root_token
+        msg: "missing .secrets/prism_root_token"
+      - sh: test -f .secrets/pg-prism
+        msg: "missing .secrets/pg-prism"
+    cmds:
+      - task: :compose:secrets:sync-root
+      - ENV={{.ENV}} PROFILES=root ./script/compose-bake.sh
+      - docker compose -f {{.ROOT_COMPOSE}} up -d postgres
+      - POSTGRES_ROOTCTL_PASSWORD_FILE=.secrets/pg-rootctl ./script/provision-rootctl-db.sh
+      - docker compose -f {{.ROOT_COMPOSE}} run --rm prismctl-root {{.CLI_ARGS}}

@@ -6,6 +6,7 @@ import (
 
 	wm "github.com/ThreeDotsLabs/watermill/message"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ErrNilMessage indicates a nil Watermill message was passed to a trace helper.
@@ -44,6 +45,9 @@ func InjectTraceContext(ctx context.Context, msg *wm.Message) error {
 func ExtractTraceContext(ctx context.Context, msg *wm.Message) (context.Context, error) {
 	if msg == nil {
 		return ctx, ErrNilMessage
+	}
+	if messageCtx := msg.Context(); trace.SpanContextFromContext(messageCtx).IsValid() {
+		return messageCtx, nil
 	}
 	if msg.Metadata == nil {
 		return ctx, nil

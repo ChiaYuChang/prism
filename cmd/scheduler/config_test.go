@@ -16,33 +16,45 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 10*time.Minute, config.Interval)
+	assert.Equal(t, 3, config.RetryMax)
+	assert.Equal(t, "default", config.SchedulerName)
+	assert.False(t, config.StartPaused)
 	assert.Equal(t, "localhost", config.Postgres.Host)
 	assert.Equal(t, "nats", config.MessengerType)
+}
+
+func TestLoadConfig_StartPausedFlag(t *testing.T) {
+	config, err := LoadConfig([]string{"--start-paused"})
+	require.NoError(t, err)
+	assert.True(t, config.StartPaused)
 }
 
 func TestLoadConfig_ShippedConfigs(t *testing.T) {
 	setShippedConfigEnv(t)
 
 	tests := []struct {
-		name       string
-		path       string
-		wantHealth int
-		wantKinds  []string
-		wantSvc    string
+		name          string
+		path          string
+		wantHealth    int
+		wantKinds     []string
+		wantSvc       string
+		schedulerName string
 	}{
 		{
-			name:       "slow",
-			path:       filepath.Join("..", "..", "configs", "scheduler", "slow.yaml"),
-			wantHealth: 8090,
-			wantKinds:  []string{"DIRECTORY_FETCH", "KEYWORD_SEARCH"},
-			wantSvc:    "prism.scheduler.slow",
+			schedulerName: "slow",
+			path:          filepath.Join("..", "..", "configs", "scheduler", "slow.yaml"),
+			wantHealth:    8090,
+			wantKinds:     []string{"DIRECTORY_FETCH", "KEYWORD_SEARCH", "EMBED_CANDIDATE", "EMBED_CONTENT", "PIPELINE_INIT", "PIPELINE_STAGE"},
+			wantSvc:       "prism.scheduler.slow",
+			name:          "slow",
 		},
 		{
-			name:       "fast",
-			path:       filepath.Join("..", "..", "configs", "scheduler", "fast.yaml"),
-			wantHealth: 8091,
-			wantKinds:  []string{"PAGE_FETCH"},
-			wantSvc:    "prism.scheduler.fast",
+			schedulerName: "fast",
+			path:          filepath.Join("..", "..", "configs", "scheduler", "fast.yaml"),
+			wantHealth:    8091,
+			wantKinds:     []string{"PAGE_FETCH"},
+			wantSvc:       "prism.scheduler.fast",
+			name:          "fast",
 		},
 	}
 
@@ -50,8 +62,11 @@ func TestLoadConfig_ShippedConfigs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg, err := LoadConfig([]string{"--config", tt.path})
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantHealth, cfg.HealthPort)
+			assert.Equal(t, tt.wantHealth, cfg.Health.Port)
 			assert.Equal(t, tt.wantKinds, cfg.Kinds)
+			assert.Equal(t, 3, cfg.RetryMax)
+			assert.Equal(t, tt.schedulerName, cfg.SchedulerName)
+			assert.False(t, cfg.StartPaused)
 			assert.Equal(t, "postgres", cfg.Postgres.Host)
 			assert.Equal(t, "valkey", cfg.Valkey.Host)
 			assert.Equal(t, tt.wantSvc, cfg.Telemetry.ServiceName)
@@ -79,6 +94,7 @@ func TestLoadConfig_FromFlags(t *testing.T) {
 		"--pg-port=5433",
 		"--valkey-username=prism",
 		"--valkey-password=secret",
+		"--retry-max=2",
 		"--messenger-type=gochannel",
 	}
 
@@ -90,6 +106,7 @@ func TestLoadConfig_FromFlags(t *testing.T) {
 	assert.Equal(t, 5433, config.Postgres.Port)
 	assert.Equal(t, "prism", config.Valkey.Username)
 	assert.Equal(t, "secret", config.Valkey.Password)
+	assert.Equal(t, 2, config.RetryMax)
 	assert.Equal(t, 0, config.Valkey.DB)
 	assert.Equal(t, "gochannel", config.MessengerType)
 }

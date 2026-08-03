@@ -105,6 +105,72 @@ func (_c *MockPipeline_CreateContent_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
+// DeleteContent provides a mock function for the type MockPipeline
+func (_mock *MockPipeline) DeleteContent(ctx context.Context, id uuid.UUID) (repo.Content, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteContent")
+	}
+
+	var r0 repo.Content
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repo.Content, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) repo.Content); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Get(0).(repo.Content)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPipeline_DeleteContent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteContent'
+type MockPipeline_DeleteContent_Call struct {
+	*mock.Call
+}
+
+// DeleteContent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id uuid.UUID
+func (_e *MockPipeline_Expecter) DeleteContent(ctx interface{}, id interface{}) *MockPipeline_DeleteContent_Call {
+	return &MockPipeline_DeleteContent_Call{Call: _e.mock.On("DeleteContent", ctx, id)}
+}
+
+func (_c *MockPipeline_DeleteContent_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockPipeline_DeleteContent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipeline_DeleteContent_Call) Return(content repo.Content, err error) *MockPipeline_DeleteContent_Call {
+	_c.Call.Return(content, err)
+	return _c
+}
+
+func (_c *MockPipeline_DeleteContent_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) (repo.Content, error)) *MockPipeline_DeleteContent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetContentByCandidateID provides a mock function for the type MockPipeline
 func (_mock *MockPipeline) GetContentByCandidateID(ctx context.Context, candidateID uuid.UUID) (repo.Content, error) {
 	ret := _mock.Called(ctx, candidateID)
@@ -435,6 +501,72 @@ func (_c *MockPipeline_ListRecentSeedContents_Call) Return(contents []repo.Conte
 }
 
 func (_c *MockPipeline_ListRecentSeedContents_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Content, error)) *MockPipeline_ListRecentSeedContents_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RestoreContent provides a mock function for the type MockPipeline
+func (_mock *MockPipeline) RestoreContent(ctx context.Context, id uuid.UUID) (repo.Content, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RestoreContent")
+	}
+
+	var r0 repo.Content
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) (repo.Content, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) repo.Content); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Get(0).(repo.Content)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, uuid.UUID) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPipeline_RestoreContent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RestoreContent'
+type MockPipeline_RestoreContent_Call struct {
+	*mock.Call
+}
+
+// RestoreContent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id uuid.UUID
+func (_e *MockPipeline_Expecter) RestoreContent(ctx interface{}, id interface{}) *MockPipeline_RestoreContent_Call {
+	return &MockPipeline_RestoreContent_Call{Call: _e.mock.On("RestoreContent", ctx, id)}
+}
+
+func (_c *MockPipeline_RestoreContent_Call) Run(run func(ctx context.Context, id uuid.UUID)) *MockPipeline_RestoreContent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPipeline_RestoreContent_Call) Return(content repo.Content, err error) *MockPipeline_RestoreContent_Call {
+	_c.Call.Return(content, err)
+	return _c
+}
+
+func (_c *MockPipeline_RestoreContent_Call) RunAndReturn(run func(ctx context.Context, id uuid.UUID) (repo.Content, error)) *MockPipeline_RestoreContent_Call {
 	_c.Call.Return(run)
 	return _c
 }

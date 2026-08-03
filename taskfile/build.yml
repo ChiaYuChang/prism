@@ -4,8 +4,24 @@ tasks:
   all:
     desc: build all microservice binaries
     deps:
-      - for: [scheduler, discovery, collector, planner, batch-detector, batch-publisher]
+      - for: [api-server, prismctl-cli, prismctl-root, backfiller, scheduler, discovery, collector, archive, planner, embedder, analyzer-pipeline, cron-trigger, batch-detector, batch-publisher, dev-downloader, dev-fixture-server, dev-mock-server, dev-parse-probe, recover, rss]
         task: '{{.ITEM}}'
+
+  api-server:
+    desc: build API server binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/api-server ./{{.CMD_DIR}}/api-server" ]
+
+  prismctl-cli:
+    desc: build Prism operator CLI binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/prismctl-cli ./{{.CMD_DIR}}/prismctl-cli" ]
+
+  prismctl-root:
+    desc: build restricted Prism root control binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/prismctl-root ./{{.CMD_DIR}}/prismctl-root" ]
+
+  backfiller:
+    desc: build backfiller binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/backfiller ./{{.CMD_DIR}}/backfiller" ]
 
   scheduler:
     desc: build scheduler binary
@@ -14,17 +30,32 @@ tasks:
   discovery:
     desc: build discovery worker binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/*.go
+      - go build -o {{.BUILD_DIR}}/discovery ./{{.CMD_DIR}}/worker/discovery/candidate/*.go
 
   collector:
     desc: build collector worker binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/collector ./{{.CMD_DIR}}/worker/collector
+      - go build -o {{.BUILD_DIR}}/collector ./{{.CMD_DIR}}/worker/collector/worker
+
+  archive:
+    desc: build archive worker binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/archive ./{{.CMD_DIR}}/worker/collector/archive
 
   planner:
     desc: build planner worker binary
     cmds:
-      - go build -o {{.BUILD_DIR}}/planner ./{{.CMD_DIR}}/worker/planner
+      - go build -o {{.BUILD_DIR}}/planner ./{{.CMD_DIR}}/worker/discovery/planner
+
+  embedder:
+    desc: build embedder worker binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/embedder ./{{.CMD_DIR}}/worker/analyzer/embedder
+
+  analyzer-pipeline:
+    desc: build analyzer pipeline worker binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/analyzer-pipeline ./{{.CMD_DIR}}/worker/analyzer/pipeline
 
   batch-detector:
     desc: build batch detector binary
@@ -32,8 +63,46 @@ tasks:
       - go build -o {{.BUILD_DIR}}/batch/detector
         ./{{.CMD_DIR}}/batch/detector/*.go
 
+  cron-trigger:
+    desc: build cron trigger binary
+    cmds:
+      - go build -o {{.BUILD_DIR}}/trigger/cron
+        ./{{.CMD_DIR}}/trigger/cron/*.go
+
   batch-publisher:
     desc: build batch publisher binary
     cmds:
       - go build -o {{.BUILD_DIR}}/batch/publisher
         ./{{.CMD_DIR}}/batch/publisher/*.go
+
+  dev-downloader:
+    desc: build dev downloader binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}/dev
+      - go build -o {{.BUILD_DIR}}/dev/downloader ./{{.CMD_DIR}}/dev/downloader
+
+  dev-fixture-server:
+    desc: build dev fixture server binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}/dev
+      - go build -o {{.BUILD_DIR}}/dev/fixture-server ./{{.CMD_DIR}}/dev/fixture-server
+
+  dev-mock-server:
+    desc: build dev mock server binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}/dev
+      - go build -o {{.BUILD_DIR}}/dev/mock-server ./{{.CMD_DIR}}/dev/mock-server
+
+  dev-parse-probe:
+    desc: build dev parse probe binary
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}/dev
+      - go build -o {{.BUILD_DIR}}/dev/parse-probe ./{{.CMD_DIR}}/dev/parse-probe
+
+  recover:
+    desc: build recovery binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/recover ./{{.CMD_DIR}}/recover" ]
+
+  rss:
+    desc: build RSS probe binary
+    cmds: [ "go build -o {{.BUILD_DIR}}/rss ./{{.CMD_DIR}}/rss" ]

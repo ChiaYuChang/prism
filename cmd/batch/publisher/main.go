@@ -61,8 +61,15 @@ func main() {
 	infra.SetTracer(tracer)
 
 	monitor := obs.NewHealthMonitor()
+	go func() {
+		<-ctx.Done()
+		monitor.SetStatus(obs.LevelWarn, "shutting down")
+	}()
 
-	msgr, err := config.Messenger.NewMessenger(logger)
+	msgr, err := config.Messenger.NewMessenger(logger, &infra.MessagingTelemetry{
+		Tracer: telemetry.Tracer("prism.messaging"),
+		Meter:  telemetry.Meter("prism.messaging"),
+	})
 	if err != nil {
 		logger.Error("failed to initialize messenger", "type", config.MessengerType, "error", err)
 		os.Exit(1)
@@ -87,6 +94,16 @@ func main() {
 		logger.Error("failed to build batch publisher", "error", err)
 		os.Exit(1)
 	}
+	pipelinePublisher, err := message.NewWatermillPipelineBatchFinishedPublisher(msgr)
+	if err != nil {
+		logger.Error("failed to build pipeline batch finished publisher", "error", err)
+		os.Exit(1)
+	}
+	pipelineRetry, err := batch.NewPipelinePublisher(repository.PipelineRuntime(), pipelinePublisher)
+	if err != nil {
+		logger.Error("failed to build pipeline publisher", "error", err)
+		os.Exit(1)
+	}
 
 	if config.Once {
 		logger.Info("running batch publisher once")
@@ -94,10 +111,14 @@ func main() {
 			logger.Error("batch publisher failed", "error", err)
 			os.Exit(1)
 		}
+		if _, err := pipelineRetry.PublishPending(ctx, config.RecentLimit); err != nil {
+			logger.Error("pipeline batch publisher failed", "error", err)
+			os.Exit(1)
+		}
 		return
 	}
 
-	obs.StartHealthServer(ctx, config.HealthPort, monitor)
+	obs.StartHealthServer(ctx, config.Health, monitor)
 	ticker := time.NewTicker(config.Interval)
 	defer ticker.Stop()
 	monitor.OK()
@@ -109,9 +130,18 @@ func main() {
 			logger.Info("shutting down batch publisher")
 			return
 		case <-ticker.C:
-			if _, err := publisher.Publish(ctx, config.RecentLimit); err != nil {
+			if ctx.Err() != nil {
+				logger.Info("shutdown requested before batch publisher tick")
+				return
+			}
+			tickCtx, cancelTick := infra.NewDrainContext(config.ShutdownTimeout)
+			if _, err := publisher.Publish(tickCtx, config.RecentLimit); err != nil {
 				logger.Error("batch publisher tick failed", "error", err)
 			}
+			if _, err := pipelineRetry.PublishPending(tickCtx, config.RecentLimit); err != nil {
+				logger.Error("pipeline batch publisher tick failed", "error", err)
+			}
+			cancelTick()
 		}
 	}
 }

@@ -13,15 +13,16 @@ import (
 )
 
 type Config struct {
-	Interval      time.Duration       `mapstructure:"interval"       validate:"required,min=10s"`
-	Once          bool                `mapstructure:"once"`
-	RecentLimit   int32               `mapstructure:"recent-limit"   validate:"required,min=1,max=500"`
-	HealthPort    int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	Logger        obs.LoggingConfig   `mapstructure:"logger"`
-	Telemetry     obs.TelemetryConfig `mapstructure:"telemetry"`
-	Postgres      app.PostgresConfig  `mapstructure:"postgres"`
-	MessengerType string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
-	Messenger     app.MessengerConfig `mapstructure:"-"`
+	Interval        time.Duration       `mapstructure:"interval"       validate:"required,min=10s"`
+	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
+	Once            bool                `mapstructure:"once"`
+	RecentLimit     int32               `mapstructure:"recent-limit"   validate:"required,min=1,max=500"`
+	Health          obs.HealthConfig    `mapstructure:"health"`
+	Logger          obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
+	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
+	MessengerType   string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
+	Messenger       app.MessengerConfig `mapstructure:"-"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -33,9 +34,10 @@ func LoadConfig(args []string) (*Config, error) {
 	fs := pflag.NewFlagSet("batch-publisher", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Duration("interval", time.Minute, "Polling interval for batch completion checks")
+	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
 	fs.Bool("once", false, "Execute once and exit (for Lambda/Cron)")
 	fs.Int32("recent-limit", 100, "Maximum recent batches to inspect for completion")
-	fs.Int("health-port", 8084, "The port for the health check server")
+	obs.RegisterHealthFlags(fs, obs.DefaultHealthConfig(8084))
 
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.batch.publisher"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.batch.publisher"))
@@ -69,6 +71,9 @@ func LoadConfig(args []string) (*Config, error) {
 	}
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
+	}
+	if err := obs.BindHealthFlags(v, fs); err != nil {
+		return nil, fmt.Errorf("failed to bind health flags: %w", err)
 	}
 
 	var cfg Config

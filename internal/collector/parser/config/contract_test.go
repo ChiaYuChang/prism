@@ -64,7 +64,7 @@ func runParsersConfigContract(t *testing.T, fixtureRoot string, required bool) {
 		require.NoError(t, err)
 	}
 
-	body, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "configs", "worker", "collector", "parsers.yaml"))
+	body, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "configs", "worker", "collector", "worker", "parsers.yaml"))
 	require.NoError(t, err)
 
 	var cfg config.Config

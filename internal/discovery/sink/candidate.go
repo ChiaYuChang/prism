@@ -2,6 +2,7 @@ package sink
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -110,6 +111,9 @@ func (s *PersistingCandidateSink) Handle(ctx context.Context, req CandidateSinkR
 				return fmt.Errorf("create page fetch task for %s: %w", stored.URL, err)
 			}
 		}
+		if err := s.createCandidateEmbeddingTask(ctx, stored, req); err != nil {
+			return fmt.Errorf("create candidate embedding task for %s: %w", stored.URL, err)
+		}
 	}
 
 	s.logger.DebugContext(ctx, "candidate sink persisted candidates",
@@ -213,6 +217,32 @@ func (s *PersistingCandidateSink) createPageFetchTask(ctx context.Context, store
 		URL:        stored.URL,
 		Meta:       meta,
 		TraceID:    stored.TraceID,
+	})
+	if err != nil && !errors.Is(err, repo.ErrTaskAlreadyActive) {
+		return err
+	}
+	return nil
+}
+
+func (s *PersistingCandidateSink) createCandidateEmbeddingTask(ctx context.Context, stored repo.Candidate, req CandidateSinkRequest) error {
+	if stored.ID == uuid.Nil {
+		return nil
+	}
+	payload, err := json.Marshal(map[string]string{"candidate_id": stored.ID.String()})
+	if err != nil {
+		return fmt.Errorf("marshal candidate embedding meta: %w", err)
+	}
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(stored.ID.String())))
+	_, err = s.tasks.CreateTask(ctx, repo.CreateTaskParams{
+		BatchID:     stored.BatchID,
+		Kind:        repo.TaskKindEmbedCandidate,
+		SourceType:  req.SourceType,
+		SourceAbbr:  stored.SourceAbbr,
+		URL:         stored.URL,
+		Payload:     payload,
+		PayloadHash: &hash,
+		Meta:        payload,
+		TraceID:     stored.TraceID,
 	})
 	if err != nil && !errors.Is(err, repo.ErrTaskAlreadyActive) {
 		return err

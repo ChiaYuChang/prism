@@ -4,7 +4,7 @@
 #
 # Build args:
 #   TARGET         — target name under cmd/, e.g. scheduler,
-#                    worker/discovery, worker/collector.
+#                    worker/discovery/candidate, worker/collector/worker.
 #   RUNTIME_IMAGE  — runtime base. Default is distroless static-debian12:nonroot
 #                    (production). For test/debug, override to alpine:3.20.
 #                    Never use golang:alpine as the runtime.
@@ -38,14 +38,19 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -trimpath \
         -ldflags="-s -w" \
         -o /out/app/worker \
-        ./cmd/${TARGET}
+        ./cmd/${TARGET} && \
+    CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -ldflags="-s -w" \
+        -o /out/app/healthcheck \
+        ./cmd/healthcheck
 
 # Prepare runtime assets and configs selectively based on TARGET to minimize
 # image size and security attack surface in the final runtime container.
 RUN mkdir -p /out/app && \
-    if [ -d "assets/${TARGET}" ]; then \
-        mkdir -p /out/app/assets/$(dirname ${TARGET}) && \
-        cp -r assets/${TARGET} /out/app/assets/${TARGET}; \
+    if [ -d "assets/runtime/${TARGET}" ]; then \
+        mkdir -p /out/app/assets/runtime/$(dirname ${TARGET}) && \
+        cp -r assets/runtime/${TARGET} /out/app/assets/runtime/${TARGET}; \
     fi && \
     if [ -d "configs/${TARGET}" ]; then \
         mkdir -p /out/app/configs/$(dirname ${TARGET}) && \

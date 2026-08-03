@@ -57,6 +57,36 @@ func TestExtractor_Extract_Success(t *testing.T) {
 	require.Equal(t, expectedOutput.Topics, got.Topics)
 	require.Equal(t, expectedOutput.Entities, got.Entities)
 	require.Equal(t, expectedOutput.Phrases, got.Phrases)
+	require.JSONEq(t, string(outputJSON), string(got.RawResult))
+}
+
+func TestExtractor_Extract_NormalizesFencedJSON(t *testing.T) {
+	generator := llmmocks.NewMockGenerator(t)
+	ext, err := extractor.NewExtractor(
+		generator,
+		testutils.Logger(),
+		noop.NewTracerProvider().Tracer("test"),
+		"test-model",
+		"test-prompt",
+	)
+	require.NoError(t, err)
+
+	outputJSON := `{
+		"title": "Neutral Title",
+		"summary": "Test Summary",
+		"topics": ["Topic 1"],
+		"entities": [{"canonical": "Entity 1", "surface": "E1", "type": "person"}],
+		"phrases": ["Phrase 1"]
+	}`
+	generator.EXPECT().Generate(mock.Anything, mock.Anything).Return(&llm.GenerateResponse{
+		Text:       "```json\n" + outputJSON + "\n```",
+		JsonSchema: extractor.ExtractionResultJSONSchema,
+	}, nil)
+
+	got, err := ext.Extract(context.Background(), &model.ExtractionInput{Title: "Test Title", Body: "Test Body"})
+	require.NoError(t, err)
+	require.True(t, json.Valid(got.RawResult))
+	require.JSONEq(t, outputJSON, string(got.RawResult))
 }
 
 func TestExtractor_Extract_NilInput(t *testing.T) {

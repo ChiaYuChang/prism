@@ -24,10 +24,28 @@ const defaultBaseURL = "http://localhost:11434"
 
 // Config holds Ollama-specific configuration (Pure Data).
 type Config struct {
-	BaseURL    string            `json:"base_url"    mod:"trim,default=http://localhost:11434" validate:"omitempty,url"`
-	Timeout    time.Duration     `json:"timeout"     mod:"trim,default=5s"`
-	Project    string            `json:"project"     mod:"trim"`
-	HttpHeader map[string]string `json:"http_header" mod:"trim"`
+	BaseURL    string            `json:"base_url"    mapstructure:"base_url"    mod:"trim,default=http://localhost:11434" validate:"omitempty,url"`
+	Timeout    time.Duration     `json:"timeout"     mapstructure:"timeout"     mod:"trim,default=5s"`
+	Project    string            `json:"project"     mapstructure:"project"     mod:"trim"`
+	HttpHeader map[string]string `json:"http_header" mapstructure:"http_header" mod:"trim"`
+}
+
+// Decoder decodes raw provider config for Ollama.
+type Decoder struct{}
+
+// Decode converts raw provider config into a typed Ollama config.
+func (Decoder) Decode(raw map[string]any) (llm.ProviderConfig, error) {
+	var cfg Config
+	if err := llm.DecodeProviderConfig(raw, &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// Build constructs an Ollama provider from config and shared dependencies.
+func (cfg Config) Build(ctx context.Context, deps llm.BuildDeps, buildCfg llm.BuildConfig) (llm.Provider, error) {
+	cfg.Timeout = buildCfg.Timeout
+	return New(ctx, deps.Logger, deps.Tracer, deps.Validator, deps.Transformer, deps.HTTPClient, cfg)
 }
 
 // Provider implements both llm.Generator and llm.Embedder for Ollama.
@@ -210,7 +228,7 @@ func (p *Provider) Embed(ctx context.Context, req *llm.EmbedRequest) (*llm.Embed
 	eReq := &api.EmbedRequest{
 		Model:      req.Model,
 		Input:      req.Input,
-		Dimensions: req.Dimentions,
+		Dimensions: req.Dimensions,
 	}
 
 	resp, err := p.client.Embed(ctx, eReq)

@@ -12,15 +12,20 @@ import (
 )
 
 type Querier interface {
+	CancelPendingTasksByBatchID(ctx context.Context, arg CancelPendingTasksByBatchIDParams) (int64, error)
+	ClaimDueSchedules(ctx context.Context, lim int32) ([]Schedule, error)
 	ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task, error)
 	CompleteTask(ctx context.Context, id uuid.UUID) error
+	CountActiveAdminTokensExcluding(ctx context.Context, id uuid.UUID) (int64, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) (int64, error)
+	CountTasksByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
-	CreateCandidateEmbeddingGemma2025(ctx context.Context, arg CreateCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
 	CreateContent(ctx context.Context, arg CreateContentParams) (Content, error)
-	CreateContentEmbeddingGemma2025(ctx context.Context, arg CreateContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	CreateContentExtractionEntity(ctx context.Context, arg CreateContentExtractionEntityParams) error
+	CreateModel(ctx context.Context, arg CreateModelParams) (Model, error)
+	CreatePromptVersion(ctx context.Context, arg CreatePromptVersionParams) (CreatePromptVersionRow, error)
+	CreateSource(ctx context.Context, arg CreateSourceParams) (Source, error)
 	// Single-round-trip insert-or-recover. On unique-violation against either
 	// uq_tasks_active_payload or uq_tasks_active_page_fetch, returns the
 	// existing PENDING/RUNNING row with inserted=false. Adapter maps
@@ -28,70 +33,126 @@ type Querier interface {
 	// recovered task fields, so callers that need the existing task_id (e.g.
 	// the user-fetch handler) avoid a second SELECT.
 	CreateTask(ctx context.Context, arg CreateTaskParams) (CreateTaskRow, error)
+	CreateToken(ctx context.Context, arg CreateTokenParams) (Token, error)
 	CreateUserFetch(ctx context.Context, userID pgtype.UUID) (Fetch, error)
 	CreateUserFetchItem(ctx context.Context, arg CreateUserFetchItemParams) (FetchItem, error)
+	DeleteSource(ctx context.Context, abbr string) (Source, error)
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
+	EnsurePipelineChildBatch(ctx context.Context, arg EnsurePipelineChildBatchParams) (uuid.UUID, error)
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
-	FailTask(ctx context.Context, id uuid.UUID) error
+	// A claim increments retry_count before execution, so retry_count is the total
+	// number of attempts. Failed attempts below retry_max are made runnable again.
+	FailTask(ctx context.Context, arg FailTaskParams) error
+	FindFinishedPipelineBatches(ctx context.Context, limit int32) ([]FindFinishedPipelineBatchesRow, error)
+	FindFinishedPipelineRootBatches(ctx context.Context, limit int32) ([]FindFinishedPipelineRootBatchesRow, error)
 	// Finds batches where all tasks are completed and all candidates are promoted to contents.
 	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
+	GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error)
+	GetBatchByID(ctx context.Context, id uuid.UUID) (Batch, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
+	GetCandidateEmbeddingInputHash(ctx context.Context, arg GetCandidateEmbeddingInputHashParams) (string, error)
 	GetCandidatesByIDs(ctx context.Context, ids []uuid.UUID) ([]Candidate, error)
 	GetContentByCandidateID(ctx context.Context, candidateID pgtype.UUID) (Content, error)
 	GetContentByID(ctx context.Context, id uuid.UUID) (Content, error)
 	GetContentByURL(ctx context.Context, url string) (Content, error)
+	GetContentEmbeddingInputHash(ctx context.Context, arg GetContentEmbeddingInputHashParams) (string, error)
 	GetContentExtractionByID(ctx context.Context, id uuid.UUID) (ContentExtraction, error)
 	GetContentExtractionSnapshot(ctx context.Context, arg GetContentExtractionSnapshotParams) (ContentExtraction, error)
 	GetEntityByCanonicalAndType(ctx context.Context, arg GetEntityByCanonicalAndTypeParams) (Entity, error)
+	GetLatestPromptVersionByName(ctx context.Context, name string) (GetLatestPromptVersionByNameRow, error)
 	GetModelByID(ctx context.Context, id int16) (Model, error)
 	GetModelByNameAndType(ctx context.Context, arg GetModelByNameAndTypeParams) (Model, error)
-	GetPromptByHash(ctx context.Context, hash string) (Prompt, error)
-	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
+	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPromptVersionByIDRow, error)
+	GetPromptVersionByNameAndVersion(ctx context.Context, arg GetPromptVersionByNameAndVersionParams) (GetPromptVersionByNameAndVersionRow, error)
+	GetRootToken(ctx context.Context) (Token, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
+	GetTaskByBatchLogicalKey(ctx context.Context, arg GetTaskByBatchLogicalKeyParams) (Task, error)
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
+	GetTokenByID(ctx context.Context, id uuid.UUID) (Token, error)
 	GetUserFetch(ctx context.Context, id uuid.UUID) (Fetch, error)
 	// Aggregates item status using COALESCE(snapshot_status, tasks.status).
 	// Returns candidate IDs grouped by status plus a derived `terminal` flag (all
 	// items in COMPLETED / FAILED / ALREADY_COMPLETE).
 	GetUserFetchProgress(ctx context.Context, fetchID uuid.UUID) (GetUserFetchProgressRow, error)
+	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
+	ListBatches(ctx context.Context, arg ListBatchesParams) ([]Batch, error)
 	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
+	ListCandidateEmbeddingsGemma2025(ctx context.Context, arg ListCandidateEmbeddingsGemma2025Params) ([]ListCandidateEmbeddingsGemma2025Row, error)
 	ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error)
+	ListCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Candidate, error)
 	ListCandidatesForAnalysis(ctx context.Context, arg ListCandidatesForAnalysisParams) ([]Candidate, error)
+	ListChildBatchesByParentID(ctx context.Context, parentID pgtype.UUID) ([]Batch, error)
 	ListContentEmbeddingsByContentID(ctx context.Context, contentID uuid.UUID) ([]ContentEmbeddingsGemma2025, error)
+	ListContentEmbeddingsGemma2025(ctx context.Context, arg ListContentEmbeddingsGemma2025Params) ([]ListContentEmbeddingsGemma2025Row, error)
 	ListContentsByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Content, error)
+	ListEntities(ctx context.Context, arg ListEntitiesParams) ([]Entity, error)
+	ListModels(ctx context.Context, arg ListModelsParams) ([]Model, error)
 	ListPendingCompletionBatches(ctx context.Context, arg ListPendingCompletionBatchesParams) ([]Batch, error)
+	ListPromptVersions(ctx context.Context, arg ListPromptVersionsParams) ([]ListPromptVersionsRow, error)
+	ListPromptVersionsByKey(ctx context.Context, arg ListPromptVersionsByKeyParams) ([]ListPromptVersionsByKeyRow, error)
+	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
 	ListReadyToPublishBatches(ctx context.Context, arg ListReadyToPublishBatchesParams) ([]Batch, error)
+	ListRecentFailedTasks(ctx context.Context, limit int32) ([]ListRecentFailedTasksRow, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
+	ListSchedules(ctx context.Context, arg ListSchedulesParams) ([]Schedule, error)
+	ListSources(ctx context.Context, arg ListSourcesParams) ([]Source, error)
 	ListSourcesByType(ctx context.Context, type_ SourceType) ([]Source, error)
+	ListTaskStatusSummary(ctx context.Context) ([]ListTaskStatusSummaryRow, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	ListTokens(ctx context.Context, arg ListTokensParams) ([]Token, error)
 	ListUserFetchItems(ctx context.Context, fetchID uuid.UUID) ([]ListUserFetchItemsRow, error)
+	LockBatchForTaskInsert(ctx context.Context, id uuid.UUID) (LockBatchForTaskInsertRow, error)
 	// Optimistic-concurrency claim: returns rows-affected so the caller can
 	// distinguish the winner (1) from a loser racing against another instance
 	// (0). Only the winner should publish the batch.completed signal.
 	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) (int64, error)
 	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
+	MarkPipelineBatchFinished(ctx context.Context, arg MarkPipelineBatchFinishedParams) (int64, error)
+	MarkPipelinePublished(ctx context.Context, id uuid.UUID) error
+	MarkPipelineRootFinished(ctx context.Context, arg MarkPipelineRootFinishedParams) (int64, error)
+	MarkScheduleError(ctx context.Context, arg MarkScheduleErrorParams) error
+	MarkScheduleMaterialized(ctx context.Context, arg MarkScheduleMaterializedParams) error
+	MarkSchedulesConfigAbsent(ctx context.Context) error
 	// Sets completed_at on transition to terminal. Idempotent (WHERE clause
 	// guards against double-set). v1 callers may skip this — progress endpoint
 	// computes terminal on-the-fly. Reserved for v2 notification dispatcher.
 	MarkUserFetchCompleted(ctx context.Context, id uuid.UUID) error
 	RecordBatchPublishFailure(ctx context.Context, arg RecordBatchPublishFailureParams) error
+	RecordPipelinePublishFailure(ctx context.Context, arg RecordPipelinePublishFailureParams) error
 	// Resets RUNNING tasks back to PENDING in bulk, undoing the ClaimTasks
 	// retry_count increment. Used when dispatch is skipped (e.g. rate-limited)
 	// so tasks are retried on the next scheduler tick without consuming retry slots.
 	ReleaseTasks(ctx context.Context, ids []uuid.UUID) error
+	RenewToken(ctx context.Context, arg RenewTokenParams) (Token, error)
 	ReplaceContentExtractionPhrases(ctx context.Context, arg ReplaceContentExtractionPhrasesParams) error
 	ReplaceContentExtractionTopics(ctx context.Context, arg ReplaceContentExtractionTopicsParams) error
+	RestoreContent(ctx context.Context, id uuid.UUID) (Content, error)
+	RestoreContentEmbeddings(ctx context.Context, contentID uuid.UUID) error
+	RestoreSource(ctx context.Context, abbr string) (Source, error)
+	// Atomically reschedules a failed task while retaining its retry_count and
+	// last_run_at history. Non-failed existing tasks are returned with retried=false.
+	RetryFailedTask(ctx context.Context, id uuid.UUID) (RetryFailedTaskRow, error)
+	RevokeAllTokens(ctx context.Context) (int64, error)
+	RevokeToken(ctx context.Context, id uuid.UUID) (Token, error)
+	RotateToken(ctx context.Context, arg RotateTokenParams) (Token, error)
 	SearchCandidatesByText(ctx context.Context, arg SearchCandidatesByTextParams) ([]Candidate, error)
 	SearchCandidatesByVector(ctx context.Context, arg SearchCandidatesByVectorParams) ([]SearchCandidatesByVectorRow, error)
 	SearchContentsByVector(ctx context.Context, arg SearchContentsByVectorParams) ([]SearchContentsByVectorRow, error)
+	SetBatchNSubtasks(ctx context.Context, arg SetBatchNSubtasksParams) (SetBatchNSubtasksRow, error)
+	SetPipelineRootFailure(ctx context.Context, id uuid.UUID) error
+	SoftDeleteContent(ctx context.Context, id uuid.UUID) (Content, error)
+	SoftDeleteContentEmbeddings(ctx context.Context, contentID uuid.UUID) error
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
+	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
+	UpsertCandidateEmbeddingGemma2025(ctx context.Context, arg UpsertCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
+	UpsertContentEmbeddingGemma2025(ctx context.Context, arg UpsertContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)
 	UpsertEntity(ctx context.Context, arg UpsertEntityParams) (Entity, error)
-	UpsertPrompt(ctx context.Context, arg UpsertPromptParams) (Prompt, error)
+	UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) (Schedule, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -1,7 +1,10 @@
 interval: '{{ env "PRISM_BATCH_INTERVAL" "1m" }}'
+shutdown-timeout: 30s
 once: false
 recent-limit: 100
-health-port: 8084
+health:
+  enabled: true
+  port: 8084
 messenger-type: nats
 nats-host: nats
 nats-port: 4222

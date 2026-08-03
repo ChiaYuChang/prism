@@ -47,6 +47,7 @@ credentials.json
 # temporary files
 .*.docker-compose.merged.yaml
 .docker-compose.merged.yaml
+.getxfer.*.mega
 compose-bake
 tmp/
 
@@ -75,6 +76,7 @@ docs/why
 # build infrastructure configs
 build/infra/nats/nats.conf
 build/infra/otel/otel.yaml
+build/infra/grafana/custom.ini
 build/infra/valkey/valkey.conf
 build/infra/valkey/valkey_acl
 
@@ -88,3 +90,11 @@ NOTE.md
 .codex
 
 review_report.md
+
+/runtime/
+
+# web dependencies and build output
+web/prismctl-web/node_modules/
+web/prismctl-web/dist/
+assets/static/prismctl-web/
+pipeline-dag-implementation-spec.md

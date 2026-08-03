@@ -21,9 +21,15 @@ import (
 
 	_ "github.com/ChiaYuChang/prism/cmd/api-server/docs"
 	"github.com/ChiaYuChang/prism/internal/appconfig"
+	prismauth "github.com/ChiaYuChang/prism/internal/auth"
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
+	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
+	prismhttp "github.com/ChiaYuChang/prism/internal/http"
 	"github.com/ChiaYuChang/prism/internal/http/api"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/infra"
+	"github.com/ChiaYuChang/prism/internal/infra/natsadmin"
+	"github.com/ChiaYuChang/prism/internal/infra/natsdiag"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -89,7 +95,7 @@ func main() {
 	}
 	defer func() { _ = repositoryCloser.Close() }()
 
-	valkeyNeeded := config.Cache.Enabled || config.Monitoring.Backend == "valkey"
+	valkeyNeeded := config.Cache.Enabled || config.Monitoring.Backend == "valkey" || config.SchedulerControl.Enabled
 	var valkeyClient *redis.Client
 	if valkeyNeeded {
 		valkeyClient, err = infra.NewValkeyClient(ctx, infra.ValkeyClientConfig{
@@ -119,7 +125,37 @@ func main() {
 	}
 
 	serverOpts := []api.ServerOption{
+		api.WithOperator(repository.Operator()),
+		api.WithSources(repository.Sources()),
 		api.WithStatusMonitor(statusMonitor),
+	}
+	natsInspector, err := natsdiag.New(natsdiag.Config{
+		Host: config.NATS.Host, Port: config.NATS.Port,
+		Username: config.NATS.Username, Password: config.NATS.Password,
+		Token: config.NATS.Token,
+	})
+	if err != nil {
+		logger.Error("failed to configure NATS diagnostics", "error", err)
+		os.Exit(1)
+	}
+	serverOpts = append(serverOpts, api.WithNATSInspector(natsInspector))
+	natsAdmin, err := natsadmin.New(natsadmin.Config{
+		Host: config.NATS.Host, Port: config.NATS.Port,
+		Username: config.NATS.Username, Password: config.NATS.Password,
+		Token: config.NATS.Token,
+	})
+	if err != nil {
+		logger.Error("failed to configure NATS administration", "error", err)
+		os.Exit(1)
+	}
+	serverOpts = append(serverOpts, api.WithNATSAdmin(natsAdmin))
+	if config.SchedulerControl.Enabled {
+		toggles, err := infra.NewSchedulerToggleStore(valkeyClient)
+		if err != nil {
+			logger.Error("failed to construct scheduler toggle store", "error", err)
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, api.WithSchedulerToggles(toggles))
 	}
 
 	if config.Cache.Enabled {
@@ -147,17 +183,55 @@ func main() {
 			"burst", config.RateLimit.Burst,
 			"ip_cache_size", config.RateLimit.IPCacheSize)
 	}
-	authTokens, err := config.Auth.Token.TokenSet()
-	if err != nil {
-		logger.Error("failed to load auth tokens", "error", err)
+	hasher, herr := authtoken.NewHasher(config.Auth.HashAlgorithm)
+	if herr != nil {
+		logger.Error("failed to initialize token hasher", "error", herr)
 		os.Exit(1)
 	}
-	var apiMiddleware []middleware.Middleware
-	if len(authTokens) > 0 {
-		apiMiddleware = append(apiMiddleware, middleware.TokenListAuth(authTokens))
-		logger.Info("api token auth enabled", "tokens", len(authTokens))
+	tokenTypes := make(map[authtoken.Type]prismauth.TokenTypeConfig, len(config.Auth.TokenTypes))
+	for name, cfg := range config.Auth.TokenTypes {
+		tokenTypes[authtoken.Type(name)] = prismauth.TokenTypeConfig{DefaultTTL: cfg.DefaultTTL, MaxTTL: cfg.MaxTTL}
 	}
+	authService, serr := prismauth.NewService(prismauth.ServiceParams{
+		Tokens:     repository.Tokens(),
+		Hasher:     hasher,
+		TokenTypes: tokenTypes,
+	})
+	if serr != nil {
+		logger.Error("failed to initialize auth service", "error", serr)
+		os.Exit(1)
+	}
+	authenticator, aerr := prismauth.NewAuthenticator(prismauth.AuthenticatorParams{
+		Store:        repository.Tokens(),
+		AllowedTypes: []authtoken.Type{authtoken.TypeAdmin, authtoken.TypeUser},
+	})
+	if aerr != nil {
+		logger.Error("failed to initialize token authenticator", "error", aerr)
+		os.Exit(1)
+	}
+	tokenAuth := middleware.TokenAuthMiddleware(middleware.TokenAuthenticator{Authenticator: authenticator})
+	publicAuthMiddleware := []middleware.Middleware{tokenAuth, middleware.RequirePermissions(permission.UserAPI)}
+	adminAuthMiddleware := []middleware.Middleware{tokenAuth, middleware.RequirePermissions(permission.AdminAPI)}
+	serverOpts = append(serverOpts, api.WithTokenService(authService))
+	promptStore, err := appconfig.NewStorage(ctx, config.Prompts.StorageURI, config.S3)
+	if err != nil {
+		logger.Error("failed to initialize prompt storage", "error", err)
+		os.Exit(1)
+	}
+	serverOpts = append(serverOpts, api.WithPrompts(repository.Prompts(), promptStore))
 
+	serviceMetadata := make(map[string]api.ServiceMetadata)
+	for name, target := range config.Monitoring.Targets {
+		if target.IsEnabled() {
+			serviceMetadata[name] = api.ServiceMetadata{
+				Group:       target.Group,
+				DisplayName: target.DisplayName,
+			}
+		}
+	}
+	serverOpts = append(serverOpts, api.WithServiceMetadata(serviceMetadata))
+
+	serverOpts = append(serverOpts, api.WithPipelineRuntime(repository.PipelineRuntime()))
 	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches(), serverOpts...)
 	if err != nil {
 		logger.Error("failed to construct api server", "error", err)
@@ -169,9 +243,6 @@ func main() {
 	for name, target := range config.Monitoring.Targets {
 		if target.IsEnabled() {
 			expectedServices = append(expectedServices, name)
-			if target.DisplayName == "" {
-				target.DisplayName = name
-			}
 			targets[name] = target.MonitorTarget
 		}
 	}
@@ -181,13 +252,7 @@ func main() {
 		apiServer.StartMonitor(ctx, config.Monitoring.Interval, targets)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", livenessHandler(monitor))
-	mux.HandleFunc("GET /readyz", readinessHandler(monitor))
-	mux.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
-	apiServer.RegisterPublic(mux, apiMiddleware...)
-
-	chain := middleware.Chain(
+	rootRouter := prismhttp.NewRouter(
 		middleware.RequestID(),
 		middleware.HTTPTracing(),
 		middleware.HTTPMetrics(httpMetrics),
@@ -200,15 +265,21 @@ func main() {
 			MaxAgeSecs:   600,
 		}),
 	)
+	rootRouter.HandleFunc("GET /healthz", livenessHandler(monitor))
+	rootRouter.HandleFunc("GET /readyz", readinessHandler(monitor))
+	rootRouter.Handle("GET /swagger/", httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json")))
+	rootRouter.Route("/api/v1", func(apiV1Router *prismhttp.Router) {
+		apiServer.RegisterV1(apiV1Router)
+	}, publicAuthMiddleware...)
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", config.Port),
-		Handler:      chain(mux),
+		Handler:      rootRouter.Handler(),
 		ReadTimeout:  config.ReadTimeout,
 		WriteTimeout: config.WriteTimeout,
 	}
 
-	serverErr := make(chan error, 2)
+	serverErr := make(chan error, 3)
 	go func() {
 		logger.Info("api server listening", "port", config.Port)
 		monitor.OK()
@@ -216,10 +287,53 @@ func main() {
 			serverErr <- fmt.Errorf("public api server failed: %w", err)
 		}
 	}()
+	var adminServer *http.Server
+	if config.Admin.Enabled {
+		adminRouter := prismhttp.NewRouter(
+			middleware.RequestID(),
+			middleware.HTTPTracing(),
+			middleware.HTTPMetrics(httpMetrics),
+			middleware.Logger(logger),
+			middleware.Recoverer(logger),
+			middleware.CORS(middleware.CORSOptions{
+				AllowOrigins: config.CORSOrigins,
+				AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
+				AllowHeaders: []string{"Content-Type", "Authorization", middleware.RequestIDHeader, middleware.TokenAuthHeader},
+				MaxAgeSecs:   600,
+			}),
+		)
+		adminRouter.HandleFunc("GET /healthz", livenessHandler(monitor))
+		adminRouter.HandleFunc("GET /readyz", readinessHandler(monitor))
+		if config.Web.Enabled {
+			staticHandler, staticErr := prismhttp.NewSPAHandler(config.Web.StaticDir)
+			if staticErr != nil {
+				logger.Error("failed to configure control room", "error", staticErr)
+				os.Exit(1)
+			}
+			adminRouter.Handle("/{path...}", staticHandler)
+		}
+		adminRouter.Route("/api/v1", func(apiV1Router *prismhttp.Router) {
+			apiV1Router.Route("/admin", func(admin *prismhttp.Router) {
+				apiServer.RegisterV1Admin(admin)
+			}, adminAuthMiddleware...)
+		})
+		adminServer = &http.Server{
+			Addr:         fmt.Sprintf(":%d", config.Admin.Port),
+			Handler:      adminRouter.Handler(),
+			ReadTimeout:  config.ReadTimeout,
+			WriteTimeout: config.WriteTimeout,
+		}
+		go func() {
+			logger.Info("admin api server listening", "port", config.Admin.Port)
+			if err := adminServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serverErr <- fmt.Errorf("admin api server failed: %w", err)
+			}
+		}()
+	}
 
 	internalMux := http.NewServeMux()
 	if config.Monitoring.Mode == "push" {
-		apiServer.RegisterInternal(internalMux, apiMiddleware...)
+		apiServer.RegisterInternal(internalMux, adminAuthMiddleware...)
 	}
 
 	// Register pprof handlers internally on the internal port for secure monitoring
@@ -231,8 +345,14 @@ func main() {
 	internalMux.Handle("/metrics", promhttp.Handler())
 
 	internalServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", config.Monitoring.InternalPort),
-		Handler:      chain(internalMux),
+		Addr: fmt.Sprintf(":%d", config.Monitoring.InternalPort),
+		Handler: middleware.Chain(
+			middleware.RequestID(),
+			middleware.HTTPTracing(),
+			middleware.HTTPMetrics(httpMetrics),
+			middleware.Logger(logger),
+			middleware.Recoverer(logger),
+		)(internalMux),
 		ReadTimeout:  config.ReadTimeout,
 		WriteTimeout: config.WriteTimeout,
 	}
@@ -249,6 +369,7 @@ func main() {
 		logger.Error("api server failed", "error", err)
 		os.Exit(1)
 	case <-ctx.Done():
+		monitor.SetStatus(obs.LevelWarn, "shutting down")
 		logger.Info("shutting down api server")
 	}
 
@@ -258,6 +379,11 @@ func main() {
 	var errs []error
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		errs = append(errs, fmt.Errorf("public server shutdown: %w", err))
+	}
+	if adminServer != nil {
+		if err := adminServer.Shutdown(shutdownCtx); err != nil {
+			errs = append(errs, fmt.Errorf("admin server shutdown: %w", err))
+		}
 	}
 	if internalServer != nil {
 		if err := internalServer.Shutdown(shutdownCtx); err != nil {

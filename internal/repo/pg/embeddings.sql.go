@@ -13,100 +13,49 @@ import (
 	pgvector_go "github.com/pgvector/pgvector-go"
 )
 
-const createCandidateEmbeddingGemma2025 = `-- name: CreateCandidateEmbeddingGemma2025 :one
-INSERT INTO candidate_embeddings_gemma_2025 (
-    candidate_id,
-    model_id,
-    category,
-    vector,
-    trace_id
-) VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5
-)
-RETURNING id, candidate_id, model_id, category, vector, trace_id, created_at
+const getCandidateEmbeddingInputHash = `-- name: GetCandidateEmbeddingInputHash :one
+SELECT input_hash
+FROM candidate_embeddings_gemma_2025
+WHERE candidate_id = $1
+  AND model_id = $2
+  AND category = $3
 `
 
-type CreateCandidateEmbeddingGemma2025Params struct {
-	CandidateID uuid.UUID          `db:"candidate_id" json:"candidate_id"`
-	ModelID     int16              `db:"model_id" json:"model_id"`
-	Category    EmbeddingCategory  `db:"category" json:"category"`
-	Vector      pgvector_go.Vector `db:"vector" json:"vector"`
-	TraceID     string             `db:"trace_id" json:"trace_id"`
+type GetCandidateEmbeddingInputHashParams struct {
+	CandidateID uuid.UUID         `db:"candidate_id" json:"candidate_id"`
+	ModelID     int16             `db:"model_id" json:"model_id"`
+	Category    EmbeddingCategory `db:"category" json:"category"`
 }
 
-func (q *Queries) CreateCandidateEmbeddingGemma2025(ctx context.Context, arg CreateCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error) {
-	row := q.db.QueryRow(ctx, createCandidateEmbeddingGemma2025,
-		arg.CandidateID,
-		arg.ModelID,
-		arg.Category,
-		arg.Vector,
-		arg.TraceID,
-	)
-	var i CandidateEmbeddingsGemma2025
-	err := row.Scan(
-		&i.ID,
-		&i.CandidateID,
-		&i.ModelID,
-		&i.Category,
-		&i.Vector,
-		&i.TraceID,
-		&i.CreatedAt,
-	)
-	return i, err
+func (q *Queries) GetCandidateEmbeddingInputHash(ctx context.Context, arg GetCandidateEmbeddingInputHashParams) (string, error) {
+	row := q.db.QueryRow(ctx, getCandidateEmbeddingInputHash, arg.CandidateID, arg.ModelID, arg.Category)
+	var input_hash string
+	err := row.Scan(&input_hash)
+	return input_hash, err
 }
 
-const createContentEmbeddingGemma2025 = `-- name: CreateContentEmbeddingGemma2025 :one
-INSERT INTO content_embeddings_gemma_2025 (
-    content_id,
-    model_id,
-    category,
-    vector,
-    trace_id
-) VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5
-)
-RETURNING id, content_id, model_id, category, vector, trace_id, created_at
+const getContentEmbeddingInputHash = `-- name: GetContentEmbeddingInputHash :one
+SELECT input_hash
+FROM content_embeddings_gemma_2025
+WHERE content_id = $1
+  AND model_id = $2
+  AND deleted_at IS NULL
 `
 
-type CreateContentEmbeddingGemma2025Params struct {
-	ContentID uuid.UUID          `db:"content_id" json:"content_id"`
-	ModelID   int16              `db:"model_id" json:"model_id"`
-	Category  EmbeddingCategory  `db:"category" json:"category"`
-	Vector    pgvector_go.Vector `db:"vector" json:"vector"`
-	TraceID   string             `db:"trace_id" json:"trace_id"`
+type GetContentEmbeddingInputHashParams struct {
+	ContentID uuid.UUID `db:"content_id" json:"content_id"`
+	ModelID   int16     `db:"model_id" json:"model_id"`
 }
 
-func (q *Queries) CreateContentEmbeddingGemma2025(ctx context.Context, arg CreateContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error) {
-	row := q.db.QueryRow(ctx, createContentEmbeddingGemma2025,
-		arg.ContentID,
-		arg.ModelID,
-		arg.Category,
-		arg.Vector,
-		arg.TraceID,
-	)
-	var i ContentEmbeddingsGemma2025
-	err := row.Scan(
-		&i.ID,
-		&i.ContentID,
-		&i.ModelID,
-		&i.Category,
-		&i.Vector,
-		&i.TraceID,
-		&i.CreatedAt,
-	)
-	return i, err
+func (q *Queries) GetContentEmbeddingInputHash(ctx context.Context, arg GetContentEmbeddingInputHashParams) (string, error) {
+	row := q.db.QueryRow(ctx, getContentEmbeddingInputHash, arg.ContentID, arg.ModelID)
+	var input_hash string
+	err := row.Scan(&input_hash)
+	return input_hash, err
 }
 
 const listCandidateEmbeddingsByCandidateID = `-- name: ListCandidateEmbeddingsByCandidateID :many
-SELECT id, candidate_id, model_id, category, vector, trace_id, created_at
+SELECT id, candidate_id, model_id, category, vector, input_hash, trace_id, created_at
 FROM candidate_embeddings_gemma_2025
 WHERE candidate_id = $1
 ORDER BY created_at DESC, id DESC
@@ -127,6 +76,58 @@ func (q *Queries) ListCandidateEmbeddingsByCandidateID(ctx context.Context, cand
 			&i.ModelID,
 			&i.Category,
 			&i.Vector,
+			&i.InputHash,
+			&i.TraceID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCandidateEmbeddingsGemma2025 = `-- name: ListCandidateEmbeddingsGemma2025 :many
+SELECT id, candidate_id, model_id, category, input_hash, trace_id, created_at
+FROM candidate_embeddings_gemma_2025
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+OFFSET $1
+`
+
+type ListCandidateEmbeddingsGemma2025Params struct {
+	Off int32 `db:"off" json:"off"`
+	Lim int32 `db:"lim" json:"lim"`
+}
+
+type ListCandidateEmbeddingsGemma2025Row struct {
+	ID          int64              `db:"id" json:"id"`
+	CandidateID uuid.UUID          `db:"candidate_id" json:"candidate_id"`
+	ModelID     int16              `db:"model_id" json:"model_id"`
+	Category    EmbeddingCategory  `db:"category" json:"category"`
+	InputHash   string             `db:"input_hash" json:"input_hash"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListCandidateEmbeddingsGemma2025(ctx context.Context, arg ListCandidateEmbeddingsGemma2025Params) ([]ListCandidateEmbeddingsGemma2025Row, error) {
+	rows, err := q.db.Query(ctx, listCandidateEmbeddingsGemma2025, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCandidateEmbeddingsGemma2025Row
+	for rows.Next() {
+		var i ListCandidateEmbeddingsGemma2025Row
+		if err := rows.Scan(
+			&i.ID,
+			&i.CandidateID,
+			&i.ModelID,
+			&i.Category,
+			&i.InputHash,
 			&i.TraceID,
 			&i.CreatedAt,
 		); err != nil {
@@ -141,9 +142,10 @@ func (q *Queries) ListCandidateEmbeddingsByCandidateID(ctx context.Context, cand
 }
 
 const listContentEmbeddingsByContentID = `-- name: ListContentEmbeddingsByContentID :many
-SELECT id, content_id, model_id, category, vector, trace_id, created_at
+SELECT id, content_id, model_id, vector, input_hash, trace_id, created_at, deleted_at
 FROM content_embeddings_gemma_2025
 WHERE content_id = $1
+  AND deleted_at IS NULL
 ORDER BY created_at DESC, id DESC
 `
 
@@ -160,10 +162,11 @@ func (q *Queries) ListContentEmbeddingsByContentID(ctx context.Context, contentI
 			&i.ID,
 			&i.ContentID,
 			&i.ModelID,
-			&i.Category,
 			&i.Vector,
+			&i.InputHash,
 			&i.TraceID,
 			&i.CreatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -173,6 +176,70 @@ func (q *Queries) ListContentEmbeddingsByContentID(ctx context.Context, contentI
 		return nil, err
 	}
 	return items, nil
+}
+
+const listContentEmbeddingsGemma2025 = `-- name: ListContentEmbeddingsGemma2025 :many
+SELECT id, content_id, model_id, input_hash, trace_id, created_at, deleted_at
+FROM content_embeddings_gemma_2025
+WHERE deleted_at IS NULL
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+OFFSET $1
+`
+
+type ListContentEmbeddingsGemma2025Params struct {
+	Off int32 `db:"off" json:"off"`
+	Lim int32 `db:"lim" json:"lim"`
+}
+
+type ListContentEmbeddingsGemma2025Row struct {
+	ID        int64              `db:"id" json:"id"`
+	ContentID uuid.UUID          `db:"content_id" json:"content_id"`
+	ModelID   int16              `db:"model_id" json:"model_id"`
+	InputHash string             `db:"input_hash" json:"input_hash"`
+	TraceID   string             `db:"trace_id" json:"trace_id"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DeletedAt pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) ListContentEmbeddingsGemma2025(ctx context.Context, arg ListContentEmbeddingsGemma2025Params) ([]ListContentEmbeddingsGemma2025Row, error) {
+	rows, err := q.db.Query(ctx, listContentEmbeddingsGemma2025, arg.Off, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListContentEmbeddingsGemma2025Row
+	for rows.Next() {
+		var i ListContentEmbeddingsGemma2025Row
+		if err := rows.Scan(
+			&i.ID,
+			&i.ContentID,
+			&i.ModelID,
+			&i.InputHash,
+			&i.TraceID,
+			&i.CreatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const restoreContentEmbeddings = `-- name: RestoreContentEmbeddings :exec
+UPDATE content_embeddings_gemma_2025
+SET deleted_at = NULL
+WHERE content_id = $1
+  AND deleted_at IS NOT NULL
+`
+
+func (q *Queries) RestoreContentEmbeddings(ctx context.Context, contentID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, restoreContentEmbeddings, contentID)
+	return err
 }
 
 const searchCandidatesByVector = `-- name: SearchCandidatesByVector :many
@@ -250,7 +317,9 @@ SELECT
     e.vector <=> $2 AS distance
 FROM content_embeddings_gemma_2025 AS e
 JOIN contents AS c ON c.id = e.content_id
-WHERE e.model_id = $1
+    WHERE e.model_id = $1
+  AND e.deleted_at IS NULL
+  AND c.deleted_at IS NULL
 ORDER BY e.vector <=> $2
 LIMIT $3
 `
@@ -315,4 +384,125 @@ func (q *Queries) SearchContentsByVector(ctx context.Context, arg SearchContents
 		return nil, err
 	}
 	return items, nil
+}
+
+const softDeleteContentEmbeddings = `-- name: SoftDeleteContentEmbeddings :exec
+UPDATE content_embeddings_gemma_2025
+SET deleted_at = NOW()
+WHERE content_id = $1
+  AND deleted_at IS NULL
+`
+
+func (q *Queries) SoftDeleteContentEmbeddings(ctx context.Context, contentID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, softDeleteContentEmbeddings, contentID)
+	return err
+}
+
+const upsertCandidateEmbeddingGemma2025 = `-- name: UpsertCandidateEmbeddingGemma2025 :one
+INSERT INTO candidate_embeddings_gemma_2025 (
+    candidate_id,
+    model_id,
+    category,
+    vector,
+    input_hash,
+    trace_id
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6
+)
+ON CONFLICT (candidate_id, model_id, category) DO UPDATE
+SET vector = EXCLUDED.vector,
+    input_hash = EXCLUDED.input_hash,
+    trace_id = EXCLUDED.trace_id,
+    created_at = NOW()
+RETURNING id, candidate_id, model_id, category, vector, input_hash, trace_id, created_at
+`
+
+type UpsertCandidateEmbeddingGemma2025Params struct {
+	CandidateID uuid.UUID          `db:"candidate_id" json:"candidate_id"`
+	ModelID     int16              `db:"model_id" json:"model_id"`
+	Category    EmbeddingCategory  `db:"category" json:"category"`
+	Vector      pgvector_go.Vector `db:"vector" json:"vector"`
+	InputHash   string             `db:"input_hash" json:"input_hash"`
+	TraceID     string             `db:"trace_id" json:"trace_id"`
+}
+
+func (q *Queries) UpsertCandidateEmbeddingGemma2025(ctx context.Context, arg UpsertCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error) {
+	row := q.db.QueryRow(ctx, upsertCandidateEmbeddingGemma2025,
+		arg.CandidateID,
+		arg.ModelID,
+		arg.Category,
+		arg.Vector,
+		arg.InputHash,
+		arg.TraceID,
+	)
+	var i CandidateEmbeddingsGemma2025
+	err := row.Scan(
+		&i.ID,
+		&i.CandidateID,
+		&i.ModelID,
+		&i.Category,
+		&i.Vector,
+		&i.InputHash,
+		&i.TraceID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const upsertContentEmbeddingGemma2025 = `-- name: UpsertContentEmbeddingGemma2025 :one
+INSERT INTO content_embeddings_gemma_2025 (
+    content_id,
+    model_id,
+    vector,
+    input_hash,
+    trace_id
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5
+)
+ON CONFLICT (content_id, model_id) DO UPDATE
+SET vector = EXCLUDED.vector,
+    input_hash = EXCLUDED.input_hash,
+    trace_id = EXCLUDED.trace_id,
+    created_at = NOW(),
+    deleted_at = NULL
+RETURNING id, content_id, model_id, vector, input_hash, trace_id, created_at, deleted_at
+`
+
+type UpsertContentEmbeddingGemma2025Params struct {
+	ContentID uuid.UUID          `db:"content_id" json:"content_id"`
+	ModelID   int16              `db:"model_id" json:"model_id"`
+	Vector    pgvector_go.Vector `db:"vector" json:"vector"`
+	InputHash string             `db:"input_hash" json:"input_hash"`
+	TraceID   string             `db:"trace_id" json:"trace_id"`
+}
+
+func (q *Queries) UpsertContentEmbeddingGemma2025(ctx context.Context, arg UpsertContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error) {
+	row := q.db.QueryRow(ctx, upsertContentEmbeddingGemma2025,
+		arg.ContentID,
+		arg.ModelID,
+		arg.Vector,
+		arg.InputHash,
+		arg.TraceID,
+	)
+	var i ContentEmbeddingsGemma2025
+	err := row.Scan(
+		&i.ID,
+		&i.ContentID,
+		&i.ModelID,
+		&i.Vector,
+		&i.InputHash,
+		&i.TraceID,
+		&i.CreatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
 }

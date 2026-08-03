@@ -21,11 +21,25 @@ packages:
     config:
       all: true
   github.com/ChiaYuChang/prism/internal/llm:
-    config:
-      all: true
+    interfaces:
+      Generator:
+      Embedder:
+      Provider:
   github.com/ChiaYuChang/prism/internal/repo:
     config:
       all: true
   github.com/ChiaYuChang/prism/internal/discovery/sink:
+    config:
+      all: true
+  github.com/ChiaYuChang/prism/internal/analyzer:
+    config:
+      all: true
+  github.com/ChiaYuChang/prism/internal/analyzer/extractor:
+    config:
+      all: true
+  github.com/ChiaYuChang/prism/internal/analyzer/scorer:
+    config:
+      all: true
+  github.com/ChiaYuChang/prism/internal/analyzer/embedder:
     config:
       all: true

@@ -213,6 +213,21 @@ func TestS3Archiver_Scan_ByTraceID(t *testing.T) {
 	require.Equal(t, "tid-a", results[0].TraceID)
 }
 
+func TestS3Archiver_Save_UsesArchiveIDToAvoidTraceCollisions(t *testing.T) {
+	a := newTestS3Archiver(t, "test-"+t.Name())
+	ctx := context.Background()
+	now := time.Now()
+	for _, id := range []string{"content-1", "content-2"} {
+		require.NoError(t, a.Save(ctx, collector.Archive{
+			ID: id, URL: "https://example.com/" + id, Payload: id, TraceID: "shared-trace", Timestamp: now,
+		}))
+	}
+
+	entries, err := a.Scan(ctx, archiver.ScanOptions{})
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+}
+
 func TestS3Archiver_Remove_SoftDelete(t *testing.T) {
 	prefix := "test-" + t.Name()
 	a := newTestS3Archiver(t, prefix)

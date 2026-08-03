@@ -16,10 +16,15 @@ import (
 	"sync"
 	"time"
 
+	prismauth "github.com/ChiaYuChang/prism/internal/auth"
 	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
+	"github.com/ChiaYuChang/prism/internal/infra"
+	"github.com/ChiaYuChang/prism/internal/infra/natsadmin"
+	"github.com/ChiaYuChang/prism/internal/infra/natsdiag"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo"
+	"github.com/ChiaYuChang/prism/internal/storage"
 )
 
 var ErrParamMissing = errors.New("param missing")
@@ -160,16 +165,92 @@ func WithStatusMonitor(m StatusMonitor) ServerOption {
 	}
 }
 
+// WithOperator attaches the operator read repository used by authenticated
+// inspection endpoints.
+func WithOperator(operator repo.Operator) ServerOption {
+	return func(s *Server) {
+		s.Operator = operator
+	}
+}
+
+// WithPrompts attaches the prompt version repository and storage used by
+// authenticated prompt management endpoints.
+func WithPrompts(prompts repo.Prompts, store storage.Store) ServerOption {
+	return func(s *Server) {
+		if prompts != nil {
+			s.Prompts = prompts
+		}
+		if store != nil {
+			s.PromptStore = store
+		}
+	}
+}
+
+func WithTokenService(service *prismauth.Service) ServerOption {
+	return func(s *Server) { s.TokenService = service }
+}
+
+func WithSchedulerToggles(toggles *infra.SchedulerToggleStore) ServerOption {
+	return func(s *Server) { s.SchedulerToggles = toggles }
+}
+
+func WithSources(sources repo.Sources) ServerOption {
+	return func(s *Server) { s.Sources = sources }
+}
+
+func WithPipelineRuntime(runtime repo.PipelineRuntime) ServerOption {
+	return func(s *Server) { s.PipelineRuntime = runtime }
+}
+
+// WithNATSInspector attaches the read-only JetStream inspector used by admin
+// diagnostics. It cannot publish, subscribe, acknowledge, or mutate NATS.
+func WithNATSInspector(inspector NATSInspector) ServerOption {
+	return func(s *Server) { s.NATSInspector = inspector }
+}
+
+func WithNATSAdmin(admin NATSAdmin) ServerOption {
+	return func(s *Server) { s.NATSAdmin = admin }
+}
+
+// WithServiceMetadata attaches display metadata for monitored services.
+func WithServiceMetadata(metadata map[string]ServiceMetadata) ServerOption {
+	return func(s *Server) { s.ServiceMetadata = metadata }
+}
+
+type NATSInspector interface {
+	Snapshot(context.Context) (natsdiag.Snapshot, error)
+}
+
+type NATSAdmin interface {
+	Apply(context.Context, natsadmin.Manifest, natsadmin.ApplyOptions) (natsadmin.ApplyReport, error)
+	PauseConsumer(context.Context, natsadmin.ConsumerRef, natsadmin.PauseRequest) (natsadmin.PauseResult, error)
+	ResumeConsumer(context.Context, natsadmin.ConsumerRef) (natsadmin.PauseResult, error)
+	DeleteConsumer(context.Context, natsadmin.ConsumerRef) error
+	DeleteStream(context.Context, string) error
+	PurgeStream(context.Context, string) error
+	PublishTestMessage(context.Context, string) (natsadmin.TestMessageResult, error)
+}
+
 // Server groups dependencies shared by all API handlers.
 type Server struct {
-	Logger          *slog.Logger
-	Scout           repo.Scout
-	Tasks           repo.Tasks
-	Pipeline        repo.Pipeline
-	UserFetches     repo.UserFetches
-	Cache           ProgressCache
-	GetFetchLimiter middleware.IPLimiter
-	Monitor         StatusMonitor
+	Logger           *slog.Logger
+	Scout            repo.Scout
+	Tasks            repo.Tasks
+	Pipeline         repo.Pipeline
+	UserFetches      repo.UserFetches
+	PipelineRuntime  repo.PipelineRuntime
+	Sources          repo.Sources
+	Operator         repo.Operator
+	Prompts          repo.Prompts
+	TokenService     *prismauth.Service
+	Cache            ProgressCache
+	GetFetchLimiter  middleware.IPLimiter
+	Monitor          StatusMonitor
+	PromptStore      storage.Store
+	SchedulerToggles *infra.SchedulerToggleStore
+	NATSInspector    NATSInspector
+	NATSAdmin        NATSAdmin
+	ServiceMetadata  map[string]ServiceMetadata
 }
 
 // NewServer validates dependencies and returns a ready-to-register Server.
@@ -205,19 +286,67 @@ func NewServer(logger *slog.Logger, scout repo.Scout, tasks repo.Tasks, pipeline
 	return s, nil
 }
 
-// RegisterPublic wires public v1 routes onto the supplied mux under the /api/v1 prefix.
+// RouteRegistrar is the minimal router surface used by API route registration.
+type RouteRegistrar interface {
+	Handle(pattern string, handler http.Handler)
+}
+
+// RegisterV1 wires public v1 routes onto the supplied router.
 //
 // The /fetches/{id} route is wrapped in a per-IP rate-limit middleware. When
 // no limiter is configured, the wrapping uses NoOpIPLimiter and is effectively
 // a passthrough.
-func (s *Server) RegisterPublic(mux *http.ServeMux, mws ...middleware.Middleware) {
-	wrap := middleware.Chain(mws...)
-	mux.Handle("GET /api/v1/candidates", wrap(http.HandlerFunc(s.ListCandidates)))
-	mux.Handle("POST /api/v1/page_fetch", wrap(http.HandlerFunc(s.PageFetch)))
-	mux.Handle("GET /api/v1/contents/{candidate_id}", wrap(http.HandlerFunc(s.GetContent)))
-	mux.Handle("GET /api/v1/fetches/{id}",
-		wrap(middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch))))
-	mux.Handle("GET /api/v1/status", wrap(http.HandlerFunc(s.GetStatus)))
+func (s *Server) RegisterV1(r RouteRegistrar) {
+	r.Handle("GET /candidates", http.HandlerFunc(s.ListCandidates))
+	r.Handle("POST /page_fetch", http.HandlerFunc(s.PageFetch))
+	r.Handle("GET /contents/{candidate_id}", http.HandlerFunc(s.GetContent))
+	r.Handle("GET /fetches/{id}", middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch)))
+	r.Handle("GET /status", http.HandlerFunc(s.GetStatus))
+}
+
+// RegisterV1Admin wires authenticated v1 operator routes onto the supplied router.
+func (s *Server) RegisterV1Admin(r RouteRegistrar) {
+	r.Handle("GET /candidates", s.requireAdmin(http.HandlerFunc(s.ListCandidates)))
+	r.Handle("GET /candidates/{id}", s.requireAdmin(http.HandlerFunc(s.GetAdminCandidate)))
+	r.Handle("GET /models", s.requireAdmin(http.HandlerFunc(s.ListAdminModels)))
+	r.Handle("POST /models", s.requireAdmin(http.HandlerFunc(s.CreateAdminModel)))
+	r.Handle("GET /sources", s.requireAdmin(http.HandlerFunc(s.ListAdminSources)))
+	r.Handle("GET /batches", s.requireAdmin(http.HandlerFunc(s.ListAdminBatches)))
+	r.Handle("GET /entities", s.requireAdmin(http.HandlerFunc(s.ListAdminEntities)))
+	r.Handle("GET /schedules", s.requireAdmin(http.HandlerFunc(s.ListAdminSchedules)))
+	r.Handle("GET /embedding/{model_name}", s.requireAdmin(http.HandlerFunc(s.ListAdminEmbeddings)))
+	r.Handle("GET /tasks", s.requireAdmin(http.HandlerFunc(s.ListAdminTasks)))
+	r.Handle("POST /tasks", s.requireAdmin(http.HandlerFunc(s.CreateAdminTask)))
+	r.Handle("POST /pipelines", s.requireAdmin(http.HandlerFunc(s.CreateAdminPipeline)))
+	r.Handle("GET /nats", s.requireAdmin(http.HandlerFunc(s.GetAdminNATS)))
+	r.Handle("POST /nats/apply", s.requireAdmin(http.HandlerFunc(s.ApplyAdminNATS)))
+	r.Handle("POST /nats/streams/{stream}/purge", s.requireAdmin(http.HandlerFunc(s.PurgeAdminNATSStream)))
+	r.Handle("DELETE /nats/streams/{stream}", s.requireAdmin(http.HandlerFunc(s.DeleteAdminNATSStream)))
+	r.Handle("POST /nats/streams/{stream}/consumers/{consumer}/pause", s.requireAdmin(http.HandlerFunc(s.PauseAdminNATSConsumer)))
+	r.Handle("POST /nats/streams/{stream}/consumers/{consumer}/resume", s.requireAdmin(http.HandlerFunc(s.ResumeAdminNATSConsumer)))
+	r.Handle("DELETE /nats/streams/{stream}/consumers/{consumer}", s.requireAdmin(http.HandlerFunc(s.DeleteAdminNATSConsumer)))
+	r.Handle("POST /nats/test-message", s.requireAdmin(http.HandlerFunc(s.PublishAdminNATSTestMessage)))
+	r.Handle("GET /diagnostics", s.requireAdmin(http.HandlerFunc(s.GetAdminDiagnostics)))
+	r.Handle("GET /tasks/{id}", s.requireAdmin(http.HandlerFunc(s.GetAdminTask)))
+	r.Handle("POST /tasks/{id}/retry", s.requireAdmin(http.HandlerFunc(s.RetryAdminTask)))
+	r.Handle("GET /schedulers/{name}", s.requireAdmin(http.HandlerFunc(s.GetAdminSchedulerToggle)))
+	r.Handle("POST /schedulers/{name}/pause", s.requireAdmin(http.HandlerFunc(s.PauseAdminScheduler)))
+	r.Handle("POST /schedulers/{name}/resume", s.requireAdmin(http.HandlerFunc(s.ResumeAdminScheduler)))
+	r.Handle("GET /schedulers", s.requireAdmin(http.HandlerFunc(s.GetAdminGlobalSchedulerToggle)))
+	r.Handle("POST /schedulers/pause", s.requireAdmin(http.HandlerFunc(s.PauseAdminGlobalScheduler)))
+	r.Handle("POST /schedulers/resume", s.requireAdmin(http.HandlerFunc(s.ResumeAdminGlobalScheduler)))
+	r.Handle("POST /sources", s.requireAdmin(http.HandlerFunc(s.CreateAdminSource)))
+	r.Handle("PUT /sources/{abbr}", s.requireAdmin(http.HandlerFunc(s.UpdateAdminSource)))
+	r.Handle("DELETE /sources/{abbr}", s.requireAdmin(http.HandlerFunc(s.DeleteAdminSource)))
+	r.Handle("POST /sources/{abbr}/restore", s.requireAdmin(http.HandlerFunc(s.RestoreAdminSource)))
+	r.Handle("GET /prompts", s.requireAdmin(http.HandlerFunc(s.ListPromptVersions)))
+	r.Handle("POST /prompts", s.requireAdmin(http.HandlerFunc(s.CreatePromptVersion)))
+	r.Handle("GET /prompts/{id}", s.requireAdmin(http.HandlerFunc(s.GetPromptVersion)))
+	r.Handle("GET /whoami", s.requireAdmin(http.HandlerFunc(s.WhoAmI)))
+	r.Handle("POST /tokens", s.requireTokenAdmin(http.HandlerFunc(s.CreateToken)))
+	r.Handle("GET /tokens", s.requireTokenAdmin(http.HandlerFunc(s.ListTokens)))
+	r.Handle("GET /tokens/{id}", s.requireTokenAdmin(http.HandlerFunc(s.GetToken)))
+	r.Handle("POST /tokens/{id}/revoke", s.requireTokenAdmin(http.HandlerFunc(s.RevokeToken)))
 }
 
 // RegisterInternal wires private routes for internal administration/push telemetry.
@@ -238,6 +367,11 @@ func (s *Server) InitializeStatuses(services []string) {
 // ErrorResponse is the standard JSON error body.
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+// StatusRecordResponse is returned after a push-mode status update is stored.
+type StatusRecordResponse struct {
+	Status string `json:"status"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
@@ -336,6 +470,13 @@ func (s *Server) pingTarget(ctx context.Context, client *http.Client, url string
 }
 
 // GetStatus returns the cached health status of monitored services.
+//
+// @Summary   List monitored service statuses
+// @Tags      status
+// @Produce   json
+// @Success   200 {object} map[string]obs.HealthStatus
+// @Failure   500 {object} ErrorResponse
+// @Router    /status [get]
 func (s *Server) GetStatus(w http.ResponseWriter, r *http.Request) {
 	statuses, err := s.Monitor.Statuses(r.Context())
 	if err != nil {
@@ -355,6 +496,16 @@ type PostStatusPayload struct {
 }
 
 // PostStatus accepts incoming health status reports (used in push mode).
+//
+// @Summary   Record monitored service status
+// @Tags      status
+// @Accept    json
+// @Produce   json
+// @Param     body body PostStatusPayload true "Service status payload"
+// @Success   200 {object} StatusRecordResponse
+// @Failure   400 {object} ErrorResponse
+// @Failure   500 {object} ErrorResponse
+// @Router    /status [post]
 func (s *Server) PostStatus(w http.ResponseWriter, r *http.Request) {
 	var payload PostStatusPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {

@@ -7,28 +7,51 @@ import (
 )
 
 type Task struct {
-	ID          uuid.UUID
-	BatchID     uuid.UUID
-	TraceID     string
-	Kind        string
-	SourceType  string
-	SourceAbbr  string
-	URL         string
-	Payload     []byte
-	PayloadHash *string
-	Meta        []byte
-	Frequency   *time.Duration
-	NextRunAt   time.Time
-	ExpiresAt   *time.Time
-	Status      TaskStatus
-	RetryCount  int
-	LastRunAt   *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID             uuid.UUID
+	BatchID        uuid.UUID
+	PreviousTaskID *uuid.UUID
+	NextTaskID     *uuid.UUID
+	LogicalKey     *string
+	TraceID        string
+	Kind           string
+	SourceType     string
+	SourceAbbr     string
+	URL            string
+	Payload        []byte
+	PayloadHash    *string
+	Meta           []byte
+	Frequency      *time.Duration
+	NextRunAt      time.Time
+	ExpiresAt      *time.Time
+	Status         TaskStatus
+	RetryCount     int
+	FailureMessage *string
+	LastRunAt      *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type TaskStatusSummary struct {
+	Kind   string
+	Status TaskStatus
+	Count  int64
+}
+
+type FailedTaskSummary struct {
+	ID             uuid.UUID
+	Kind           string
+	SourceAbbr     string
+	URL            string
+	FailureMessage *string
+	UpdatedAt      time.Time
 }
 
 type Batch struct {
 	ID                   uuid.UUID
+	ParentID             *uuid.UUID
+	NSubtasks            *int32
+	ParentTaskID         *uuid.UUID
+	Succeeded            *bool
 	SourceType           string
 	TraceID              *string
 	CreatedAt            time.Time
@@ -62,11 +85,28 @@ type Model struct {
 	DeletedAt   *time.Time
 }
 
-type Prompt struct {
+type PromptVersion struct {
 	ID        uuid.UUID
+	Name      string
+	Version   int32
 	Hash      string
-	Path      string
+	SizeBytes int64
 	CreatedAt time.Time
+}
+
+type Token struct {
+	ID            uuid.UUID
+	Type          string
+	Name          string
+	Permissions   uint8
+	HashAlgorithm string
+	TokenHash     string
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+	LastUsedAt    *time.Time
+	RenewedAt     *time.Time
+	RotatedAt     *time.Time
+	RevokedAt     *time.Time
 }
 
 type Candidate struct {
@@ -108,6 +148,7 @@ type CandidateEmbedding struct {
 	CandidateID uuid.UUID
 	ModelID     int16
 	Category    string
+	InputHash   string
 	TraceID     string
 	CreatedAt   time.Time
 }
@@ -116,7 +157,18 @@ type ContentEmbedding struct {
 	ID        int64
 	ContentID uuid.UUID
 	ModelID   int16
+	InputHash string
+	TraceID   string
+	CreatedAt time.Time
+	DeletedAt *time.Time
+}
+
+type EmbeddingRecord struct {
+	ID        int64
+	TargetID  uuid.UUID
+	ModelID   int16
 	Category  string
+	InputHash string
 	TraceID   string
 	CreatedAt time.Time
 }
@@ -133,6 +185,11 @@ type ContentExtraction struct {
 	RawResult     []byte
 	TraceID       string
 	CreatedAt     time.Time
+}
+
+type PlannerResult struct {
+	Extractions  int
+	TasksCreated int
 }
 
 type Entity struct {
@@ -167,6 +224,34 @@ type UserFetchProgress struct {
 	FailedCandidateIDs          []uuid.UUID
 	AlreadyCompleteCandidateIDs []uuid.UUID
 	Terminal                    bool
+}
+
+type Schedule struct {
+	ID                     uuid.UUID
+	Name                   string
+	Enabled                bool
+	ConfigPresent          bool
+	ConfigHash             string
+	Kind                   string
+	SourceType             string
+	SourceAbbr             string
+	URL                    string
+	Payload                []byte
+	Meta                   []byte
+	RunOnInsert            bool
+	NextFireAt             time.Time
+	LastFireAt             *time.Time
+	LastMaterializedAt     *time.Time
+	LastMaterializedTaskID *uuid.UUID
+	LastError              *string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+type ScheduleMaterialization struct {
+	Schedule Schedule
+	Task     Task
+	Active   bool
 }
 
 // UserFetchItemSnapshotAlreadyComplete is the only snapshot value used in v1.

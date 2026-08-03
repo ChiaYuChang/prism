@@ -1,0 +1,79 @@
+{
+	http_port 8080
+	https_port 8443
+	acme_ca {$PRISM_ACME_CA}
+	email {$PRISM_ACME_EMAIL}
+}
+
+{$PRISM_PUBLIC_SITE_ADDRESS} {
+	@candidates {
+		method GET
+		path /api/v1/candidates
+	}
+	@pageFetch {
+		method POST
+		path /api/v1/page_fetch
+	}
+	@contents {
+		method GET
+		path /api/v1/contents/*
+	}
+	@fetches {
+		method GET
+		path /api/v1/fetches/*
+	}
+	@status {
+		method GET
+		path /api/v1/status
+	}
+
+	handle @candidates {
+		reverse_proxy prism-api:8090 {
+			header_up -Cookie
+			header_up -Authorization
+			header_up X-PRISM-TOKEN {http.request.header.X-PRISM-TOKEN}
+			header_up X-Request-Id {http.request.header.X-Request-Id}
+		}
+		header Cache-Control no-store
+	}
+	handle @pageFetch {
+		reverse_proxy prism-api:8090 {
+			header_up -Cookie
+			header_up -Authorization
+			header_up X-PRISM-TOKEN {http.request.header.X-PRISM-TOKEN}
+			header_up X-Request-Id {http.request.header.X-Request-Id}
+		}
+		header Cache-Control no-store
+	}
+	handle @contents {
+		reverse_proxy prism-api:8090 {
+			header_up -Cookie
+			header_up -Authorization
+			header_up X-PRISM-TOKEN {http.request.header.X-PRISM-TOKEN}
+			header_up X-Request-Id {http.request.header.X-Request-Id}
+		}
+		header Cache-Control no-store
+	}
+	handle @fetches {
+		reverse_proxy prism-api:8090 {
+			header_up -Cookie
+			header_up -Authorization
+			header_up X-PRISM-TOKEN {http.request.header.X-PRISM-TOKEN}
+			header_up X-Request-Id {http.request.header.X-Request-Id}
+		}
+		header Cache-Control no-store
+	}
+	handle @status {
+		reverse_proxy prism-api:8090 {
+			header_up -Cookie
+			header_up -Authorization
+			header_up X-PRISM-TOKEN {http.request.header.X-PRISM-TOKEN}
+			header_up X-Request-Id {http.request.header.X-Request-Id}
+		}
+		header Cache-Control no-store
+	}
+
+	handle {
+		respond 404
+	}
+}

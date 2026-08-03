@@ -29,6 +29,25 @@ type Config struct {
 	HttpHeader map[string]string `json:"http_header" mod:"trim"`
 }
 
+// Decoder decodes raw provider config for OpenAI.
+type Decoder struct{}
+
+// Decode converts raw provider config into a typed OpenAI config.
+func (Decoder) Decode(raw map[string]any) (llm.ProviderConfig, error) {
+	var cfg Config
+	if err := llm.DecodeProviderConfig(raw, &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// Build constructs an OpenAI provider from config and shared dependencies.
+func (cfg Config) Build(ctx context.Context, deps llm.BuildDeps, buildCfg llm.BuildConfig) (llm.Provider, error) {
+	cfg.APIKey = buildCfg.Key
+	cfg.Timeout = buildCfg.Timeout
+	return New(ctx, deps.Logger, deps.Tracer, deps.Validator, deps.Transformer, deps.HTTPClient, cfg)
+}
+
 // Provider implements both llm.Generator and llm.Embedder for OpenAI.
 type Provider struct {
 	client      *openai.Client
@@ -198,7 +217,7 @@ func (p *Provider) Embed(ctx context.Context, req *llm.EmbedRequest) (*llm.Embed
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfArrayOfStrings: req.Input,
 		},
-		Dimensions:     openai.Int(int64(req.Dimentions)),
+		Dimensions:     openai.Int(int64(req.Dimensions)),
 		EncodingFormat: openai.EmbeddingNewParamsEncodingFormatFloat,
 	}
 

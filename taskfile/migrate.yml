@@ -8,6 +8,7 @@ tasks:
       Examples: `task migrate -- up 1`, `task migrate -- down 3`.
     cmds:
       - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" {{.CLI_ARGS}}'
+    silent: true
 
   up:
     desc: run database migration
@@ -16,6 +17,7 @@ tasks:
       for example `task migrate:up -- 1` to apply one migration.
     cmds:
       - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" up {{.CLI_ARGS}}'
+    silent: true
 
   down:
     desc: rollback database migration
@@ -24,11 +26,13 @@ tasks:
       `--`, for example `task migrate:down -- 2` to roll back two migrations.
     cmds:
       - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down {{.CLI_ARGS | default "1"}}'
+    silent: true
 
   clean:
     desc: rollback last migration
     cmds:
       - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" down'
+    silent: true
 
   force:
     desc: Force a migration version (use with caution!)
@@ -36,11 +40,19 @@ tasks:
       VERSION: "{{.VERSION}}"
     cmds:
       - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" force {{.VERSION}}'
+    silent: true
+
+  version:
+    desc: Show current migration version
+    cmds:
+      - '{{.MIGRATE}} -path {{.DB_DIR}}/migrations -database "{{.POSTGRES_URL}}" version'
+    silent: true
 
   create:
     desc: create new migration file (NAME=xxx)
     cmds:
       - migrate create -ext sql -dir {{.DB_DIR}}/migrations -seq {{.NAME}}
     preconditions:
-      - sh: "test -n \"{{.NAME}}\""
+      - sh: 'test -n "{{.NAME}}"'
         msg: "Please provide a name for the migration file, e.g. task migrate:create NAME=add_users_table"
+    silent: true

@@ -257,6 +257,47 @@ func (q *Queries) ListCandidates(ctx context.Context, arg ListCandidatesParams) 
 	return items, nil
 }
 
+const listCandidatesByBatchID = `-- name: ListCandidatesByBatchID :many
+SELECT id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
+FROM candidates
+WHERE batch_id = $1
+ORDER BY id
+`
+
+func (q *Queries) ListCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Candidate, error) {
+	rows, err := q.db.Query(ctx, listCandidatesByBatchID, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Candidate
+	for rows.Next() {
+		var i Candidate
+		if err := rows.Scan(
+			&i.ID,
+			&i.BatchID,
+			&i.SourceAbbr,
+			&i.TraceID,
+			&i.Fingerprint,
+			&i.Url,
+			&i.Title,
+			&i.Description,
+			&i.IngestionMethod,
+			&i.Metadata,
+			&i.PublishedAt,
+			&i.DiscoveredAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCandidatesForAnalysis = `-- name: ListCandidatesForAnalysis :many
 SELECT id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
 FROM candidates
@@ -380,6 +421,7 @@ INSERT INTO candidates (
 )
 ON CONFLICT (fingerprint) DO UPDATE
 SET discovered_at = NOW(),
+    description = COALESCE(candidates.description, EXCLUDED.description),
     trace_id = EXCLUDED.trace_id
 RETURNING id, batch_id, source_abbr, trace_id, fingerprint, url, title, description, ingestion_method, metadata, published_at, discovered_at, created_at
 `

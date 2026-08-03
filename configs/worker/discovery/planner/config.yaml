@@ -1,0 +1,65 @@
+health:
+  enabled: true
+  port: 8094
+shutdown-timeout: 3m
+prompt-path: /app/assets/runtime/worker/discovery/planner/extractor_v2.md
+prompt:
+  key: worker/planner/analysis/extractor
+prompt-storage: '{{ env "PRISM_PROMPT_STORAGE_URI" "file:///app/runtime/prompts" }}'
+s3:
+  endpoint: '{{ env "PRISM_PLANNER_S3_ENDPOINT" "" }}'
+  region: '{{ env "PRISM_PLANNER_S3_REGION" "us-east-1" }}'
+  access-key: '{{ env "PRISM_PLANNER_S3_ACCESS_KEY" "" }}'
+  secret-key-file: '{{ env "PRISM_PLANNER_S3_SECRET_KEY_FILE" "" }}'
+  use-path-style: {{ env "PRISM_PLANNER_S3_USE_PATH_STYLE" "true" }}
+messenger-type: nats
+nats-host: nats
+nats-port: 4222
+queue-group: planner-worker
+subscribers-count: 1
+ack-wait-timeout: 3m15s
+max-search-tasks: 20
+nats-stream: prism_batch_completed
+nats-consumer: planner-worker
+nats-auto-provision: false
+postgres:
+  host: '{{ env "POSTGRES_HOST" "postgres" }}'
+  port: {{ env "POSTGRES_PORT" "5432" }}
+  username: '{{ env "POSTGRES_APP_USER" "prism" }}'
+  db: '{{ env "POSTGRES_APP_DB" "prism" }}'
+  sslmode: disable
+  metrics-enabled: true
+llm:
+  provider:
+    ollama:
+      base_url: '{{ env "PRISM_PLANNER_OLLAMA_BASE_URL" "http://host.docker.internal:11434" }}'
+  model: '{{ env "PRISM_PLANNER_LLM_MODEL" "gemma4:31b-cloud" }}'
+  timeout: 2m
+search:
+  targets:
+    yahoo:
+      enable: {{ env "PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE" "true" }}
+      source_abbr: yahoo
+      url: https://tw.news.yahoo.com
+      site: tw.news.yahoo.com
+telemetry:
+  enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
+  service-name: prism.planner
+  environment: local
+  endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
+  insecure: true
+  sample-ratio: 1
+  timeout: 10s
+logger:
+  level: info
+  console:
+    enable: true
+  file:
+    enable: true
+    file: /logs/app.log
+    max-size: 10MiB
+    max-files: 5
+  otel:
+    url: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
+    insecure: true
+    timeout: 10s

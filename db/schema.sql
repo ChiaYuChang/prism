@@ -3,8 +3,8 @@
 --
 
 
--- Dumped from database version 18.3 (Debian 18.3-1.pgdg12+1)
--- Dumped by pg_dump version 18.3
+-- Dumped from database version 18.4 (Debian 18.4-1.pgdg12+1)
+-- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -65,7 +65,6 @@ ALTER TYPE public.content_type OWNER TO postgres;
 
 CREATE TYPE public.embedding_category AS ENUM (
     'TITLE',
-    'CONTENT',
     'BRIEF'
 );
 
@@ -126,7 +125,11 @@ ALTER TYPE public.source_type OWNER TO postgres;
 CREATE TYPE public.task_kind AS ENUM (
     'DIRECTORY_FETCH',
     'KEYWORD_SEARCH',
-    'PAGE_FETCH'
+    'PAGE_FETCH',
+    'EMBED_CANDIDATE',
+    'EMBED_CONTENT',
+    'PIPELINE_INIT',
+    'PIPELINE_STAGE'
 );
 
 
@@ -140,11 +143,103 @@ CREATE TYPE public.task_status AS ENUM (
     'PENDING',
     'RUNNING',
     'FAILED',
-    'COMPLETED'
+    'COMPLETED',
+    'CANCELLED'
 );
 
 
 ALTER TYPE public.task_status OWNER TO postgres;
+
+--
+-- Name: prism_root_check(text, text); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.prism_root_check(p_hash_algorithm text, p_token_hash text) RETURNS boolean
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM tokens
+        WHERE type = 'root' AND revoked_at IS NULL AND expires_at > NOW()
+          AND hash_algorithm = p_hash_algorithm AND token_hash = p_token_hash
+    )
+$$;
+
+
+ALTER FUNCTION public.prism_root_check(p_hash_algorithm text, p_token_hash text) OWNER TO postgres;
+
+--
+-- Name: prism_root_create_admin(text, text, uuid, text, text, text, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.prism_root_create_admin(p_root_hash_algorithm text, p_root_token_hash text, p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone) RETURNS TABLE(id uuid, type text, name text, permissions smallint, hash_algorithm text, created_at timestamp with time zone, expires_at timestamp with time zone, last_used_at timestamp with time zone, renewed_at timestamp with time zone, rotated_at timestamp with time zone, revoked_at timestamp with time zone)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+    IF NOT prism_root_check(p_root_hash_algorithm, p_root_token_hash) THEN
+        RAISE EXCEPTION 'root authentication failed' USING ERRCODE = '28000';
+    END IF;
+    RETURN QUERY
+    INSERT INTO tokens (id, type, name, permissions, hash_algorithm, token_hash, expires_at)
+    VALUES (p_id, 'admin', p_name, 97, p_hash_algorithm, p_token_hash, p_expires_at)
+    RETURNING tokens.id, tokens.type, tokens.name, tokens.permissions, tokens.hash_algorithm,
+        tokens.created_at, tokens.expires_at, tokens.last_used_at, tokens.renewed_at,
+        tokens.rotated_at, tokens.revoked_at;
+END
+$$;
+
+
+ALTER FUNCTION public.prism_root_create_admin(p_root_hash_algorithm text, p_root_token_hash text, p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone) OWNER TO postgres;
+
+--
+-- Name: prism_root_init(uuid, text, text, text, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.prism_root_init(p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone) RETURNS TABLE(id uuid, type text, name text, permissions smallint, hash_algorithm text, created_at timestamp with time zone, expires_at timestamp with time zone, last_used_at timestamp with time zone, renewed_at timestamp with time zone, rotated_at timestamp with time zone, revoked_at timestamp with time zone)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM tokens WHERE tokens.type = 'root') THEN
+        RAISE EXCEPTION 'root already exists' USING ERRCODE = '23505';
+    END IF;
+    RETURN QUERY
+    INSERT INTO tokens (id, type, name, permissions, hash_algorithm, token_hash, expires_at)
+    VALUES (p_id, 'root', p_name, 128, p_hash_algorithm, p_token_hash, p_expires_at)
+    RETURNING tokens.id, tokens.type, tokens.name, tokens.permissions, tokens.hash_algorithm,
+        tokens.created_at, tokens.expires_at, tokens.last_used_at, tokens.renewed_at,
+        tokens.rotated_at, tokens.revoked_at;
+END
+$$;
+
+
+ALTER FUNCTION public.prism_root_init(p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone) OWNER TO postgres;
+
+--
+-- Name: prism_root_revoke_all(text, text); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.prism_root_revoke_all(p_hash_algorithm text, p_token_hash text) RETURNS bigint
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'public'
+    AS $$
+DECLARE revoked_count BIGINT;
+BEGIN
+    IF NOT prism_root_check(p_hash_algorithm, p_token_hash) THEN
+        RAISE EXCEPTION 'root authentication failed' USING ERRCODE = '28000';
+    END IF;
+    WITH revoked AS (
+        UPDATE tokens SET revoked_at = NOW()
+        WHERE revoked_at IS NULL AND type <> 'root'
+        RETURNING id
+    ) SELECT COUNT(*) INTO revoked_count FROM revoked;
+    RETURN revoked_count;
+END
+$$;
+
+
+ALTER FUNCTION public.prism_root_revoke_all(p_hash_algorithm text, p_token_hash text) OWNER TO postgres;
 
 SET default_tablespace = '';
 
@@ -165,7 +260,15 @@ CREATE TABLE public.batches (
     last_publish_attempt_at timestamp with time zone,
     publish_retry_count integer DEFAULT 0 NOT NULL,
     publish_error text,
-    stalled_at timestamp with time zone
+    stalled_at timestamp with time zone,
+    n_subtasks integer,
+    parent_id uuid,
+    parent_task_id uuid,
+    succeeded boolean,
+    pipeline_published_at timestamp with time zone,
+    pipeline_publish_retry_count integer DEFAULT 0 NOT NULL,
+    pipeline_publish_error text,
+    CONSTRAINT batches_n_subtasks_check CHECK ((n_subtasks >= 0))
 );
 
 
@@ -179,6 +282,34 @@ COMMENT ON TABLE public.batches IS 'Groups one cron/trigger run so planner can d
 
 
 --
+-- Name: COLUMN batches.n_subtasks; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.batches.n_subtasks IS 'Expected number of direct tasks; NULL means expansion is not complete.';
+
+
+--
+-- Name: COLUMN batches.parent_task_id; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.batches.parent_task_id IS 'Stage-control task that owns this child batch.';
+
+
+--
+-- Name: COLUMN batches.succeeded; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.batches.succeeded IS 'Whether a finished batch completed without failed or cancelled direct tasks.';
+
+
+--
+-- Name: COLUMN batches.pipeline_published_at; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.batches.pipeline_published_at IS 'Pipeline completion notification publish timestamp.';
+
+
+--
 -- Name: candidate_embeddings_gemma_2025; Type: TABLE; Schema: public; Owner: postgres
 --
 
@@ -188,6 +319,7 @@ CREATE TABLE public.candidate_embeddings_gemma_2025 (
     model_id smallint NOT NULL,
     category public.embedding_category NOT NULL,
     vector public.vector(768) NOT NULL,
+    input_hash character varying(64) NOT NULL,
     trace_id character varying(100) NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -261,10 +393,11 @@ CREATE TABLE public.content_embeddings_gemma_2025 (
     id bigint NOT NULL,
     content_id uuid NOT NULL,
     model_id smallint NOT NULL,
-    category public.embedding_category NOT NULL,
     vector public.vector(768) NOT NULL,
+    input_hash character varying(64) NOT NULL,
     trace_id character varying(100) NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone
 );
 
 
@@ -561,8 +694,10 @@ ALTER SEQUENCE public.models_id_seq OWNED BY public.models.id;
 
 CREATE TABLE public.prompts (
     id uuid DEFAULT uuidv7() NOT NULL,
-    hash character(64) NOT NULL,
-    path text NOT NULL,
+    name text NOT NULL,
+    version integer NOT NULL,
+    hash character varying(71) NOT NULL,
+    size_bytes bigint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -575,6 +710,36 @@ ALTER TABLE public.prompts OWNER TO postgres;
 
 COMMENT ON TABLE public.prompts IS 'Prompt asset registry. hash = SHA-256(body), used to pin extraction provenance.';
 
+
+--
+-- Name: schedules; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.schedules (
+    id uuid NOT NULL,
+    name text NOT NULL,
+    enabled boolean DEFAULT true NOT NULL,
+    config_present boolean DEFAULT true NOT NULL,
+    config_hash character(64) NOT NULL,
+    kind public.task_kind NOT NULL,
+    source_type public.source_type NOT NULL,
+    source_abbr character varying(16) NOT NULL,
+    url text NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    meta jsonb,
+    frequency interval second(0) NOT NULL,
+    run_on_insert boolean DEFAULT false NOT NULL,
+    next_fire_at timestamp with time zone NOT NULL,
+    last_fire_at timestamp with time zone,
+    last_materialized_at timestamp with time zone,
+    last_materialized_task_id uuid,
+    last_error text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.schedules OWNER TO postgres;
 
 --
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: postgres
@@ -624,9 +789,13 @@ CREATE TABLE public.tasks (
     expires_at timestamp with time zone,
     status public.task_status DEFAULT 'PENDING'::public.task_status NOT NULL,
     retry_count integer DEFAULT 0 NOT NULL,
+    failure_message text,
     last_run_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    previous_task_id uuid,
+    next_task_id uuid,
+    logical_key text
 )
 WITH (fillfactor='80');
 
@@ -653,6 +822,52 @@ COMMENT ON COLUMN public.tasks.payload IS 'Request details (e.g. {query, site} f
 
 COMMENT ON COLUMN public.tasks.payload_hash IS 'SHA-256(canonical JSON payload), hex. KEYWORD_SEARCH dedup via uq_tasks_active_payload. PAGE_FETCH dedups on url instead.';
 
+
+--
+-- Name: COLUMN tasks.previous_task_id; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.tasks.previous_task_id IS 'Successful predecessor required before this task can be claimed.';
+
+
+--
+-- Name: COLUMN tasks.next_task_id; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.tasks.next_task_id IS 'Successor stage-control task awakened after this task succeeds.';
+
+
+--
+-- Name: COLUMN tasks.logical_key; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.tasks.logical_key IS 'Stable idempotency key scoped to the owning batch.';
+
+
+--
+-- Name: tokens; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.tokens (
+    id uuid DEFAULT uuidv7() NOT NULL,
+    type text NOT NULL,
+    name text NOT NULL,
+    hash_algorithm text NOT NULL,
+    token_hash text NOT NULL,
+    permissions smallint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    last_used_at timestamp with time zone,
+    renewed_at timestamp with time zone,
+    rotated_at timestamp with time zone,
+    revoked_at timestamp with time zone,
+    CONSTRAINT tokens_permissions_range_check CHECK (((permissions >= 0) AND (permissions <= 255))),
+    CONSTRAINT tokens_type_check CHECK ((type = ANY (ARRAY['root'::text, 'admin'::text, 'user'::text, 'worker'::text]))),
+    CONSTRAINT tokens_type_permissions_check CHECK ((((type = 'root'::text) AND (permissions = 128)) OR ((type = 'admin'::text) AND (permissions <> 0) AND (((permissions)::integer & 32) = 32) AND (((permissions)::integer & (~ 97)) = 0)) OR ((type = 'user'::text) AND (permissions = 1)) OR ((type = 'worker'::text) AND (permissions = 0) AND (revoked_at IS NOT NULL))))
+);
+
+
+ALTER TABLE public.tokens OWNER TO postgres;
 
 --
 -- Name: candidate_embeddings_gemma_2025 id; Type: DEFAULT; Schema: public; Owner: postgres
@@ -706,6 +921,14 @@ ALTER TABLE ONLY public.candidate_embeddings_gemma_2025
 
 
 --
+-- Name: candidate_embeddings_gemma_2025 candidate_embeddings_gemma_20_candidate_id_model_id_categor_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.candidate_embeddings_gemma_2025
+    ADD CONSTRAINT candidate_embeddings_gemma_20_candidate_id_model_id_categor_key UNIQUE (candidate_id, model_id, category);
+
+
+--
 -- Name: candidates candidates_fingerprint_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -719,6 +942,14 @@ ALTER TABLE ONLY public.candidates
 
 ALTER TABLE ONLY public.candidates
     ADD CONSTRAINT candidates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: content_embeddings_gemma_2025 content_embeddings_gemma_2025_content_id_model_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.content_embeddings_gemma_2025
+    ADD CONSTRAINT content_embeddings_gemma_2025_content_id_model_id_key UNIQUE (content_id, model_id);
 
 
 --
@@ -826,11 +1057,11 @@ ALTER TABLE ONLY public.models
 
 
 --
--- Name: prompts prompts_hash_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: prompts prompts_name_version_key; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.prompts
-    ADD CONSTRAINT prompts_hash_key UNIQUE (hash);
+    ADD CONSTRAINT prompts_name_version_key UNIQUE (name, version);
 
 
 --
@@ -839,6 +1070,14 @@ ALTER TABLE ONLY public.prompts
 
 ALTER TABLE ONLY public.prompts
     ADD CONSTRAINT prompts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: schedules schedules_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.schedules
+    ADD CONSTRAINT schedules_pkey PRIMARY KEY (id);
 
 
 --
@@ -866,10 +1105,40 @@ ALTER TABLE ONLY public.tasks
 
 
 --
+-- Name: tokens tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tokens
+    ADD CONSTRAINT tokens_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: tokens tokens_token_hash_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tokens
+    ADD CONSTRAINT tokens_token_hash_key UNIQUE (token_hash);
+
+
+--
 -- Name: idx_batches_open_created_at; Type: INDEX; Schema: public; Owner: postgres
 --
 
 CREATE INDEX idx_batches_open_created_at ON public.batches USING btree (created_at) WHERE (completed_at IS NULL);
+
+
+--
+-- Name: idx_batches_parent_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_batches_parent_id ON public.batches USING btree (parent_id);
+
+
+--
+-- Name: idx_batches_parent_task_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_batches_parent_task_id ON public.batches USING btree (parent_task_id);
 
 
 --
@@ -1076,13 +1345,6 @@ CREATE INDEX idx_contents_type ON public.contents USING btree (type);
 
 
 --
--- Name: idx_emb_g25_category; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_emb_g25_category ON public.content_embeddings_gemma_2025 USING btree (category);
-
-
---
 -- Name: idx_emb_g25_content; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1146,10 +1408,17 @@ CREATE INDEX idx_models_type_name ON public.models USING btree (type, name);
 
 
 --
--- Name: idx_prompts_path; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_prompts_hash; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_prompts_path ON public.prompts USING btree (path);
+CREATE INDEX idx_prompts_hash ON public.prompts USING btree (hash);
+
+
+--
+-- Name: idx_prompts_name_version; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_prompts_name_version ON public.prompts USING btree (name, version DESC);
 
 
 --
@@ -1188,6 +1457,20 @@ CREATE INDEX idx_tasks_kind_source_type ON public.tasks USING btree (kind, sourc
 
 
 --
+-- Name: idx_tasks_next_task_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_tasks_next_task_id ON public.tasks USING btree (next_task_id);
+
+
+--
+-- Name: idx_tasks_previous_task_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_tasks_previous_task_id ON public.tasks USING btree (previous_task_id);
+
+
+--
 -- Name: idx_tasks_schedule; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1223,6 +1506,48 @@ CREATE INDEX idx_tasks_url ON public.tasks USING btree (url);
 
 
 --
+-- Name: idx_tokens_active_permissions_expires_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_tokens_active_permissions_expires_at ON public.tokens USING btree (permissions, expires_at) WHERE (revoked_at IS NULL);
+
+
+--
+-- Name: idx_tokens_active_type_expires_at; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_tokens_active_type_expires_at ON public.tokens USING btree (type, expires_at) WHERE (revoked_at IS NULL);
+
+
+--
+-- Name: idx_tokens_one_root; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX idx_tokens_one_root ON public.tokens USING btree (type) WHERE (type = 'root'::text);
+
+
+--
+-- Name: schedules_due_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX schedules_due_idx ON public.schedules USING btree (next_fire_at, id) WHERE ((enabled = true) AND (config_present = true));
+
+
+--
+-- Name: schedules_source_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX schedules_source_idx ON public.schedules USING btree (source_type, source_abbr);
+
+
+--
+-- Name: uq_batches_parent_task_id; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX uq_batches_parent_task_id ON public.batches USING btree (parent_task_id) WHERE (parent_task_id IS NOT NULL);
+
+
+--
 -- Name: uq_content_extraction_phrases; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -1255,6 +1580,29 @@ CREATE UNIQUE INDEX uq_tasks_active_page_fetch ON public.tasks USING btree (kind
 --
 
 CREATE UNIQUE INDEX uq_tasks_active_payload ON public.tasks USING btree (source_abbr, kind, payload_hash) WHERE ((status = ANY (ARRAY['PENDING'::public.task_status, 'RUNNING'::public.task_status])) AND (payload_hash IS NOT NULL));
+
+
+--
+-- Name: uq_tasks_batch_logical_key; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX uq_tasks_batch_logical_key ON public.tasks USING btree (batch_id, logical_key) WHERE (logical_key IS NOT NULL);
+
+
+--
+-- Name: batches batches_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.batches
+    ADD CONSTRAINT batches_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.batches(id) ON DELETE SET NULL;
+
+
+--
+-- Name: batches batches_parent_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.batches
+    ADD CONSTRAINT batches_parent_task_id_fkey FOREIGN KEY (parent_task_id) REFERENCES public.tasks(id) ON DELETE SET NULL;
 
 
 --
@@ -1394,6 +1742,38 @@ ALTER TABLE ONLY public.fetch_items
 
 
 --
+-- Name: schedules schedules_last_materialized_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.schedules
+    ADD CONSTRAINT schedules_last_materialized_task_id_fkey FOREIGN KEY (last_materialized_task_id) REFERENCES public.tasks(id) ON DELETE SET NULL;
+
+
+--
+-- Name: schedules schedules_source_abbr_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.schedules
+    ADD CONSTRAINT schedules_source_abbr_fkey FOREIGN KEY (source_abbr) REFERENCES public.sources(abbr);
+
+
+--
+-- Name: tasks tasks_next_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tasks
+    ADD CONSTRAINT tasks_next_task_id_fkey FOREIGN KEY (next_task_id) REFERENCES public.tasks(id) ON DELETE SET NULL;
+
+
+--
+-- Name: tasks tasks_previous_task_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.tasks
+    ADD CONSTRAINT tasks_previous_task_id_fkey FOREIGN KEY (previous_task_id) REFERENCES public.tasks(id) ON DELETE SET NULL;
+
+
+--
 -- Name: tasks tasks_source_abbr_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1406,6 +1786,39 @@ ALTER TABLE ONLY public.tasks
 --
 
 GRANT USAGE ON SCHEMA public TO prism;
+GRANT USAGE ON SCHEMA public TO prism_rootctl;
+
+
+--
+-- Name: FUNCTION prism_root_check(p_hash_algorithm text, p_token_hash text); Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON FUNCTION public.prism_root_check(p_hash_algorithm text, p_token_hash text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.prism_root_check(p_hash_algorithm text, p_token_hash text) TO prism_rootctl;
+
+
+--
+-- Name: FUNCTION prism_root_create_admin(p_root_hash_algorithm text, p_root_token_hash text, p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone); Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON FUNCTION public.prism_root_create_admin(p_root_hash_algorithm text, p_root_token_hash text, p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.prism_root_create_admin(p_root_hash_algorithm text, p_root_token_hash text, p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone) TO prism_rootctl;
+
+
+--
+-- Name: FUNCTION prism_root_init(p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone); Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON FUNCTION public.prism_root_init(p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.prism_root_init(p_id uuid, p_name text, p_hash_algorithm text, p_token_hash text, p_expires_at timestamp with time zone) TO prism_rootctl;
+
+
+--
+-- Name: FUNCTION prism_root_revoke_all(p_hash_algorithm text, p_token_hash text); Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON FUNCTION public.prism_root_revoke_all(p_hash_algorithm text, p_token_hash text) FROM PUBLIC;
+GRANT ALL ON FUNCTION public.prism_root_revoke_all(p_hash_algorithm text, p_token_hash text) TO prism_rootctl;
 
 
 --
@@ -1542,6 +1955,13 @@ GRANT ALL ON TABLE public.prompts TO prism;
 
 
 --
+-- Name: TABLE schedules; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.schedules TO prism;
+
+
+--
 -- Name: TABLE schema_migrations; Type: ACL; Schema: public; Owner: postgres
 --
 
@@ -1560,6 +1980,13 @@ GRANT ALL ON TABLE public.sources TO prism;
 --
 
 GRANT ALL ON TABLE public.tasks TO prism;
+
+
+--
+-- Name: TABLE tokens; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT ALL ON TABLE public.tokens TO prism;
 
 
 --

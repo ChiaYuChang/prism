@@ -26,6 +26,7 @@ services:
       - ../db/init:/docker-entrypoint-initdb.d
     networks:
       - prism-net
+      - prism-root-db
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
@@ -118,18 +119,35 @@ services:
 networks:
   prism-net:
     driver: bridge
+    # Keep the source range stable for host-firewall access to services such
+    # as Ollama exposed through host.docker.internal.
+    ipam:
+      config:
+         - subnet: 172.30.0.0/16
+  prism-admin-net:
+    driver: bridge
+  prism-root-db:
+    driver: bridge
+  prism-user-edge:
+    driver: bridge
 
 secrets:
   postgres_admin:
     file: ../${POSTGRES_ADMIN_PASSWORD_FILE}
   postgres_app:
     file: ../${POSTGRES_APP_PASSWORD_FILE}
+  postgres_rootctl:
+    file: ../${POSTGRES_ROOTCTL_PASSWORD_FILE:-.secrets/pg-rootctl}
   nats_token:
     file: ../${NATS_AUTH_TOKEN_FILE}
   sw_secret_key:
     file: ../${SEAWEEDFS_SECRET_KEY_FILE}
+  brave_search_api:
+    file: ../${BRAVE_SEARCH_API_FILE}
   valkey_acl:
     file: ../build/infra/valkey/valkey_acl
+  grafana:
+    file: ../${GRAFANA_PASSWORD_FILE}
 
 volumes:
   postgres_data:

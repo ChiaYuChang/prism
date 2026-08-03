@@ -3,10 +3,47 @@
 # `task compose:app` or `docker compose --profile app up`.
 
 services:
+  cron-trigger:
+    profiles: [ app ]
+    image: prism/cron-trigger:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: trigger/cron
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --config=/app/configs/trigger/cron/config.yaml
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_CRON_TRIGGER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_CRON_TRIGGER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_CRON_TRIGGER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_CRON_TRIGGER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+    networks:
+      - prism-net
+    volumes:
+      - ../runtime/logs/cron-trigger:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8085/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 45s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   batch-detector:
     profiles: [ app ]
     image: prism/batch-detector:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -27,11 +64,24 @@ services:
       PRISM_BATCH_DETECTOR_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
       PRISM_BATCH_DETECTOR_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_BATCH_DETECTOR_INTERVAL: ${PRISM_BATCH_INTERVAL:-1m}
+      PRISM_BATCH_DETECTOR_MESSENGER_TYPE: nats
+      PRISM_BATCH_DETECTOR_NATS_HOST: nats
+      PRISM_BATCH_DETECTOR_NATS_PORT: 4222
+      PRISM_BATCH_DETECTOR_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_BATCH_DETECTOR_NATS_SUBSCRIBERS_COUNT: 1
+      PRISM_BATCH_DETECTOR_NATS_ACK_WAIT_TIMEOUT: 30s
       PRISM_BATCH_DETECTOR_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
     volumes:
       - ../runtime/logs/batch-detector:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8083/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,7 +90,6 @@ services:
   batch-publisher:
     profiles: [ app ]
     image: prism/batch-publisher:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -67,6 +116,13 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/batch-publisher:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8084/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,10 +137,9 @@ services:
   prism-api:
     profiles: [ app ]
     image: prism/api-server:latest
-    user: "0:0"
     build:
       context: ..
-      dockerfile: deployments/Dockerfile.worker
+      dockerfile: deployments/Dockerfile.api
       args:
         TARGET: api-server
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
@@ -98,6 +153,9 @@ services:
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
       VALKEY_APP_USER: ${VALKEY_APP_USER:-prism}
+      PRISM_API_NATS_HOST: nats
+      PRISM_API_NATS_PORT: 4222
+      PRISM_API_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
       PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
       PRISM_API_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
@@ -106,17 +164,26 @@ services:
       PRISM_API_VALKEY_PASSWORD: ${VALKEY_APP_PASSWORD}
       PRISM_API_VALKEY_USERNAME: ${VALKEY_APP_USER:-prism}
       PRISM_API_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
-    ports:
-      - "8090:8090"
+      PRISM_API_ADMIN_PORT: 8091
     networks:
       - prism-net
+      - prism-admin-net
+      - prism-user-edge
     volumes:
       - ../runtime/logs/api-server:/logs
+      - ../runtime/prompts:/app/runtime/prompts
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8091/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      nats:
+        condition: service_healthy
     restart: unless-stopped
-
-

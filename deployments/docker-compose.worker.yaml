@@ -1,5 +1,5 @@
 # Worker stack — long-running Prism worker services gated behind the `worker`
-# profile so the daily infra-only `task compose:up` is unaffected. Activate with
+# profile so the infra-only `task compose:infra` is unaffected. Activate with
 # `task compose:worker` (sets COMPOSE_PROFILES=worker) or
 # `docker compose --profile worker up`.
 #
@@ -15,7 +15,6 @@ services:
   scheduler-slow:
     profiles: [ worker ]
     image: prism/scheduler:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
@@ -45,6 +44,13 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/scheduler-slow:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8090/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,7 +63,6 @@ services:
   scheduler-fast:
     profiles: [ worker ]
     image: prism/scheduler:latest
-    user: "0:0"
     command:
       - --config=/app/configs/scheduler/fast.yaml
     environment:
@@ -81,6 +86,13 @@ services:
       - prism-net
     volumes:
       - ../runtime/logs/scheduler-fast:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8091/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 45s
     depends_on:
       scheduler-slow:
         condition: service_started
@@ -89,15 +101,14 @@ services:
   discovery:
     profiles: [ worker ]
     image: prism/discovery:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        TARGET: worker/discovery
+        TARGET: worker/discovery/candidate
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --config=/app/configs/worker/discovery/config.yaml
+      - --config=/app/configs/worker/discovery/candidate/config.yaml
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -112,10 +123,20 @@ services:
       PRISM_DISCOVERY_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_DISCOVERY_WORKER_FIXTURE_BASE: ${FIXTURE_BASE:-}
       PRISM_DISCOVERY_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_DISCOVERY_WORKER_SEARCH_PROVIDER_BRAVE_API_KEY_FILE: /run/secrets/brave_search_api
+    secrets:
+      - brave_search_api
     networks:
       - prism-net
     volumes:
       - ../runtime/logs/discovery:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8092/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 45s
     depends_on:
       postgres:
         condition: service_healthy
@@ -126,15 +147,14 @@ services:
   collector:
     profiles: [ worker ]
     image: prism/collector:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        TARGET: worker/collector
+        TARGET: worker/collector/worker
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --config=/app/configs/worker/collector/config.yaml
+      - --config=/app/configs/worker/collector/worker/config.yaml
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -149,9 +169,19 @@ services:
       PRISM_COLLECTOR_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
       PRISM_COLLECTOR_WORKER_FIXTURE_BASE: ${FIXTURE_BASE:-}
       PRISM_COLLECTOR_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_COLLECTOR_WORKER_S3_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY}
+      PRISM_COLLECTOR_WORKER_S3_SECRET_KEY_FILE: /run/secrets/sw_secret_key
+    secrets:
+      - sw_secret_key
     volumes:
-      - worker_archives:/app/archives
       - ../runtime/logs/collector:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8093/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 150s
     networks:
       - prism-net
     depends_on:
@@ -159,20 +189,58 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+    restart: unless-stopped
+
+  archive:
+    profiles: [ worker ]
+    image: prism/archive:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: worker/collector/archive
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --config=/app/configs/worker/collector/archive/config.yaml
+    environment:
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_ARCHIVE_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_ARCHIVE_WORKER_S3_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY}
+      PRISM_ARCHIVE_WORKER_S3_SECRET_KEY_FILE: /run/secrets/sw_secret_key
+    secrets:
+      - sw_secret_key
+    networks:
+      - prism-net
+    volumes:
+      - ../runtime/logs/archive:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8095/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 45s
+    depends_on:
+      nats:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
     restart: unless-stopped
 
   planner:
     profiles: [ planner ]
     image: prism/planner:latest
-    user: "0:0"
     build:
       context: ..
       dockerfile: deployments/Dockerfile.worker
       args:
-        TARGET: worker/planner
+        TARGET: worker/discovery/planner
         RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
     command:
-      - --config=/app/configs/worker/planner/config.yaml
+      - --config=/app/configs/worker/discovery/planner/config.yaml
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -180,22 +248,119 @@ services:
       POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
       PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
-      PRISM_PLANNER_LLM_PROVIDER: ${PRISM_PLANNER_LLM_PROVIDER:-gemini}
-      PRISM_PLANNER_LLM_MODEL: ${PRISM_PLANNER_LLM_MODEL:-gemini-2.0-flash}
+      PRISM_PLANNER_LLM_MODEL: ${PRISM_PLANNER_LLM_MODEL:-gemma4:31b-cloud}
+      PRISM_PLANNER_OLLAMA_BASE_URL: ${PRISM_PLANNER_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE: ${PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE:-true}
       PRISM_PLANNER_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
       PRISM_PLANNER_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
       PRISM_PLANNER_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
       PRISM_PLANNER_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
-      PRISM_PLANNER_WORKER_LLM_KEY: ${GEMINI_API_KEY:-}
-      PRISM_PLANNER_WORKER_LLM_PROVIDER: ${PRISM_PLANNER_LLM_PROVIDER:-gemini}
-      PRISM_PLANNER_WORKER_LLM_MODEL: ${PRISM_PLANNER_LLM_MODEL:-gemini-2.0-flash}
+      PRISM_PLANNER_WORKER_LLM_MODEL: ${PRISM_PLANNER_LLM_MODEL:-gemma4:31b-cloud}
       PRISM_PLANNER_WORKER_SEARCH_TARGETS_YAHOO_ENABLE: ${PRISM_PLANNER_SEARCH_TARGET_YAHOO_ENABLE:-true}
       PRISM_PLANNER_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
     networks:
       - prism-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../runtime/logs/planner:/logs
+      - ../runtime/prompts:/app/runtime/prompts
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8094/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 210s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  embedder:
+    profiles: [ worker ]
+    image: prism/embedder:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: worker/analyzer/embedder
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --config=/app/configs/worker/analyzer/embedder/config.yaml
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_EMBEDDER_WORKER_LLM_MODEL: ${PRISM_EMBEDDER_WORKER_LLM_MODEL:-embeddinggemma:300m}
+      PRISM_EMBEDDER_WORKER_OLLAMA_BASE_URL: ${PRISM_EMBEDDER_WORKER_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      PRISM_EMBEDDER_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_EMBEDDER_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_EMBEDDER_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_EMBEDDER_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_EMBEDDER_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+    networks:
+      - prism-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../runtime/logs/embedder:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8095/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 150s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  analyzer-pipeline:
+    profiles: [ worker ]
+    image: prism/analyzer-pipeline:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.worker
+      args:
+        TARGET: worker/analyzer/pipeline
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    command:
+      - --pipeline-file=/app/configs/llm_pipeline.yaml
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-prism}
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PRISM_WORKER_OTEL_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+      PRISM_ANALYZER_PIPELINE_WORKER_MESSENGER_TYPE: nats
+      PRISM_ANALYZER_PIPELINE_WORKER_NATS_HOST: nats
+      PRISM_ANALYZER_PIPELINE_WORKER_NATS_PORT: 4222
+      PRISM_ANALYZER_PIPELINE_WORKER_NATS_TOKEN: ${NATS_AUTH_TOKEN}
+      PRISM_ANALYZER_PIPELINE_WORKER_POSTGRES_PASSWORD: ${POSTGRES_APP_PASSWORD}
+      PRISM_ANALYZER_PIPELINE_WORKER_POSTGRES_USERNAME: ${POSTGRES_APP_USER:-prism}
+      PRISM_ANALYZER_PIPELINE_WORKER_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_ANALYZER_PIPELINE_WORKER_TELEMETRY_ENABLED: ${PRISM_WORKER_OTEL_ENABLED:-true}
+    networks:
+      - prism-net
+    volumes:
+      - ../runtime/logs/analyzer-pipeline:/logs
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8097/readyz" ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 150s
     depends_on:
       postgres:
         condition: service_healthy
@@ -223,6 +388,3 @@ services:
     networks:
       - prism-net
     restart: unless-stopped
-
-volumes:
-  worker_archives:

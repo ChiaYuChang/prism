@@ -141,9 +141,8 @@ func AllContentTypeValues() []ContentType {
 type EmbeddingCategory string
 
 const (
-	EmbeddingCategoryTITLE   EmbeddingCategory = "TITLE"
-	EmbeddingCategoryCONTENT EmbeddingCategory = "CONTENT"
-	EmbeddingCategoryBRIEF   EmbeddingCategory = "BRIEF"
+	EmbeddingCategoryTITLE EmbeddingCategory = "TITLE"
+	EmbeddingCategoryBRIEF EmbeddingCategory = "BRIEF"
 )
 
 func (e *EmbeddingCategory) Scan(src interface{}) error {
@@ -184,7 +183,6 @@ func (ns NullEmbeddingCategory) Value() (driver.Value, error) {
 func (e EmbeddingCategory) Valid() bool {
 	switch e {
 	case EmbeddingCategoryTITLE,
-		EmbeddingCategoryCONTENT,
 		EmbeddingCategoryBRIEF:
 		return true
 	}
@@ -194,7 +192,6 @@ func (e EmbeddingCategory) Valid() bool {
 func AllEmbeddingCategoryValues() []EmbeddingCategory {
 	return []EmbeddingCategory{
 		EmbeddingCategoryTITLE,
-		EmbeddingCategoryCONTENT,
 		EmbeddingCategoryBRIEF,
 	}
 }
@@ -412,6 +409,10 @@ const (
 	TaskKindDIRECTORYFETCH TaskKind = "DIRECTORY_FETCH"
 	TaskKindKEYWORDSEARCH  TaskKind = "KEYWORD_SEARCH"
 	TaskKindPAGEFETCH      TaskKind = "PAGE_FETCH"
+	TaskKindEMBEDCANDIDATE TaskKind = "EMBED_CANDIDATE"
+	TaskKindEMBEDCONTENT   TaskKind = "EMBED_CONTENT"
+	TaskKindPIPELINEINIT   TaskKind = "PIPELINE_INIT"
+	TaskKindPIPELINESTAGE  TaskKind = "PIPELINE_STAGE"
 )
 
 func (e *TaskKind) Scan(src interface{}) error {
@@ -453,7 +454,11 @@ func (e TaskKind) Valid() bool {
 	switch e {
 	case TaskKindDIRECTORYFETCH,
 		TaskKindKEYWORDSEARCH,
-		TaskKindPAGEFETCH:
+		TaskKindPAGEFETCH,
+		TaskKindEMBEDCANDIDATE,
+		TaskKindEMBEDCONTENT,
+		TaskKindPIPELINEINIT,
+		TaskKindPIPELINESTAGE:
 		return true
 	}
 	return false
@@ -464,6 +469,10 @@ func AllTaskKindValues() []TaskKind {
 		TaskKindDIRECTORYFETCH,
 		TaskKindKEYWORDSEARCH,
 		TaskKindPAGEFETCH,
+		TaskKindEMBEDCANDIDATE,
+		TaskKindEMBEDCONTENT,
+		TaskKindPIPELINEINIT,
+		TaskKindPIPELINESTAGE,
 	}
 }
 
@@ -474,6 +483,7 @@ const (
 	TaskStatusRUNNING   TaskStatus = "RUNNING"
 	TaskStatusFAILED    TaskStatus = "FAILED"
 	TaskStatusCOMPLETED TaskStatus = "COMPLETED"
+	TaskStatusCANCELLED TaskStatus = "CANCELLED"
 )
 
 func (e *TaskStatus) Scan(src interface{}) error {
@@ -516,7 +526,8 @@ func (e TaskStatus) Valid() bool {
 	case TaskStatusPENDING,
 		TaskStatusRUNNING,
 		TaskStatusFAILED,
-		TaskStatusCOMPLETED:
+		TaskStatusCOMPLETED,
+		TaskStatusCANCELLED:
 		return true
 	}
 	return false
@@ -528,6 +539,7 @@ func AllTaskStatusValues() []TaskStatus {
 		TaskStatusRUNNING,
 		TaskStatusFAILED,
 		TaskStatusCOMPLETED,
+		TaskStatusCANCELLED,
 	}
 }
 
@@ -544,6 +556,17 @@ type Batch struct {
 	PublishRetryCount    int32              `db:"publish_retry_count" json:"publish_retry_count"`
 	PublishError         pgtype.Text        `db:"publish_error" json:"publish_error"`
 	StalledAt            pgtype.Timestamptz `db:"stalled_at" json:"stalled_at"`
+	// Expected number of direct tasks; NULL means expansion is not complete.
+	NSubtasks pgtype.Int4 `db:"n_subtasks" json:"n_subtasks"`
+	ParentID  pgtype.UUID `db:"parent_id" json:"parent_id"`
+	// Stage-control task that owns this child batch.
+	ParentTaskID pgtype.UUID `db:"parent_task_id" json:"parent_task_id"`
+	// Whether a finished batch completed without failed or cancelled direct tasks.
+	Succeeded pgtype.Bool `db:"succeeded" json:"succeeded"`
+	// Pipeline completion notification publish timestamp.
+	PipelinePublishedAt       pgtype.Timestamptz `db:"pipeline_published_at" json:"pipeline_published_at"`
+	PipelinePublishRetryCount int32              `db:"pipeline_publish_retry_count" json:"pipeline_publish_retry_count"`
+	PipelinePublishError      pgtype.Text        `db:"pipeline_publish_error" json:"pipeline_publish_error"`
 }
 
 // Article briefs (title/url/desc) before full-page fetch. Discovery terminal asset.
@@ -570,6 +593,7 @@ type CandidateEmbeddingsGemma2025 struct {
 	ModelID     int16              `db:"model_id" json:"model_id"`
 	Category    EmbeddingCategory  `db:"category" json:"category"`
 	Vector      pgvector_go.Vector `db:"vector" json:"vector"`
+	InputHash   string             `db:"input_hash" json:"input_hash"`
 	TraceID     string             `db:"trace_id" json:"trace_id"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
@@ -597,10 +621,11 @@ type ContentEmbeddingsGemma2025 struct {
 	ID        int64              `db:"id" json:"id"`
 	ContentID uuid.UUID          `db:"content_id" json:"content_id"`
 	ModelID   int16              `db:"model_id" json:"model_id"`
-	Category  EmbeddingCategory  `db:"category" json:"category"`
 	Vector    pgvector_go.Vector `db:"vector" json:"vector"`
+	InputHash string             `db:"input_hash" json:"input_hash"`
 	TraceID   string             `db:"trace_id" json:"trace_id"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DeletedAt pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 }
 
 // One structured extraction per (content, model, prompt, schema_version). Append-only snapshot.
@@ -681,9 +706,34 @@ type Model struct {
 // Prompt asset registry. hash = SHA-256(body), used to pin extraction provenance.
 type Prompt struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
+	Name      string             `db:"name" json:"name"`
+	Version   int32              `db:"version" json:"version"`
 	Hash      string             `db:"hash" json:"hash"`
-	Path      string             `db:"path" json:"path"`
+	SizeBytes int64              `db:"size_bytes" json:"size_bytes"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Schedule struct {
+	ID                     uuid.UUID          `db:"id" json:"id"`
+	Name                   string             `db:"name" json:"name"`
+	Enabled                bool               `db:"enabled" json:"enabled"`
+	ConfigPresent          bool               `db:"config_present" json:"config_present"`
+	ConfigHash             string             `db:"config_hash" json:"config_hash"`
+	Kind                   TaskKind           `db:"kind" json:"kind"`
+	SourceType             SourceType         `db:"source_type" json:"source_type"`
+	SourceAbbr             string             `db:"source_abbr" json:"source_abbr"`
+	Url                    string             `db:"url" json:"url"`
+	Payload                []byte             `db:"payload" json:"payload"`
+	Meta                   []byte             `db:"meta" json:"meta"`
+	Frequency              pgtype.Interval    `db:"frequency" json:"frequency"`
+	RunOnInsert            bool               `db:"run_on_insert" json:"run_on_insert"`
+	NextFireAt             pgtype.Timestamptz `db:"next_fire_at" json:"next_fire_at"`
+	LastFireAt             pgtype.Timestamptz `db:"last_fire_at" json:"last_fire_at"`
+	LastMaterializedAt     pgtype.Timestamptz `db:"last_materialized_at" json:"last_materialized_at"`
+	LastMaterializedTaskID pgtype.UUID        `db:"last_materialized_task_id" json:"last_materialized_task_id"`
+	LastError              pgtype.Text        `db:"last_error" json:"last_error"`
+	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type SchemaMigration struct {
@@ -711,15 +761,37 @@ type Task struct {
 	// Request details (e.g. {query, site} for KEYWORD_SEARCH). Search keywords belong here, not as columns.
 	Payload []byte `db:"payload" json:"payload"`
 	// SHA-256(canonical JSON payload), hex. KEYWORD_SEARCH dedup via uq_tasks_active_payload. PAGE_FETCH dedups on url instead.
-	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
-	Meta        []byte             `db:"meta" json:"meta"`
-	TraceID     string             `db:"trace_id" json:"trace_id"`
-	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
-	NextRunAt   pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
-	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	Status      TaskStatus         `db:"status" json:"status"`
-	RetryCount  int32              `db:"retry_count" json:"retry_count"`
-	LastRunAt   pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
-	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	PayloadHash    pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta           []byte             `db:"meta" json:"meta"`
+	TraceID        string             `db:"trace_id" json:"trace_id"`
+	Frequency      pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt      pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Status         TaskStatus         `db:"status" json:"status"`
+	RetryCount     int32              `db:"retry_count" json:"retry_count"`
+	FailureMessage pgtype.Text        `db:"failure_message" json:"failure_message"`
+	LastRunAt      pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	// Successful predecessor required before this task can be claimed.
+	PreviousTaskID pgtype.UUID `db:"previous_task_id" json:"previous_task_id"`
+	// Successor stage-control task awakened after this task succeeds.
+	NextTaskID pgtype.UUID `db:"next_task_id" json:"next_task_id"`
+	// Stable idempotency key scoped to the owning batch.
+	LogicalKey pgtype.Text `db:"logical_key" json:"logical_key"`
+}
+
+type Token struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	Type          string             `db:"type" json:"type"`
+	Name          string             `db:"name" json:"name"`
+	HashAlgorithm string             `db:"hash_algorithm" json:"hash_algorithm"`
+	TokenHash     string             `db:"token_hash" json:"token_hash"`
+	Permissions   int16              `db:"permissions" json:"permissions"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ExpiresAt     pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	LastUsedAt    pgtype.Timestamptz `db:"last_used_at" json:"last_used_at"`
+	RenewedAt     pgtype.Timestamptz `db:"renewed_at" json:"renewed_at"`
+	RotatedAt     pgtype.Timestamptz `db:"rotated_at" json:"rotated_at"`
+	RevokedAt     pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
 }

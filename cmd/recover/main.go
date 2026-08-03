@@ -104,10 +104,15 @@ func main() {
 					"path", cfg.Fallback.PromptFile, "error", perr)
 				os.Exit(1)
 			}
+			providerName, perr := cfg.Fallback.LLM.ProviderName()
+			if perr != nil {
+				logger.Error("failed to resolve fallback LLM provider", "error", perr)
+				os.Exit(1)
+			}
 			gen, gerr := llmfactory.NewGenerator(ctx, cfg.Fallback.LLM, logger)
 			if gerr != nil {
 				logger.Error("failed to initialize fallback LLM generator",
-					"provider", cfg.Fallback.LLM.Provider, "error", gerr)
+					"provider", providerName, "error", gerr)
 				os.Exit(1)
 			}
 			model := cfg.Fallback.LLM.Model
@@ -312,7 +317,7 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 	}
 
 	fs.StringVar(&opts.archiveURI, "archive", "", "archive URI (file:///path or bare path)")
-	fs.StringVar(&opts.parsersConfig, "parsers-config", "configs/worker/collector/parsers.yaml", "path to parsers.yaml (used by run subcommand)")
+	fs.StringVar(&opts.parsersConfig, "parsers-config", "configs/worker/collector/worker/parsers.yaml", "path to parsers.yaml (used by run subcommand)")
 	fs.StringVar(&opts.prompt, "prompt", "", "override path to the LLM fallback system-instruction file (defaults to fallback.prompt_file in parsers.yaml)")
 
 	var sinceRaw, untilRaw string

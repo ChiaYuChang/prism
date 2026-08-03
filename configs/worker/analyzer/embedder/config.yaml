@@ -1,0 +1,49 @@
+health:
+  enabled: true
+  port: 8095
+shutdown-timeout: 2m
+retry-max: 3
+embedding-dimension: 768
+messenger-type: nats
+nats-host: nats
+nats-port: 4222
+queue-group: embedder-worker
+subscribers-count: 1
+ack-wait-timeout: 2m
+nats-stream: prism_task
+nats-consumer: embedder-worker
+nats-auto-provision: false
+llm:
+  model: '{{ env "PRISM_EMBEDDER_WORKER_LLM_MODEL" "embeddinggemma:300m" }}'
+  timeout: 2m
+  provider:
+    ollama:
+      base_url: '{{ env "PRISM_EMBEDDER_WORKER_OLLAMA_BASE_URL" "http://host.docker.internal:11434" }}'
+postgres:
+  host: '{{ env "POSTGRES_HOST" "postgres" }}'
+  port: {{ env "POSTGRES_PORT" "5432" }}
+  username: '{{ env "POSTGRES_APP_USER" "prism" }}'
+  db: '{{ env "POSTGRES_APP_DB" "prism" }}'
+  sslmode: disable
+  metrics-enabled: true
+telemetry:
+  enabled: {{ env "PRISM_WORKER_OTEL_ENABLED" "true" }}
+  service-name: prism.embedder
+  environment: local
+  endpoint: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
+  insecure: true
+  sample-ratio: 1
+  timeout: 10s
+logger:
+  level: info
+  console:
+    enable: true
+  file:
+    enable: true
+    file: /logs/app.log
+    max-size: 10MiB
+    max-files: 5
+  otel:
+    url: '{{ env "OTEL_COLLECTOR_ENDPOINT" "otel-collector:4317" }}'
+    insecure: true
+    timeout: 10s

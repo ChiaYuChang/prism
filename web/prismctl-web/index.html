@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1118" />
+    <title>Prism Control Room</title>
+  </head>
+  <body>
+    <main x-data="controlRoom" x-cloak>
+      <section class="login-shell" x-show="showLogin">
+        <div class="brand-mark">P / CONTROL ROOM</div>
+        <div class="login-card">
+          <p class="eyebrow">OPERATOR ACCESS</p>
+          <h1>Keep the signal clean.</h1>
+          <p class="lede">Authenticate with an existing admin token to inspect and operate the Prism pipeline.</p>
+          <form @submit.prevent="login">
+            <label for="token">Admin token</label>
+            <input id="token" type="password" autocomplete="off" :value="tokenInput" @input="setTokenInput" placeholder="padm_..." />
+            <button type="submit" :disabled="loginDisabled">Connect <span aria-hidden="true">&#8594;</span></button>
+          </form>
+          <p class="error-text" x-show="error" x-text="error"></p>
+        </div>
+      </section>
+
+      <section class="app-shell" x-show="showApp">
+        <header class="topbar">
+          <div>
+            <div class="brand-mark">P / CONTROL ROOM</div>
+            <p class="topbar-title">Operations console</p>
+          </div>
+          <div class="operator-chip">
+            <span class="status-dot"></span>
+            <span x-text="operatorLabel"></span>
+            <button class="quiet-button" type="button" @click="logout">Sign out</button>
+          </div>
+        </header>
+
+        <div class="workspace">
+          <aside class="rail">
+            <button class="rail-item active" type="button" @click="showOverview">Overview</button>
+            <button class="rail-item" type="button" @click="showTokens">Tokens</button>
+            <button class="rail-item" type="button" @click="showDiagnostics">Diagnostics</button>
+            <div class="rail-footer"><span>PERMISSIONS</span><strong x-text="operatorPermissionHex"></strong></div>
+          </aside>
+
+          <div class="content">
+            <div class="content-heading">
+              <div>
+                <p class="eyebrow">LIVE / ADMIN API</p>
+                <h2 x-text="heading"></h2>
+              </div>
+              <button class="outline-button" type="button" @click="refresh" :disabled="busy"><svg class="button-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 7.5A6.5 6.5 0 1 0 17 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M13.5 3.8h4v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Refresh</span></button>
+            </div>
+
+            <p class="error-text" x-show="error" x-text="error"></p>
+
+            <template x-if="isOverview">
+              <div class="dashboard-grid">
+                <article class="metric-card control-plane-card"><span class="metric-label">CONTROL PLANE</span><strong>Connected</strong><small x-text="operatorSummary"></small></article>
+                <article class="metric-card service-metric" :class="{ 'service-metric-expanded': servicesExpanded }"><button class="metric-toggle" type="button" @click="toggleServices" :aria-expanded="servicesExpanded"><span><span class="metric-label">SERVICES</span><strong x-text="serviceCount"></strong><small>reported in latest snapshot</small></span><span class="metric-chevron" :class="{ 'metric-chevron-open': servicesExpanded }" aria-hidden="true"></span></button><div class="service-drawer" x-show="servicesExpanded"><template x-for="group in serviceGroups" :key="group.key"><section class="service-group"><button class="service-group-toggle" type="button" aria-expanded="false"><span x-text="group.label"></span><span class="service-group-count" x-text="group.countLabel"></span><span class="metric-chevron" aria-hidden="true"></span></button><div class="service-group-items"><template x-for="item in group.services" :key="item.key"><div class="service-row"><span x-text="item.label"></span><span><span class="service-status" :class="item.status.level" x-text="item.status.level"></span><small class="service-age" x-text="item.age"></small></span></div></template></div></section></template><p x-show="noServices" class="muted">No service snapshot available.</p></div></article>
+                <article class="metric-card failed-task-card" :class="{ 'failed-task-card-expanded': failedTasksExpanded }"><button class="metric-toggle" type="button" @click="toggleFailedTasks" :aria-expanded="failedTasksExpanded"><span><span class="metric-label">FAILED TASKS</span><strong x-text="failedTasks"></strong><small x-text="failedTaskDetails.length ? 'recent failures available' : 'no recent failure details'"></small></span><span class="metric-chevron" :class="{ 'metric-chevron-open': failedTasksExpanded }" aria-hidden="true"></span></button><div class="failure-drawer" x-show="failedTasksExpanded"><template x-for="failure in failedTaskDetails" :key="failure.id"><article class="failure-item"><div class="failure-heading"><strong x-text="failure.kind"></strong><span x-text="formatDate(failure.updated_at)"></span></div><p class="failure-message" x-text="failure.failure_message || 'No failure message'"></p><a class="failure-url" :href="failure.url" target="_blank" rel="noreferrer" x-text="failure.url"></a></article></template><p x-show="failedTaskDetails.length === 0" class="muted">No recent failure details.</p></div></article>
+              </div>
+            </template>
+
+            <template x-if="isDiagnostics"><div class="wide-card"><div class="card-heading"><h3>Diagnostic snapshot</h3><span class="live-label" x-text="diagnosticsStatus"></span></div><pre class="json-view" x-text="diagnosticsText"></pre></div></template>
+
+            <template x-if="isTokens"><div class="tokens-layout"><article class="wide-card"><div class="card-heading"><h3>Issued tokens</h3><button class="small-button" type="button" @click="openCreate" :disabled="issueDisabled">New token</button></div><div class="table-wrap"><table><thead><tr><th>Name</th><th>Type</th><th>Permissions</th><th>Expires</th><th></th></tr></thead><tbody><template x-for="item in tokens" :key="item.id"><tr><td x-text="item.name"></td><td><span class="type-pill" x-text="item.type"></span></td><td class="mono" x-text="item.permissions_label"></td><td x-text="item.expires_label"></td><td><button class="danger-link" type="button" @click="revoke" :data-token-id="item.id" :disabled="item.revoked">Revoke</button></td></tr></template></tbody></table><p x-show="tokens.length === 0" class="muted">No routine tokens found.</p></div></article></div></template>
+          </div>
+        </div>
+
+        <div class="modal-backdrop" x-show="showCreate" @click.self="closeCreate">
+          <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="create-title">
+            <button class="modal-close" type="button" @click="closeCreate" aria-label="Close">&#10005;</button>
+            <p class="eyebrow">TOKEN ADMIN</p><h2 id="create-title">Issue a token</h2>
+            <form @submit.prevent="createToken"><label for="token-name">Name</label><input id="token-name" :value="createForm.name" @input="setCreateName" required /><label for="token-type">Type</label><select id="token-type" :value="createForm.type" @change="setCreateType"><option value="user">user</option><option value="admin">admin</option></select><label for="token-permissions">Permissions <span class="muted">decimal or 0xNN</span></label><input id="token-permissions" :value="createForm.permissions" @input="setCreatePermissions" placeholder="1 or 0x61" /><button type="submit" :disabled="issueDisabled">Issue token</button></form>
+            <div class="secret-box" x-show="oneTimeSecret"><span class="metric-label">ONE-TIME SECRET</span><code x-text="oneTimeSecret"></code><button class="small-button" type="button" @click="dismissSecret">Dismiss</button></div>
+          </section>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

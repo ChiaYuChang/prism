@@ -53,7 +53,7 @@ vars:
     sh: cat {{.NATS_AUTH_TOKEN_FILE}}
 
   # Base + test overlay (host-port publishing, restart=no) is the default
-  # for local dev. Tools (pgadmin/nats-nui/redisinsight/grafana/ollama)
+  # for local dev. Tools (pgadmin/nats-nui/redisinsight/grafana)
   # live in docker-compose.tool.yaml gated by per-service `profiles:`;
   # workers live in docker-compose.worker.yaml under `profiles: [worker]`.
   # The prod overlay (docker-compose.prod.yaml) is wired in by
@@ -102,6 +102,15 @@ includes:
   worker:
     taskfile: ./taskfile/worker.yml
     dir: .
+  deploy:
+    taskfile: ./taskfile/deploy.yml
+    dir: .
+  prismctl:
+    taskfile: ./taskfile/prismctl.yml
+    dir: .
+  web:
+    taskfile: ./taskfile/web.yml
+    dir: .
   testtasks:
     taskfile: ./taskfile/test.yml
     dir: .
@@ -116,4 +125,4 @@ tasks:
   start:
     desc: start full containerized stack
     cmds:
-      - task: compose:start
+      - task: compose:up

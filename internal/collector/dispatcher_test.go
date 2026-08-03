@@ -147,7 +147,7 @@ func TestDispatcher_Dispatch_Normalization(t *testing.T) {
 	result, err := d.Dispatch(context.Background(), sourceID, url)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	
+
 	assert.Equal(t, "hello world", result.Article.Title)
 	assert.Equal(t, "a b c", result.Article.Content)
 	assert.Equal(t, "john doe", result.Article.Author)
@@ -451,4 +451,3 @@ func TestStageError_UnwrapAndIs(t *testing.T) {
 	assert.NotErrorIs(t, se, &collector.StageError{Stage: collector.PipelineStageMinify})
 	assert.NotErrorIs(t, se, errors.New("other"))
 }
-

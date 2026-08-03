@@ -12,10 +12,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const cancelPendingTasksByBatchID = `-- name: CancelPendingTasksByBatchID :execrows
+UPDATE tasks
+SET status = 'CANCELLED',
+    failure_message = $2,
+    updated_at = NOW()
+WHERE batch_id = $1
+  AND status = 'PENDING'
+`
+
+type CancelPendingTasksByBatchIDParams struct {
+	BatchID        uuid.UUID   `db:"batch_id" json:"batch_id"`
+	FailureMessage pgtype.Text `db:"failure_message" json:"failure_message"`
+}
+
+func (q *Queries) CancelPendingTasksByBatchID(ctx context.Context, arg CancelPendingTasksByBatchIDParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelPendingTasksByBatchID, arg.BatchID, arg.FailureMessage)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const claimTasks = `-- name: ClaimTasks :many
 UPDATE tasks
 SET status = 'RUNNING',
     retry_count = retry_count + 1,
+    failure_message = NULL,
     last_run_at = NOW(),
     updated_at = NOW()
 WHERE id IN (
@@ -30,6 +53,14 @@ WHERE id IN (
             COALESCE(array_length($2::source_type[], 1), 0) = 0
             OR source_type = ANY($2::source_type[])
         )
+        AND (
+            previous_task_id IS NULL
+            OR EXISTS (
+                SELECT 1 FROM tasks previous
+                WHERE previous.id = tasks.previous_task_id
+                  AND previous.status = 'COMPLETED'
+            )
+        )
     ) OR (
             status = 'RUNNING'
         AND last_run_at < NOW() - INTERVAL '30 minutes'
@@ -39,12 +70,20 @@ WHERE id IN (
             COALESCE(array_length($2::source_type[], 1), 0) = 0
             OR source_type = ANY($2::source_type[])
         )
+        AND (
+            previous_task_id IS NULL
+            OR EXISTS (
+                SELECT 1 FROM tasks previous
+                WHERE previous.id = tasks.previous_task_id
+                  AND previous.status = 'COMPLETED'
+            )
+        )
     )
     ORDER BY next_run_at ASC
     LIMIT $3
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+RETURNING id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, failure_message, last_run_at, created_at, updated_at, previous_task_id, next_task_id, logical_key
 `
 
 type ClaimTasksParams struct {
@@ -78,9 +117,13 @@ func (q *Queries) ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task,
 			&i.ExpiresAt,
 			&i.Status,
 			&i.RetryCount,
+			&i.FailureMessage,
 			&i.LastRunAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PreviousTaskID,
+			&i.NextTaskID,
+			&i.LogicalKey,
 		); err != nil {
 			return nil, err
 		}
@@ -94,19 +137,20 @@ func (q *Queries) ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task,
 
 const completeTask = `-- name: CompleteTask :exec
 UPDATE tasks
-SET status = CASE
+     SET status = CASE
         WHEN frequency IS NOT NULL
          AND (expires_at IS NULL OR NOW() + frequency <= expires_at)
             THEN 'PENDING'::task_status
         ELSE 'COMPLETED'::task_status
     END,
-    next_run_at = CASE
+     next_run_at = CASE
         WHEN frequency IS NOT NULL
          AND (expires_at IS NULL OR NOW() + frequency <= expires_at)
-            THEN NOW() + frequency
+             THEN NOW() + frequency
         ELSE next_run_at
-    END,
-    last_run_at = NOW(),
+     END,
+     failure_message = NULL,
+     last_run_at = NOW(),
     updated_at = NOW()
 WHERE id = $1
   AND status = 'RUNNING'
@@ -115,6 +159,19 @@ WHERE id = $1
 func (q *Queries) CompleteTask(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, completeTask, id)
 	return err
+}
+
+const countTasksByBatchID = `-- name: CountTasksByBatchID :one
+SELECT COUNT(*)::bigint
+FROM tasks
+WHERE batch_id = $1
+`
+
+func (q *Queries) CountTasksByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countTasksByBatchID, batchID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const createTask = `-- name: CreateTask :one
@@ -129,37 +186,36 @@ WITH ins AS (
         payload_hash,
         meta,
         trace_id,
+        previous_task_id,
+        next_task_id,
+        logical_key,
         frequency,
         next_run_at,
         expires_at
     ) VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        COALESCE($6, '{}'::jsonb),
-        $7,
-        $8,
-        $9,
-        $10,
-        COALESCE($11, NOW()),
-        $12
+        $1, $2, $3, $4, $5,
+        COALESCE($6, '{}'::jsonb), $7, $8, $9,
+        $10, $11, $12, $13,
+        COALESCE($14, NOW()), $15
     )
     ON CONFLICT DO NOTHING
-    RETURNING tasks.id, tasks.batch_id, tasks.kind, tasks.source_type, tasks.source_abbr, tasks.url, tasks.payload, tasks.payload_hash, tasks.meta, tasks.trace_id, tasks.frequency, tasks.next_run_at, tasks.expires_at, tasks.status, tasks.retry_count, tasks.last_run_at, tasks.created_at, tasks.updated_at
+    RETURNING tasks.id, tasks.batch_id, tasks.kind, tasks.source_type, tasks.source_abbr, tasks.url, tasks.payload, tasks.payload_hash, tasks.meta, tasks.trace_id, tasks.frequency, tasks.next_run_at, tasks.expires_at, tasks.status, tasks.retry_count, tasks.failure_message, tasks.last_run_at, tasks.created_at, tasks.updated_at, tasks.previous_task_id, tasks.next_task_id, tasks.logical_key
 )
-SELECT i.id, i.batch_id, i.kind, i.source_type, i.source_abbr, i.url, i.payload, i.payload_hash, i.meta, i.trace_id, i.frequency, i.next_run_at, i.expires_at, i.status, i.retry_count, i.last_run_at, i.created_at, i.updated_at, TRUE AS inserted FROM ins i
+SELECT i.id, i.batch_id, i.kind, i.source_type, i.source_abbr, i.url, i.payload, i.payload_hash, i.meta, i.trace_id, i.frequency, i.next_run_at, i.expires_at, i.status, i.retry_count, i.failure_message, i.last_run_at, i.created_at, i.updated_at, i.previous_task_id, i.next_task_id, i.logical_key, TRUE AS inserted FROM ins i
 UNION ALL
-SELECT t.id, t.batch_id, t.kind, t.source_type, t.source_abbr, t.url, t.payload, t.payload_hash, t.meta, t.trace_id, t.frequency, t.next_run_at, t.expires_at, t.status, t.retry_count, t.last_run_at, t.created_at, t.updated_at, FALSE AS inserted
+SELECT t.id, t.batch_id, t.kind, t.source_type, t.source_abbr, t.url, t.payload, t.payload_hash, t.meta, t.trace_id, t.frequency, t.next_run_at, t.expires_at, t.status, t.retry_count, t.failure_message, t.last_run_at, t.created_at, t.updated_at, t.previous_task_id, t.next_task_id, t.logical_key, FALSE AS inserted
 FROM tasks t
 WHERE NOT EXISTS (SELECT 1 FROM ins)
-  AND t.status IN ('PENDING', 'RUNNING')
   AND t.kind = $2
   AND (
-        (t.kind = 'PAGE_FETCH' AND t.url = $5)
-     OR (
-            t.source_abbr  = $4
+         (t.status IN ('PENDING', 'RUNNING') AND t.kind = 'PAGE_FETCH' AND t.url = $5)
+      OR (t.batch_id = $1
+          AND t.logical_key IS NOT NULL
+          AND t.logical_key = $12)
+      OR (
+             t.status IN ('PENDING', 'RUNNING')
+         AND
+             t.source_abbr  = $4
         AND t.payload_hash IS NOT NULL
         AND t.payload_hash = $7
         )
@@ -168,40 +224,47 @@ LIMIT 1
 `
 
 type CreateTaskParams struct {
-	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
-	Kind        TaskKind           `db:"kind" json:"kind"`
-	SourceType  SourceType         `db:"source_type" json:"source_type"`
-	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
-	Url         string             `db:"url" json:"url"`
-	Payload     interface{}        `db:"payload" json:"payload"`
-	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
-	Meta        []byte             `db:"meta" json:"meta"`
-	TraceID     string             `db:"trace_id" json:"trace_id"`
-	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
-	NextRunAt   interface{}        `db:"next_run_at" json:"next_run_at"`
-	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	BatchID        uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Kind           TaskKind           `db:"kind" json:"kind"`
+	SourceType     SourceType         `db:"source_type" json:"source_type"`
+	SourceAbbr     string             `db:"source_abbr" json:"source_abbr"`
+	Url            string             `db:"url" json:"url"`
+	Payload        interface{}        `db:"payload" json:"payload"`
+	PayloadHash    pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta           []byte             `db:"meta" json:"meta"`
+	TraceID        string             `db:"trace_id" json:"trace_id"`
+	PreviousTaskID pgtype.UUID        `db:"previous_task_id" json:"previous_task_id"`
+	NextTaskID     pgtype.UUID        `db:"next_task_id" json:"next_task_id"`
+	LogicalKey     pgtype.Text        `db:"logical_key" json:"logical_key"`
+	Frequency      pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt      interface{}        `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
 type CreateTaskRow struct {
-	ID          uuid.UUID          `db:"id" json:"id"`
-	BatchID     uuid.UUID          `db:"batch_id" json:"batch_id"`
-	Kind        TaskKind           `db:"kind" json:"kind"`
-	SourceType  SourceType         `db:"source_type" json:"source_type"`
-	SourceAbbr  string             `db:"source_abbr" json:"source_abbr"`
-	Url         string             `db:"url" json:"url"`
-	Payload     []byte             `db:"payload" json:"payload"`
-	PayloadHash pgtype.Text        `db:"payload_hash" json:"payload_hash"`
-	Meta        []byte             `db:"meta" json:"meta"`
-	TraceID     string             `db:"trace_id" json:"trace_id"`
-	Frequency   pgtype.Interval    `db:"frequency" json:"frequency"`
-	NextRunAt   pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
-	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	Status      TaskStatus         `db:"status" json:"status"`
-	RetryCount  int32              `db:"retry_count" json:"retry_count"`
-	LastRunAt   pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
-	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	Inserted    bool               `db:"inserted" json:"inserted"`
+	ID             uuid.UUID          `db:"id" json:"id"`
+	BatchID        uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Kind           TaskKind           `db:"kind" json:"kind"`
+	SourceType     SourceType         `db:"source_type" json:"source_type"`
+	SourceAbbr     string             `db:"source_abbr" json:"source_abbr"`
+	Url            string             `db:"url" json:"url"`
+	Payload        []byte             `db:"payload" json:"payload"`
+	PayloadHash    pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta           []byte             `db:"meta" json:"meta"`
+	TraceID        string             `db:"trace_id" json:"trace_id"`
+	Frequency      pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt      pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Status         TaskStatus         `db:"status" json:"status"`
+	RetryCount     int32              `db:"retry_count" json:"retry_count"`
+	FailureMessage pgtype.Text        `db:"failure_message" json:"failure_message"`
+	LastRunAt      pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	PreviousTaskID pgtype.UUID        `db:"previous_task_id" json:"previous_task_id"`
+	NextTaskID     pgtype.UUID        `db:"next_task_id" json:"next_task_id"`
+	LogicalKey     pgtype.Text        `db:"logical_key" json:"logical_key"`
+	Inserted       bool               `db:"inserted" json:"inserted"`
 }
 
 // Single-round-trip insert-or-recover. On unique-violation against either
@@ -221,6 +284,9 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (CreateT
 		arg.PayloadHash,
 		arg.Meta,
 		arg.TraceID,
+		arg.PreviousTaskID,
+		arg.NextTaskID,
+		arg.LogicalKey,
 		arg.Frequency,
 		arg.NextRunAt,
 		arg.ExpiresAt,
@@ -242,28 +308,42 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (CreateT
 		&i.ExpiresAt,
 		&i.Status,
 		&i.RetryCount,
+		&i.FailureMessage,
 		&i.LastRunAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PreviousTaskID,
+		&i.NextTaskID,
+		&i.LogicalKey,
 		&i.Inserted,
 	)
 	return i, err
 }
 
 const ensureBatchExists = `-- name: EnsureBatchExists :exec
-INSERT INTO batches (id, source_type, trace_id)
-VALUES ($1, $2, $3)
-ON CONFLICT (id) DO NOTHING
+INSERT INTO batches (id, source_type, trace_id, parent_id, parent_task_id)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (id) DO UPDATE
+SET parent_id = COALESCE(batches.parent_id, EXCLUDED.parent_id),
+    parent_task_id = COALESCE(batches.parent_task_id, EXCLUDED.parent_task_id)
 `
 
 type EnsureBatchExistsParams struct {
-	ID         uuid.UUID   `db:"id" json:"id"`
-	SourceType SourceType  `db:"source_type" json:"source_type"`
-	TraceID    pgtype.Text `db:"trace_id" json:"trace_id"`
+	ID           uuid.UUID   `db:"id" json:"id"`
+	SourceType   SourceType  `db:"source_type" json:"source_type"`
+	TraceID      pgtype.Text `db:"trace_id" json:"trace_id"`
+	ParentID     pgtype.UUID `db:"parent_id" json:"parent_id"`
+	ParentTaskID pgtype.UUID `db:"parent_task_id" json:"parent_task_id"`
 }
 
 func (q *Queries) EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error {
-	_, err := q.db.Exec(ctx, ensureBatchExists, arg.ID, arg.SourceType, arg.TraceID)
+	_, err := q.db.Exec(ctx, ensureBatchExists,
+		arg.ID,
+		arg.SourceType,
+		arg.TraceID,
+		arg.ParentID,
+		arg.ParentTaskID,
+	)
 	return err
 }
 
@@ -298,19 +378,124 @@ func (q *Queries) ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTa
 
 const failTask = `-- name: FailTask :exec
 UPDATE tasks
-SET status = 'FAILED',
-    updated_at = NOW()
-WHERE id = $1
+SET status = CASE
+        WHEN retry_count < $1 THEN 'PENDING'::task_status
+        ELSE 'FAILED'::task_status
+    END,
+     next_run_at = CASE
+         WHEN retry_count < $1 THEN NOW()
+         ELSE next_run_at
+     END,
+     failure_message = LEFT($2, 2048),
+     updated_at = NOW()
+WHERE id = $3
   AND status = 'RUNNING'
 `
 
-func (q *Queries) FailTask(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, failTask, id)
+type FailTaskParams struct {
+	RetryMax       int32     `db:"retry_max" json:"retry_max"`
+	FailureMessage string    `db:"failure_message" json:"failure_message"`
+	ID             uuid.UUID `db:"id" json:"id"`
+}
+
+// A claim increments retry_count before execution, so retry_count is the total
+// number of attempts. Failed attempts below retry_max are made runnable again.
+func (q *Queries) FailTask(ctx context.Context, arg FailTaskParams) error {
+	_, err := q.db.Exec(ctx, failTask, arg.RetryMax, arg.FailureMessage, arg.ID)
 	return err
 }
 
+const getActiveTaskByPayloadDedup = `-- name: GetActiveTaskByPayloadDedup :one
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, failure_message, last_run_at, created_at, updated_at, previous_task_id, next_task_id, logical_key
+FROM tasks
+WHERE source_abbr = $1
+  AND kind = $2
+  AND payload_hash = $3
+  AND status IN ('PENDING', 'RUNNING')
+LIMIT 1
+`
+
+type GetActiveTaskByPayloadDedupParams struct {
+	SourceAbbr  string      `db:"source_abbr" json:"source_abbr"`
+	Kind        TaskKind    `db:"kind" json:"kind"`
+	PayloadHash pgtype.Text `db:"payload_hash" json:"payload_hash"`
+}
+
+func (q *Queries) GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error) {
+	row := q.db.QueryRow(ctx, getActiveTaskByPayloadDedup, arg.SourceAbbr, arg.Kind, arg.PayloadHash)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.BatchID,
+		&i.Kind,
+		&i.SourceType,
+		&i.SourceAbbr,
+		&i.Url,
+		&i.Payload,
+		&i.PayloadHash,
+		&i.Meta,
+		&i.TraceID,
+		&i.Frequency,
+		&i.NextRunAt,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.RetryCount,
+		&i.FailureMessage,
+		&i.LastRunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PreviousTaskID,
+		&i.NextTaskID,
+		&i.LogicalKey,
+	)
+	return i, err
+}
+
+const getTaskByBatchLogicalKey = `-- name: GetTaskByBatchLogicalKey :one
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, failure_message, last_run_at, created_at, updated_at, previous_task_id, next_task_id, logical_key
+FROM tasks
+WHERE batch_id = $1
+  AND logical_key = $2
+LIMIT 1
+`
+
+type GetTaskByBatchLogicalKeyParams struct {
+	BatchID    uuid.UUID   `db:"batch_id" json:"batch_id"`
+	LogicalKey pgtype.Text `db:"logical_key" json:"logical_key"`
+}
+
+func (q *Queries) GetTaskByBatchLogicalKey(ctx context.Context, arg GetTaskByBatchLogicalKeyParams) (Task, error) {
+	row := q.db.QueryRow(ctx, getTaskByBatchLogicalKey, arg.BatchID, arg.LogicalKey)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.BatchID,
+		&i.Kind,
+		&i.SourceType,
+		&i.SourceAbbr,
+		&i.Url,
+		&i.Payload,
+		&i.PayloadHash,
+		&i.Meta,
+		&i.TraceID,
+		&i.Frequency,
+		&i.NextRunAt,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.RetryCount,
+		&i.FailureMessage,
+		&i.LastRunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PreviousTaskID,
+		&i.NextTaskID,
+		&i.LogicalKey,
+	)
+	return i, err
+}
+
 const getTaskByID = `-- name: GetTaskByID :one
-SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, failure_message, last_run_at, created_at, updated_at, previous_task_id, next_task_id, logical_key
 FROM tasks
 WHERE id = $1
 LIMIT 1
@@ -335,15 +520,76 @@ func (q *Queries) GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.ExpiresAt,
 		&i.Status,
 		&i.RetryCount,
+		&i.FailureMessage,
 		&i.LastRunAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PreviousTaskID,
+		&i.NextTaskID,
+		&i.LogicalKey,
 	)
 	return i, err
 }
 
+const isTaskRunning = `-- name: IsTaskRunning :one
+SELECT status = 'RUNNING'::task_status AS is_running
+FROM tasks
+WHERE id = $1
+`
+
+func (q *Queries) IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, isTaskRunning, id)
+	var is_running bool
+	err := row.Scan(&is_running)
+	return is_running, err
+}
+
+const listRecentFailedTasks = `-- name: ListRecentFailedTasks :many
+SELECT id, kind, source_abbr, url, failure_message, updated_at
+FROM tasks
+WHERE status = 'FAILED'
+ORDER BY updated_at DESC
+LIMIT $1
+`
+
+type ListRecentFailedTasksRow struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	Kind           TaskKind           `db:"kind" json:"kind"`
+	SourceAbbr     string             `db:"source_abbr" json:"source_abbr"`
+	Url            string             `db:"url" json:"url"`
+	FailureMessage pgtype.Text        `db:"failure_message" json:"failure_message"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) ListRecentFailedTasks(ctx context.Context, limit int32) ([]ListRecentFailedTasksRow, error) {
+	rows, err := q.db.Query(ctx, listRecentFailedTasks, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRecentFailedTasksRow
+	for rows.Next() {
+		var i ListRecentFailedTasksRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.SourceAbbr,
+			&i.Url,
+			&i.FailureMessage,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRunnableTasks = `-- name: ListRunnableTasks :many
-SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, failure_message, last_run_at, created_at, updated_at, previous_task_id, next_task_id, logical_key
 FROM tasks
 WHERE (
         status = 'PENDING'
@@ -383,9 +629,13 @@ func (q *Queries) ListRunnableTasks(ctx context.Context, limit int32) ([]Task, e
 			&i.ExpiresAt,
 			&i.Status,
 			&i.RetryCount,
+			&i.FailureMessage,
 			&i.LastRunAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PreviousTaskID,
+			&i.NextTaskID,
+			&i.LogicalKey,
 		); err != nil {
 			return nil, err
 		}
@@ -397,8 +647,41 @@ func (q *Queries) ListRunnableTasks(ctx context.Context, limit int32) ([]Task, e
 	return items, nil
 }
 
+const listTaskStatusSummary = `-- name: ListTaskStatusSummary :many
+SELECT kind, status, COUNT(*)::bigint AS count
+FROM tasks
+GROUP BY kind, status
+ORDER BY kind ASC, status ASC
+`
+
+type ListTaskStatusSummaryRow struct {
+	Kind   TaskKind   `db:"kind" json:"kind"`
+	Status TaskStatus `db:"status" json:"status"`
+	Count  int64      `db:"count" json:"count"`
+}
+
+func (q *Queries) ListTaskStatusSummary(ctx context.Context) ([]ListTaskStatusSummaryRow, error) {
+	rows, err := q.db.Query(ctx, listTaskStatusSummary)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTaskStatusSummaryRow
+	for rows.Next() {
+		var i ListTaskStatusSummaryRow
+		if err := rows.Scan(&i.Kind, &i.Status, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTasksByBatchID = `-- name: ListTasksByBatchID :many
-SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, last_run_at, created_at, updated_at
+SELECT id, batch_id, kind, source_type, source_abbr, url, payload, payload_hash, meta, trace_id, frequency, next_run_at, expires_at, status, retry_count, failure_message, last_run_at, created_at, updated_at, previous_task_id, next_task_id, logical_key
 FROM tasks
 WHERE batch_id = $1
 ORDER BY created_at ASC, next_run_at ASC
@@ -429,9 +712,13 @@ func (q *Queries) ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]
 			&i.ExpiresAt,
 			&i.Status,
 			&i.RetryCount,
+			&i.FailureMessage,
 			&i.LastRunAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.PreviousTaskID,
+			&i.NextTaskID,
+			&i.LogicalKey,
 		); err != nil {
 			return nil, err
 		}
@@ -459,4 +746,84 @@ WHERE id = ANY($1::uuid[])
 func (q *Queries) ReleaseTasks(ctx context.Context, ids []uuid.UUID) error {
 	_, err := q.db.Exec(ctx, releaseTasks, ids)
 	return err
+}
+
+const retryFailedTask = `-- name: RetryFailedTask :one
+WITH retried AS (
+    UPDATE tasks
+    SET status = 'PENDING',
+        failure_message = NULL,
+        next_run_at = NOW(),
+        updated_at = NOW()
+    WHERE tasks.id = $1
+      AND status = 'FAILED'
+    RETURNING tasks.id, tasks.batch_id, tasks.kind, tasks.source_type, tasks.source_abbr, tasks.url, tasks.payload, tasks.payload_hash, tasks.meta, tasks.trace_id, tasks.frequency, tasks.next_run_at, tasks.expires_at, tasks.status, tasks.retry_count, tasks.failure_message, tasks.last_run_at, tasks.created_at, tasks.updated_at, tasks.previous_task_id, tasks.next_task_id, tasks.logical_key
+)
+SELECT r.id, r.batch_id, r.kind, r.source_type, r.source_abbr, r.url, r.payload, r.payload_hash, r.meta, r.trace_id, r.frequency, r.next_run_at, r.expires_at, r.status, r.retry_count, r.failure_message, r.last_run_at, r.created_at, r.updated_at, r.previous_task_id, r.next_task_id, r.logical_key, TRUE AS retried
+FROM retried r
+UNION ALL
+SELECT t.id, t.batch_id, t.kind, t.source_type, t.source_abbr, t.url, t.payload, t.payload_hash, t.meta, t.trace_id, t.frequency, t.next_run_at, t.expires_at, t.status, t.retry_count, t.failure_message, t.last_run_at, t.created_at, t.updated_at, t.previous_task_id, t.next_task_id, t.logical_key, FALSE AS retried
+FROM tasks t
+WHERE t.id = $1
+  AND NOT EXISTS (SELECT 1 FROM retried)
+LIMIT 1
+`
+
+type RetryFailedTaskRow struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	BatchID        uuid.UUID          `db:"batch_id" json:"batch_id"`
+	Kind           TaskKind           `db:"kind" json:"kind"`
+	SourceType     SourceType         `db:"source_type" json:"source_type"`
+	SourceAbbr     string             `db:"source_abbr" json:"source_abbr"`
+	Url            string             `db:"url" json:"url"`
+	Payload        []byte             `db:"payload" json:"payload"`
+	PayloadHash    pgtype.Text        `db:"payload_hash" json:"payload_hash"`
+	Meta           []byte             `db:"meta" json:"meta"`
+	TraceID        string             `db:"trace_id" json:"trace_id"`
+	Frequency      pgtype.Interval    `db:"frequency" json:"frequency"`
+	NextRunAt      pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Status         TaskStatus         `db:"status" json:"status"`
+	RetryCount     int32              `db:"retry_count" json:"retry_count"`
+	FailureMessage pgtype.Text        `db:"failure_message" json:"failure_message"`
+	LastRunAt      pgtype.Timestamptz `db:"last_run_at" json:"last_run_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	PreviousTaskID pgtype.UUID        `db:"previous_task_id" json:"previous_task_id"`
+	NextTaskID     pgtype.UUID        `db:"next_task_id" json:"next_task_id"`
+	LogicalKey     pgtype.Text        `db:"logical_key" json:"logical_key"`
+	Retried        bool               `db:"retried" json:"retried"`
+}
+
+// Atomically reschedules a failed task while retaining its retry_count and
+// last_run_at history. Non-failed existing tasks are returned with retried=false.
+func (q *Queries) RetryFailedTask(ctx context.Context, id uuid.UUID) (RetryFailedTaskRow, error) {
+	row := q.db.QueryRow(ctx, retryFailedTask, id)
+	var i RetryFailedTaskRow
+	err := row.Scan(
+		&i.ID,
+		&i.BatchID,
+		&i.Kind,
+		&i.SourceType,
+		&i.SourceAbbr,
+		&i.Url,
+		&i.Payload,
+		&i.PayloadHash,
+		&i.Meta,
+		&i.TraceID,
+		&i.Frequency,
+		&i.NextRunAt,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.RetryCount,
+		&i.FailureMessage,
+		&i.LastRunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PreviousTaskID,
+		&i.NextTaskID,
+		&i.LogicalKey,
+		&i.Retried,
+	)
+	return i, err
 }

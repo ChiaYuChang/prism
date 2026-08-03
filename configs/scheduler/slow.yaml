@@ -1,12 +1,21 @@
 interval: 1m
-health-port: 8090
+shutdown-timeout: 30s
+health:
+  enabled: true
+  port: 8090
 batch-size: 100
+retry-max: 3
+scheduler-name: slow
 kinds:
   - DIRECTORY_FETCH
   - KEYWORD_SEARCH
-lock-key: prism:scheduler:DIRECTORY_FETCH+KEYWORD_SEARCH:lock
+  - EMBED_CANDIDATE
+  - EMBED_CONTENT
+  - PIPELINE_INIT
+  - PIPELINE_STAGE
+lock-key: prism:scheduler:DIRECTORY_FETCH+EMBED_CANDIDATE+EMBED_CONTENT+KEYWORD_SEARCH+PIPELINE_INIT+PIPELINE_STAGE:lock
 buffer: 10
-rate-limit-config: /app/assets/scheduler/ratelimits/scheduler.yaml
+rate-limit-config: /app/assets/runtime/scheduler/ratelimits/scheduler.yaml
 messenger-type: nats
 nats-host: nats
 nats-port: 4222

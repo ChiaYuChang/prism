@@ -44,6 +44,8 @@ COMPOSE_FLAGS=(
   -f "${DEPLOY_DIR}/docker-compose.tool.yaml"
   -f "${DEPLOY_DIR}/docker-compose.worker.yaml"
   -f "${DEPLOY_DIR}/docker-compose.app.yaml"
+  -f "${DEPLOY_DIR}/docker-compose.web.yaml"
+  -f "${DEPLOY_DIR}/docker-compose.gateway.yaml"
 )
 
 # --- Merge ---

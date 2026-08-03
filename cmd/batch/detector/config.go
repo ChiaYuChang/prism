@@ -13,13 +13,16 @@ import (
 )
 
 type Config struct {
-	Interval    time.Duration       `mapstructure:"interval"       validate:"required,min=10s"`
-	Once        bool                `mapstructure:"once"`
-	RecentLimit int32               `mapstructure:"recent-limit"   validate:"required,min=1,max=500"`
-	HealthPort  int                 `mapstructure:"health-port"    validate:"required,min=1024,max=65535"`
-	Logger      obs.LoggingConfig   `mapstructure:"logger"`
-	Telemetry   obs.TelemetryConfig `mapstructure:"telemetry"`
-	Postgres    app.PostgresConfig  `mapstructure:"postgres"`
+	Interval        time.Duration       `mapstructure:"interval"       validate:"required,min=10s"`
+	ShutdownTimeout time.Duration       `mapstructure:"shutdown-timeout" validate:"required,min=1s"`
+	Once            bool                `mapstructure:"once"`
+	RecentLimit     int32               `mapstructure:"recent-limit"   validate:"required,min=1,max=500"`
+	Health          obs.HealthConfig    `mapstructure:"health"`
+	Logger          obs.LoggingConfig   `mapstructure:"logger"`
+	Telemetry       obs.TelemetryConfig `mapstructure:"telemetry"`
+	Postgres        app.PostgresConfig  `mapstructure:"postgres"`
+	MessengerType   string              `mapstructure:"messenger-type" validate:"oneof=nats gochannel"`
+	Messenger       app.MessengerConfig `mapstructure:"-"`
 }
 
 func LoadConfig(args []string) (*Config, error) {
@@ -31,12 +34,14 @@ func LoadConfig(args []string) (*Config, error) {
 	fs := pflag.NewFlagSet("batch-detector", pflag.ContinueOnError)
 	fs.StringP("config", "c", "", "Path to the configuration file (YAML or JSON)")
 	fs.Duration("interval", time.Minute, "Polling interval for batch completion checks")
+	fs.Duration("shutdown-timeout", 30*time.Second, "Graceful shutdown drain timeout")
 	fs.Bool("once", false, "Execute once and exit (for Lambda/Cron)")
 	fs.Int32("recent-limit", 100, "Maximum recent batches to inspect for completion")
-	fs.Int("health-port", 8083, "The port for the health check server")
+	obs.RegisterHealthFlags(fs, obs.DefaultHealthConfig(8083))
 
 	obs.RegisterLoggingFlags(fs, obs.DefaultLoggingConfig("prism.batch.detector"))
 	obs.RegisterTelemetryFlags(fs, obs.DefaultTelemetryConfig("prism.batch.detector"))
+	app.RegisterMessengerFlags(fs, "batch-detector")
 
 	fs.String("pg-host", "localhost", "Postgres host")
 	fs.Int("pg-port", 5432, "Postgres port")
@@ -57,6 +62,9 @@ func LoadConfig(args []string) (*Config, error) {
 	}
 	if err := v.BindPFlags(fs); err != nil {
 		return nil, fmt.Errorf("failed to bind flags: %w", err)
+	}
+	if err := obs.BindHealthFlags(v, fs); err != nil {
+		return nil, fmt.Errorf("failed to bind health flags: %w", err)
 	}
 
 	var cfg Config
@@ -82,10 +90,18 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Telemetry = telemetryCfg
+	messengerCfg, err := app.LoadMessengerConfig(v)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Messenger = messengerCfg
 
 	validate := validator.New()
 	if err := validate.Struct(&cfg); err != nil {
 		return nil, fmt.Errorf("config validation failed: %v", err)
+	}
+	if err := validate.Struct(cfg.Messenger); err != nil {
+		return nil, fmt.Errorf("messenger config validation failed: %v", err)
 	}
 	return &cfg, nil
 }

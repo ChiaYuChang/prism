@@ -1,0 +1,80 @@
+version: 1
+
+streams:
+  - name: prism_task
+    subjects: [prism_task]
+    storage: file
+    retention: limits
+    replicas: 1
+
+  - name: prism_batch_completed
+    subjects: [prism_batch_completed]
+    storage: file
+    retention: limits
+    replicas: 1
+
+  - name: prism_archive
+    subjects: [prism_archive]
+    storage: file
+    retention: limits
+    replicas: 1
+
+  - name: prism_test
+    subjects: [prism_test.>]
+    storage: memory
+    retention: limits
+    replicas: 1
+    max_age: 5m
+    max_messages: 100
+    allow_test_publish: true
+
+consumers:
+  - stream: prism_task
+    name: discovery-worker
+    filter_subject: prism_task
+    queue_group: discovery-worker
+    deliver_policy: all
+    ack_policy: explicit
+    ack_wait: 30s
+    max_ack_pending: 16
+    max_deliver: 8
+
+  - stream: prism_task
+    name: collector-worker
+    filter_subject: prism_task
+    queue_group: collector-worker
+    deliver_policy: all
+    ack_policy: explicit
+    ack_wait: 30s
+    max_ack_pending: 16
+    max_deliver: 8
+
+  - stream: prism_task
+    name: embedder-worker
+    filter_subject: prism_task
+    queue_group: embedder-worker
+    deliver_policy: all
+    ack_policy: explicit
+    ack_wait: 2m
+    max_ack_pending: 16
+    max_deliver: 8
+
+  - stream: prism_batch_completed
+    name: planner-worker
+    filter_subject: prism_batch_completed
+    queue_group: planner-worker
+    deliver_policy: all
+    ack_policy: explicit
+    ack_wait: 3m15s
+    max_ack_pending: 1
+    max_deliver: 8
+
+  - stream: prism_archive
+    name: archive-worker
+    filter_subject: prism_archive
+    queue_group: archive-worker
+    deliver_policy: all
+    ack_policy: explicit
+    ack_wait: 30s
+    max_ack_pending: 16
+    max_deliver: 8

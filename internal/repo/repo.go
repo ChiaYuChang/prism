@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -11,10 +12,26 @@ type Repository interface {
 	Scout() Scout
 	Tasks() Tasks
 	Pipeline() Pipeline
+	PipelineRuntime() PipelineRuntime
 	Embedding() Embeddings
 	Analysis() Analysis
 	BatchTrigger() BatchTrigger
 	UserFetches() UserFetches
+	Schedules() Schedules
+	Operator() Operator
+	Prompts() Prompts
+	Planner() PlannerResults
+	Tokens() Tokens
+	RootControl() RootControl
+	Sources() Sources
+	Models() Models
+}
+
+type RootControl interface {
+	InitRoot(ctx context.Context, arg CreateRootControlParams) (Token, error)
+	CheckRoot(ctx context.Context, arg RootAuthParams) (bool, error)
+	CreateAdmin(ctx context.Context, arg CreateRootAdminParams) (Token, error)
+	RevokeAll(ctx context.Context, arg RootAuthParams) (int64, error)
 }
 
 // TaskReporter is the push side of the task lifecycle: workers use it to
@@ -22,7 +39,7 @@ type Repository interface {
 // Scheduler so worker handlers only depend on what they actually call.
 type TaskReporter interface {
 	CompleteTask(ctx context.Context, id uuid.UUID) error
-	FailTask(ctx context.Context, id uuid.UUID) error
+	FailTask(ctx context.Context, id uuid.UUID, retryMax int, failureMessage string) error
 }
 
 type Scheduler interface {
@@ -44,19 +61,76 @@ type Scout interface {
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	ListCandidates(ctx context.Context, arg ListCandidatesParams) ([]Candidate, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
+	ListCandidatesByBatchID(ctx context.Context, batchID uuid.UUID) ([]Candidate, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 }
 
+type Sources interface {
+	Create(ctx context.Context, arg CreateSourceParams) (Source, error)
+	Update(ctx context.Context, arg UpdateSourceParams) (Source, error)
+	Delete(ctx context.Context, abbr string) (Source, error)
+	Restore(ctx context.Context, abbr string) (Source, error)
+}
+
 type Tasks interface {
+	EnsureBatch(ctx context.Context, arg EnsureBatchParams) error
 	GetTaskByID(ctx context.Context, id uuid.UUID) (Task, error)
+	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
+	ListTaskStatusSummary(ctx context.Context) ([]TaskStatusSummary, error)
+	ListRecentFailedTasks(ctx context.Context, limit int32) ([]FailedTaskSummary, error)
+	RetryFailedTask(ctx context.Context, id uuid.UUID) (Task, error)
 	// CreateTask is insert-or-recover: on unique-violation against an
 	// existing PENDING/RUNNING task it returns the existing row alongside
 	// repo.ErrTaskAlreadyActive, so callers that need the existing task_id
 	// (e.g. the user-fetch handler) avoid a second round-trip.
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
+	CancelPendingTasksByBatchID(ctx context.Context, batchID uuid.UUID, reason string) (int64, error)
+}
+
+type Schedules interface {
+	SyncSchedules(ctx context.Context, schedules []UpsertScheduleParams) ([]Schedule, error)
+	UpsertSchedule(ctx context.Context, arg UpsertScheduleParams) (Schedule, error)
+	ListSchedules(ctx context.Context, limit int32) ([]Schedule, error)
+	MaterializeDueSchedules(ctx context.Context, arg MaterializeDueSchedulesParams) ([]ScheduleMaterialization, error)
+}
+
+type Operator interface {
+	ListModels(ctx context.Context, params ListOperatorParams) ([]Model, error)
+	CreateModel(ctx context.Context, arg CreateModelParams) (Model, error)
+	ListSources(ctx context.Context, params ListOperatorParams) ([]Source, error)
+	ListBatches(ctx context.Context, params ListOperatorParams) ([]Batch, error)
+	ListEntities(ctx context.Context, params ListOperatorParams) ([]Entity, error)
+	ListSchedules(ctx context.Context, params ListOperatorParams) ([]Schedule, error)
+	ListCandidateEmbeddingsGemma2025(ctx context.Context, params ListOperatorParams) ([]EmbeddingRecord, error)
+	ListContentEmbeddingsGemma2025(ctx context.Context, params ListOperatorParams) ([]EmbeddingRecord, error)
+}
+
+type Prompts interface {
+	CreatePromptVersion(ctx context.Context, arg CreatePromptVersionParams) (PromptVersion, error)
+	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (PromptVersion, error)
+	GetPromptVersionByNameAndVersion(ctx context.Context, name string, version int32) (PromptVersion, error)
+	GetLatestPromptVersionByName(ctx context.Context, name string) (PromptVersion, error)
+	ListPromptVersions(ctx context.Context, params ListOperatorParams) ([]PromptVersion, error)
+	ListPromptVersionsByKey(ctx context.Context, key string, params ListOperatorParams) ([]PromptVersion, error)
+}
+
+type PlannerResults interface {
+	PersistPlannerResult(ctx context.Context, arg PersistPlannerResultParams) (PlannerResult, error)
+}
+
+type Tokens interface {
+	CreateToken(ctx context.Context, arg CreateTokenParams) (Token, error)
+	GetRootToken(ctx context.Context) (Token, error)
+	GetTokenByID(ctx context.Context, id uuid.UUID) (Token, error)
+	ListTokens(ctx context.Context, params ListOperatorParams) ([]Token, error)
+	RenewToken(ctx context.Context, id uuid.UUID, expiresAt time.Time) (Token, error)
+	RotateToken(ctx context.Context, arg RotateTokenParams) (Token, error)
+	RevokeToken(ctx context.Context, id uuid.UUID) (Token, error)
+	RevokeAllTokens(ctx context.Context) (int64, error)
+	CountActiveAdminTokensExcluding(ctx context.Context, id uuid.UUID) (int64, error)
 }
 
 type Pipeline interface {
@@ -67,6 +141,24 @@ type Pipeline interface {
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
 	ListContentsByBatchID(ctx context.Context, batchID uuid.UUID) ([]Content, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
+	DeleteContent(ctx context.Context, id uuid.UUID) (Content, error)
+	RestoreContent(ctx context.Context, id uuid.UUID) (Content, error)
+}
+
+type PipelineRuntime interface {
+	GetPipelineBatch(ctx context.Context, batchID uuid.UUID) (Batch, error)
+	InitializePipeline(ctx context.Context, arg InitializePipelineParams) error
+	InitializePipelineStage(ctx context.Context, arg InitializePipelineStageParams) (uuid.UUID, error)
+	CreatePipelineRoot(ctx context.Context, arg CreateTaskParams) (Task, error)
+	FindFinishedBatches(ctx context.Context, limit int32) ([]Batch, error)
+	FindFinishedRootBatches(ctx context.Context, limit int32) ([]Batch, error)
+	SetNSubtasks(ctx context.Context, batchID uuid.UUID, count int32) (Batch, error)
+	MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
+	MarkRootBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
+	ConvergePipelineFailure(ctx context.Context, taskID, rootBatchID uuid.UUID, reason string) error
+	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
+	MarkPipelinePublished(ctx context.Context, batchID uuid.UUID) error
+	RecordPipelinePublishFailure(ctx context.Context, batchID uuid.UUID, message string) error
 }
 
 type BatchTrigger interface {
@@ -84,11 +176,19 @@ type BatchTrigger interface {
 	ListContentsByBatchID(ctx context.Context, batchID uuid.UUID) ([]Content, error)
 }
 
-type Embeddings interface {
+type Models interface {
 	GetModelByID(ctx context.Context, id int16) (Model, error)
 	GetModelByNameAndType(ctx context.Context, name string, modelType string) (Model, error)
-	CreateCandidateEmbedding(ctx context.Context, arg CreateCandidateEmbeddingParams) (CandidateEmbedding, error)
-	CreateContentEmbedding(ctx context.Context, arg CreateContentEmbeddingParams) (ContentEmbedding, error)
+	GetEmbedderByName(ctx context.Context, name string) (Model, error)
+	GetExtractorByName(ctx context.Context, name string) (Model, error)
+	GetAnalyzerByName(ctx context.Context, name string) (Model, error)
+}
+
+type Embeddings interface {
+	GetCandidateEmbeddingInputHash(ctx context.Context, candidateID uuid.UUID, modelID int16, category string) (string, error)
+	GetContentEmbeddingInputHash(ctx context.Context, contentID uuid.UUID, modelID int16) (string, error)
+	UpsertCandidateEmbedding(ctx context.Context, arg CreateCandidateEmbeddingParams) (CandidateEmbedding, error)
+	UpsertContentEmbedding(ctx context.Context, arg CreateContentEmbeddingParams) (ContentEmbedding, error)
 }
 
 // UserFetches is the user-facing observation layer for POST /page_fetch.
@@ -106,9 +206,6 @@ type UserFetches interface {
 }
 
 type Analysis interface {
-	GetPromptByID(ctx context.Context, id uuid.UUID) (Prompt, error)
-	GetPromptByHash(ctx context.Context, hash string) (Prompt, error)
-	UpsertPrompt(ctx context.Context, arg UpsertPromptParams) (Prompt, error)
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
 	GetContentExtractionByID(ctx context.Context, id uuid.UUID) (ContentExtraction, error)
 	GetContentExtractionSnapshot(ctx context.Context, arg GetContentExtractionSnapshotParams) (ContentExtraction, error)

@@ -50,7 +50,14 @@ mkdir -p "$OUT_DIR"
 # Map .secrets/<file> → env-var name. Add new entries here when a new
 # .secrets/<file> needs to ship into the env layer.
 declare -a MAP=(
-    "valkey_prism:VALKEY_APP_PASSWORD"
+    "valkey-prism:VALKEY_APP_PASSWORD"
+)
+
+# Optional secrets are baked when present. Profile-specific preflight checks
+# decide when they are required; keeping this optional avoids making default
+# dev/obs deployments depend on ai-profile credentials.
+declare -a OPTIONAL_MAP=(
+    "opencode:OPENCODE_SERVER_PASSWORD"
 )
 
 tmp="$(mktemp "${OUT_DIR}/.bake.${ENV}.XXXXXX")"
@@ -68,6 +75,22 @@ trap 'rm -f "$tmp"' EXIT
         if [ ! -f "$src" ]; then
             echo "missing $src" >&2
             exit 1
+        fi
+        val="$(tr -d '\r\n' < "$src")"
+        case "$val" in
+            *\$*|*\"*|*\\*|*$'\n'*|*$'\r'*)
+                echo "secret $src contains forbidden chars (\$, \", \\, CR, LF)" >&2
+                exit 1
+                ;;
+        esac
+        printf '%s=%s\n' "$var_name" "$val"
+    done
+    for entry in "${OPTIONAL_MAP[@]}"; do
+        src_name="${entry%%:*}"
+        var_name="${entry##*:}"
+        src="$SECRETS_DIR/$src_name"
+        if [ ! -f "$src" ]; then
+            continue
         fi
         val="$(tr -d '\r\n' < "$src")"
         case "$val" in

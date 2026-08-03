@@ -1,0 +1,24 @@
+services:
+  prismctl-user-gateway:
+    profiles: [ gateway ]
+    image: prism/prismctl-user-gateway:latest
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.gateway
+    environment:
+      PRISM_PUBLIC_SITE_ADDRESS: ${PRISM_PUBLIC_SITE_ADDRESS:-http://:8080}
+      PRISM_ACME_EMAIL: ${PRISM_ACME_EMAIL:-}
+      PRISM_ACME_CA: ${PRISM_ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+    read_only: true
+    cap_drop: [ ALL ]
+    security_opt: [ no-new-privileges:true ]
+    restart: "no"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - prism-user-edge
+
+volumes:
+  caddy_data:
+  caddy_config:

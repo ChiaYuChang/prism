@@ -100,10 +100,10 @@ func runRecover(ctx context.Context, arch archiver.Archiver, pipeline repo.Pipel
 		fetchedAt := time.Now()
 		publishedAt := art.PublishedAt
 		metadata := map[string]any{
-			"recovered":          true,
-			"recovered_at":       fetchedAt.Format(time.RFC3339),
-			"original_trace_id":  m.TraceID,
-			"original_error":     m.Error,
+			"recovered":         true,
+			"recovered_at":      fetchedAt.Format(time.RFC3339),
+			"original_trace_id": m.TraceID,
+			"original_error":    m.Error,
 		}
 		if publishedAt.IsZero() {
 			publishedAt = fetchedAt

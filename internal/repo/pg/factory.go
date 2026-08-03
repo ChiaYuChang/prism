@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -137,6 +138,16 @@ func (f *Builder) NewRepository(ctx context.Context) (repo.Repository, repo.Clos
 	// Combine all tracers using pgxtrace
 	poolCfg.ConnConfig.Tracer = pgxtrace.CompositeQueryTracer(tracers)
 	poolCfg.AfterConnect = registerCustomTypes
+	if role := strings.TrimSpace(f.config.Role); role != "" {
+		baseAfterConnect := poolCfg.AfterConnect
+		poolCfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+			if err := baseAfterConnect(ctx, conn); err != nil {
+				return err
+			}
+			_, err := conn.Exec(ctx, "SET ROLE "+(pgx.Identifier{role}).Sanitize())
+			return err
+		}
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {

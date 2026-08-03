@@ -32,6 +32,9 @@ ENV=test ./script/secrets-bake.sh
 task compose:bake ENV=test COMPOSE_PROFILES=dev,obs
 
 # Start local infra (Postgres, NATS, Valkey, SeaweedFS); honors ENV / COMPOSE_PROFILES
+task compose:infra
+
+# Start the ready-to-go local stack, including API, workers, and planner
 task compose:up
 
 # Build + start containerized workers alongside the running infra stack
@@ -76,15 +79,15 @@ Three trigger classes exist in the system:
 cron
  └─► [PARTY + DIRECTORY_FETCH tasks in `tasks`]
       └─► cmd/scheduler  (claims tasks, publishes TaskSignal to prism.task)
-           └─► cmd/worker/discovery  (Scout crawls party directory pages)
+           └─► cmd/worker/discovery/candidate  (Scout crawls party directory pages)
                 └─► candidates (persisted) + page_fetch published
                      └─► [collector: fetches full press release into contents]
                           └─► cmd/trigger/batch  (polls for completed PARTY batch)
                                └─► batch.completed published
-                                    └─► cmd/worker/planner  (Planner extracts phrases, creates MEDIA tasks)
+                                    └─► cmd/worker/discovery/planner  (Planner extracts phrases, creates MEDIA tasks)
                                          └─► [MEDIA + DIRECTORY_FETCH tasks in `tasks`]
                                               └─► cmd/scheduler  (claims and dispatches)
-                                                   └─► cmd/worker/discovery  (calls search API → candidates)
+                                                   └─► cmd/worker/discovery/candidate  (calls search API → candidates)
 ```
 
 ### Repository Layer
@@ -136,7 +139,7 @@ Signal structs live in `internal/message/`. They use plain `json.Marshal`/`json.
 - `atom/` — Atom feeds
 - `custom/yahoo/` — non-standard embedded-JSON pages
 
-Scout definitions are centralized in `configs/worker/discovery/scouts.yaml`. The `config.Factory` builds the correct scout type from config. New sources should prefer the shared `HTMLScout`, `RSSScout`, or `AtomScout` implementations over new per-source packages.
+Scout definitions are centralized in `configs/worker/discovery/candidate/scouts.yaml`. The `config.Factory` builds the correct scout type from config. New sources should prefer the shared `HTMLScout`, `RSSScout`, or `AtomScout` implementations over new per-source packages.
 
 ### LLM Infrastructure
 

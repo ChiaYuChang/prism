@@ -8,10 +8,25 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type mockHandler struct {
 	records []slog.Record
+}
+
+func TestNatsConfigRequiresStreamAndConsumerTogether(t *testing.T) {
+	_, err := (&NatsConfig{Host: "localhost", Port: 4222, Stream: "prism_task"}).NewMessenger(slog.Default(), nil)
+	require.EqualError(t, err, "nats stream and consumer must be configured together")
+}
+
+func TestNatsConfigAutoProvisionDefaultsTrue(t *testing.T) {
+	cfg := NatsConfig{}
+	require.True(t, cfg.autoProvision())
+
+	disabled := false
+	cfg.AutoProvision = &disabled
+	require.False(t, cfg.autoProvision())
 }
 
 func (h *mockHandler) Enabled(context.Context, slog.Level) bool {
@@ -42,7 +57,7 @@ func TestNatsConfig_NewMessenger_Warnings(t *testing.T) {
 			Port: 4222,
 		}
 		// Expecting error because NATS server is not running
-		_, _ = cfg.NewMessenger(logger)
+		_, _ = cfg.NewMessenger(logger, nil)
 
 		found := false
 		for _, r := range handler.records {
@@ -61,7 +76,7 @@ func TestNatsConfig_NewMessenger_Warnings(t *testing.T) {
 			Port:     4222,
 			Username: "user",
 		}
-		_, _ = cfg.NewMessenger(logger)
+		_, _ = cfg.NewMessenger(logger, nil)
 
 		found := false
 		for _, r := range handler.records {
@@ -80,7 +95,7 @@ func TestNatsConfig_NewMessenger_Warnings(t *testing.T) {
 			Port:  4222,
 			Token: "secret",
 		}
-		_, _ = cfg.NewMessenger(logger)
+		_, _ = cfg.NewMessenger(logger, nil)
 
 		for _, r := range handler.records {
 			assert.NotEqual(t, slog.LevelWarn, r.Level)
@@ -95,7 +110,7 @@ func TestNatsConfig_NewMessenger_Warnings(t *testing.T) {
 			Username: "user",
 			Password: "password",
 		}
-		_, _ = cfg.NewMessenger(logger)
+		_, _ = cfg.NewMessenger(logger, nil)
 
 		for _, r := range handler.records {
 			assert.NotEqual(t, slog.LevelWarn, r.Level)

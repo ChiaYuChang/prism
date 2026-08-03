@@ -5,11 +5,14 @@ import (
 	"log/slog"
 	"time"
 
+	messaginginstrumentation "github.com/ChiaYuChang/prism/internal/infra/messaging"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/pubsub/gochannel"
 	nc "github.com/nats-io/nats.go"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Option is a generic functional option type.
@@ -19,6 +22,15 @@ type Option[T any] func(*T)
 type Messenger struct {
 	message.Publisher
 	message.Subscriber
+}
+
+// MessagingTelemetry configures OpenTelemetry instrumentation for a messenger.
+type MessagingTelemetry struct {
+	Tracer         trace.Tracer
+	Meter          metric.Meter
+	System         string
+	Consumer       string
+	AckWaitTimeout time.Duration
 }
 
 // NatsConfig combines publisher and subscriber configurations for NATS JetStream.
@@ -45,6 +57,22 @@ func WithSubscribersCount(n int) Option[NatsConfig] {
 func WithAckWaitTimeout(d time.Duration) Option[NatsConfig] {
 	return func(c *NatsConfig) {
 		c.Sub.AckWaitTimeout = d
+		c.Sub.JetStream.SubscribeOptions = append(c.Sub.JetStream.SubscribeOptions, nc.AckWait(d))
+	}
+}
+
+func WithJetStreamAutoProvision(enabled bool) Option[NatsConfig] {
+	return func(c *NatsConfig) {
+		c.Pub.JetStream.AutoProvision = enabled
+		c.Sub.JetStream.AutoProvision = enabled
+	}
+}
+
+func WithConsumerBinding(stream, consumer string) Option[NatsConfig] {
+	return func(c *NatsConfig) {
+		c.Sub.JetStream.AutoProvision = false
+		c.Sub.JetStream.DurablePrefix = consumer
+		c.Sub.JetStream.SubscribeOptions = append(c.Sub.JetStream.SubscribeOptions, nc.Bind(stream, consumer))
 	}
 }
 
@@ -71,7 +99,7 @@ func WithNatsOptions(opts ...nc.Option) Option[NatsConfig] {
 }
 
 // NewNatsMessenger creates a Messenger using NATS JetStream with generic optional configurations.
-func NewNatsMessenger(url string, logger *slog.Logger, opts ...Option[NatsConfig]) (*Messenger, error) {
+func NewNatsMessenger(url string, logger *slog.Logger, telemetry *MessagingTelemetry, opts ...Option[NatsConfig]) (*Messenger, error) {
 	watermillLogger := watermill.NewSlogLogger(logger)
 
 	// Default configurations
@@ -114,15 +142,16 @@ func NewNatsMessenger(url string, logger *slog.Logger, opts ...Option[NatsConfig
 		return nil, fmt.Errorf("failed to create NATS subscriber: %w", err)
 	}
 
-	return &Messenger{
+	messenger := &Messenger{
 		Publisher:  publisher,
 		Subscriber: subscriber,
-	}, nil
+	}
+	return instrumentMessenger(messenger, telemetry)
 }
 
 // NewGoChannelMessenger creates a Messenger using in-memory Go Channels.
 // This is ideal for testing and local development without NATS.
-func NewGoChannelMessenger(logger *slog.Logger, buffer int64, persistent bool) (*Messenger, error) {
+func NewGoChannelMessenger(logger *slog.Logger, buffer int64, persistent bool, telemetry *MessagingTelemetry) (*Messenger, error) {
 	watermillLogger := watermill.NewSlogLogger(logger)
 
 	// Use GoChannel as both Publisher and Subscriber
@@ -135,10 +164,36 @@ func NewGoChannelMessenger(logger *slog.Logger, buffer int64, persistent bool) (
 		watermillLogger,
 	)
 
-	return &Messenger{
+	messenger := &Messenger{
 		Publisher:  pubSub,
 		Subscriber: pubSub,
-	}, nil
+	}
+	return instrumentMessenger(messenger, telemetry)
+}
+
+func instrumentMessenger(messenger *Messenger, telemetry *MessagingTelemetry) (*Messenger, error) {
+	if telemetry == nil {
+		return messenger, nil
+	}
+	instrumentation, err := messaginginstrumentation.New(messaginginstrumentation.Config{
+		Tracer:         telemetry.Tracer,
+		Meter:          telemetry.Meter,
+		System:         telemetry.System,
+		Consumer:       telemetry.Consumer,
+		AckWaitTimeout: telemetry.AckWaitTimeout,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initialize messenger instrumentation: %w", err)
+	}
+	publisher, err := instrumentation.Publisher(messenger.Publisher)
+	if err != nil {
+		return nil, fmt.Errorf("instrument messenger publisher: %w", err)
+	}
+	subscriber, err := instrumentation.Subscriber(messenger.Subscriber)
+	if err != nil {
+		return nil, fmt.Errorf("instrument messenger subscriber: %w", err)
+	}
+	return &Messenger{Publisher: publisher, Subscriber: subscriber}, nil
 }
 
 // Close gracefully shuts down both the publisher and subscriber.

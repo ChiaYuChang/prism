@@ -174,6 +174,98 @@ func (_c *MockRepository_Embedding_Call) RunAndReturn(run func() repo.Embeddings
 	return _c
 }
 
+// Models provides a mock function for the type MockRepository
+func (_mock *MockRepository) Models() repo.Models {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Models")
+	}
+
+	var r0 repo.Models
+	if returnFunc, ok := ret.Get(0).(func() repo.Models); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Models)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Models_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Models'
+type MockRepository_Models_Call struct {
+	*mock.Call
+}
+
+// Models is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Models() *MockRepository_Models_Call {
+	return &MockRepository_Models_Call{Call: _e.mock.On("Models")}
+}
+
+func (_c *MockRepository_Models_Call) Run(run func()) *MockRepository_Models_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Models_Call) Return(models repo.Models) *MockRepository_Models_Call {
+	_c.Call.Return(models)
+	return _c
+}
+
+func (_c *MockRepository_Models_Call) RunAndReturn(run func() repo.Models) *MockRepository_Models_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Operator provides a mock function for the type MockRepository
+func (_mock *MockRepository) Operator() repo.Operator {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Operator")
+	}
+
+	var r0 repo.Operator
+	if returnFunc, ok := ret.Get(0).(func() repo.Operator); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Operator)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Operator_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Operator'
+type MockRepository_Operator_Call struct {
+	*mock.Call
+}
+
+// Operator is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Operator() *MockRepository_Operator_Call {
+	return &MockRepository_Operator_Call{Call: _e.mock.On("Operator")}
+}
+
+func (_c *MockRepository_Operator_Call) Run(run func()) *MockRepository_Operator_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Operator_Call) Return(operator repo.Operator) *MockRepository_Operator_Call {
+	_c.Call.Return(operator)
+	return _c
+}
+
+func (_c *MockRepository_Operator_Call) RunAndReturn(run func() repo.Operator) *MockRepository_Operator_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Pipeline provides a mock function for the type MockRepository
 func (_mock *MockRepository) Pipeline() repo.Pipeline {
 	ret := _mock.Called()
@@ -216,6 +308,190 @@ func (_c *MockRepository_Pipeline_Call) Return(pipeline repo.Pipeline) *MockRepo
 }
 
 func (_c *MockRepository_Pipeline_Call) RunAndReturn(run func() repo.Pipeline) *MockRepository_Pipeline_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// PipelineRuntime provides a mock function for the type MockRepository
+func (_mock *MockRepository) PipelineRuntime() repo.PipelineRuntime {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for PipelineRuntime")
+	}
+
+	var r0 repo.PipelineRuntime
+	if returnFunc, ok := ret.Get(0).(func() repo.PipelineRuntime); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.PipelineRuntime)
+		}
+	}
+	return r0
+}
+
+// MockRepository_PipelineRuntime_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PipelineRuntime'
+type MockRepository_PipelineRuntime_Call struct {
+	*mock.Call
+}
+
+// PipelineRuntime is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) PipelineRuntime() *MockRepository_PipelineRuntime_Call {
+	return &MockRepository_PipelineRuntime_Call{Call: _e.mock.On("PipelineRuntime")}
+}
+
+func (_c *MockRepository_PipelineRuntime_Call) Run(run func()) *MockRepository_PipelineRuntime_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_PipelineRuntime_Call) Return(pipelineRuntime repo.PipelineRuntime) *MockRepository_PipelineRuntime_Call {
+	_c.Call.Return(pipelineRuntime)
+	return _c
+}
+
+func (_c *MockRepository_PipelineRuntime_Call) RunAndReturn(run func() repo.PipelineRuntime) *MockRepository_PipelineRuntime_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Planner provides a mock function for the type MockRepository
+func (_mock *MockRepository) Planner() repo.PlannerResults {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Planner")
+	}
+
+	var r0 repo.PlannerResults
+	if returnFunc, ok := ret.Get(0).(func() repo.PlannerResults); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.PlannerResults)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Planner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Planner'
+type MockRepository_Planner_Call struct {
+	*mock.Call
+}
+
+// Planner is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Planner() *MockRepository_Planner_Call {
+	return &MockRepository_Planner_Call{Call: _e.mock.On("Planner")}
+}
+
+func (_c *MockRepository_Planner_Call) Run(run func()) *MockRepository_Planner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Planner_Call) Return(plannerResults repo.PlannerResults) *MockRepository_Planner_Call {
+	_c.Call.Return(plannerResults)
+	return _c
+}
+
+func (_c *MockRepository_Planner_Call) RunAndReturn(run func() repo.PlannerResults) *MockRepository_Planner_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Prompts provides a mock function for the type MockRepository
+func (_mock *MockRepository) Prompts() repo.Prompts {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Prompts")
+	}
+
+	var r0 repo.Prompts
+	if returnFunc, ok := ret.Get(0).(func() repo.Prompts); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Prompts)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Prompts_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Prompts'
+type MockRepository_Prompts_Call struct {
+	*mock.Call
+}
+
+// Prompts is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Prompts() *MockRepository_Prompts_Call {
+	return &MockRepository_Prompts_Call{Call: _e.mock.On("Prompts")}
+}
+
+func (_c *MockRepository_Prompts_Call) Run(run func()) *MockRepository_Prompts_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Prompts_Call) Return(prompts repo.Prompts) *MockRepository_Prompts_Call {
+	_c.Call.Return(prompts)
+	return _c
+}
+
+func (_c *MockRepository_Prompts_Call) RunAndReturn(run func() repo.Prompts) *MockRepository_Prompts_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RootControl provides a mock function for the type MockRepository
+func (_mock *MockRepository) RootControl() repo.RootControl {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for RootControl")
+	}
+
+	var r0 repo.RootControl
+	if returnFunc, ok := ret.Get(0).(func() repo.RootControl); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.RootControl)
+		}
+	}
+	return r0
+}
+
+// MockRepository_RootControl_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RootControl'
+type MockRepository_RootControl_Call struct {
+	*mock.Call
+}
+
+// RootControl is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) RootControl() *MockRepository_RootControl_Call {
+	return &MockRepository_RootControl_Call{Call: _e.mock.On("RootControl")}
+}
+
+func (_c *MockRepository_RootControl_Call) Run(run func()) *MockRepository_RootControl_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_RootControl_Call) Return(rootControl repo.RootControl) *MockRepository_RootControl_Call {
+	_c.Call.Return(rootControl)
+	return _c
+}
+
+func (_c *MockRepository_RootControl_Call) RunAndReturn(run func() repo.RootControl) *MockRepository_RootControl_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -266,6 +542,52 @@ func (_c *MockRepository_Scheduler_Call) RunAndReturn(run func() repo.Scheduler)
 	return _c
 }
 
+// Schedules provides a mock function for the type MockRepository
+func (_mock *MockRepository) Schedules() repo.Schedules {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Schedules")
+	}
+
+	var r0 repo.Schedules
+	if returnFunc, ok := ret.Get(0).(func() repo.Schedules); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Schedules)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Schedules_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Schedules'
+type MockRepository_Schedules_Call struct {
+	*mock.Call
+}
+
+// Schedules is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Schedules() *MockRepository_Schedules_Call {
+	return &MockRepository_Schedules_Call{Call: _e.mock.On("Schedules")}
+}
+
+func (_c *MockRepository_Schedules_Call) Run(run func()) *MockRepository_Schedules_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Schedules_Call) Return(schedules repo.Schedules) *MockRepository_Schedules_Call {
+	_c.Call.Return(schedules)
+	return _c
+}
+
+func (_c *MockRepository_Schedules_Call) RunAndReturn(run func() repo.Schedules) *MockRepository_Schedules_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Scout provides a mock function for the type MockRepository
 func (_mock *MockRepository) Scout() repo.Scout {
 	ret := _mock.Called()
@@ -312,6 +634,52 @@ func (_c *MockRepository_Scout_Call) RunAndReturn(run func() repo.Scout) *MockRe
 	return _c
 }
 
+// Sources provides a mock function for the type MockRepository
+func (_mock *MockRepository) Sources() repo.Sources {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Sources")
+	}
+
+	var r0 repo.Sources
+	if returnFunc, ok := ret.Get(0).(func() repo.Sources); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Sources)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Sources_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Sources'
+type MockRepository_Sources_Call struct {
+	*mock.Call
+}
+
+// Sources is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Sources() *MockRepository_Sources_Call {
+	return &MockRepository_Sources_Call{Call: _e.mock.On("Sources")}
+}
+
+func (_c *MockRepository_Sources_Call) Run(run func()) *MockRepository_Sources_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Sources_Call) Return(sources repo.Sources) *MockRepository_Sources_Call {
+	_c.Call.Return(sources)
+	return _c
+}
+
+func (_c *MockRepository_Sources_Call) RunAndReturn(run func() repo.Sources) *MockRepository_Sources_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Tasks provides a mock function for the type MockRepository
 func (_mock *MockRepository) Tasks() repo.Tasks {
 	ret := _mock.Called()
@@ -354,6 +722,52 @@ func (_c *MockRepository_Tasks_Call) Return(tasks repo.Tasks) *MockRepository_Ta
 }
 
 func (_c *MockRepository_Tasks_Call) RunAndReturn(run func() repo.Tasks) *MockRepository_Tasks_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Tokens provides a mock function for the type MockRepository
+func (_mock *MockRepository) Tokens() repo.Tokens {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Tokens")
+	}
+
+	var r0 repo.Tokens
+	if returnFunc, ok := ret.Get(0).(func() repo.Tokens); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(repo.Tokens)
+		}
+	}
+	return r0
+}
+
+// MockRepository_Tokens_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Tokens'
+type MockRepository_Tokens_Call struct {
+	*mock.Call
+}
+
+// Tokens is a helper method to define mock.On call
+func (_e *MockRepository_Expecter) Tokens() *MockRepository_Tokens_Call {
+	return &MockRepository_Tokens_Call{Call: _e.mock.On("Tokens")}
+}
+
+func (_c *MockRepository_Tokens_Call) Run(run func()) *MockRepository_Tokens_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockRepository_Tokens_Call) Return(tokens repo.Tokens) *MockRepository_Tokens_Call {
+	_c.Call.Return(tokens)
+	return _c
+}
+
+func (_c *MockRepository_Tokens_Call) RunAndReturn(run func() repo.Tokens) *MockRepository_Tokens_Call {
 	_c.Call.Return(run)
 	return _c
 }

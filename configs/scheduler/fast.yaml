@@ -1,12 +1,17 @@
 interval: 3s
-health-port: 8091
+shutdown-timeout: 30s
+health:
+  enabled: true
+  port: 8091
 batch-size: 100
+retry-max: 3
+scheduler-name: fast
 kinds:
   - PAGE_FETCH
 lock-key: prism:scheduler:PAGE_FETCH:lock
 media-quota: 30
 buffer: 10
-rate-limit-config: /app/assets/scheduler/ratelimits/scheduler.yaml
+rate-limit-config: /app/assets/runtime/scheduler/ratelimits/scheduler.yaml
 messenger-type: nats
 nats-host: nats
 nats-port: 4222

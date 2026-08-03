@@ -2,11 +2,67 @@
 # Activate via COMPOSE_PROFILES (comma-separated): e.g.
 #   COMPOSE_PROFILES=dev,obs   docker compose ... up
 #   COMPOSE_PROFILES=dev,obs,ai docker compose ... up
-# `task compose:up` defaults to `dev,obs`. `ai` is opt-in because the
+# `task compose:infra` defaults to `dev,obs`. `ai` is opt-in because the
 # Ollama image + model pull is heavyweight and only relevant for LLM
 # work.
 
 services:
+  prismctl-cli:
+    profiles: [ tool ]
+    image: prism/prismctl-cli:latest
+    read_only: true
+    cap_drop: [ ALL ]
+    security_opt: [ no-new-privileges:true ]
+    restart: "no"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.prismctl
+      args:
+        TARGET: prismctl-cli
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    environment:
+      PRISMCTL_API_URL: ${PRISMCTL_API_URL:-http://prism-api:8090/api/v1}
+      PRISMCTL_ADMIN_API_URL: ${PRISMCTL_ADMIN_API_URL:-http://prism-api:8091/api/v1}
+    secrets:
+      - prism_admin_token
+    volumes:
+      - ../configs/registry:/app/configs/registry:ro
+    networks:
+      - prism-admin-net
+
+  prismctl-root:
+    profiles: [ root ]
+    image: prism/prismctl-root:latest
+    read_only: true
+    cap_drop: [ ALL ]
+    security_opt: [ no-new-privileges:true ]
+    restart: "no"
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile.prismctl
+      args:
+        TARGET: prismctl-root
+        RUNTIME_IMAGE: ${WORKER_RUNTIME_IMAGE:-gcr.io/distroless/static-debian12:nonroot}
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_APP_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_PRISMCTL_ROOT_POSTGRES_HOST: postgres
+      PRISM_PRISMCTL_ROOT_POSTGRES_PORT: 5432
+      PRISM_PRISMCTL_ROOT_POSTGRES_USERNAME: prism_rootctl
+      PRISM_PRISMCTL_ROOT_POSTGRES_ROLE: prism_rootctl
+      PRISM_PRISMCTL_ROOT_POSTGRES_DB: ${POSTGRES_APP_DB:-prism}
+      PRISM_PRISMCTL_ROOT_POSTGRES_PASSWORD_FILE: /run/secrets/postgres_rootctl
+      PRISM_PRISMCTL_ROOT_POSTGRES_SSLMODE: disable
+    secrets:
+      - prism_root_token
+      - postgres_rootctl
+    networks:
+      - prism-root-db
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ===========================================================================
   # dev profile — local-only admin UIs (pgAdmin, NATS NUI, RedisInsight)
   # ===========================================================================
@@ -128,7 +184,7 @@ services:
     ports:
       - "127.0.0.1:${VMAGENT_PORT:-8429}:8429"
     volumes:
-      - ./vmagent/test/prometheus.yaml:/etc/vmagent/prometheus.yaml:ro
+      - ../build/infra/vmagent/test/prometheus.yaml:/etc/vmagent/prometheus.yaml:ro
       - vmagent-data:/vmagentdata
     healthcheck:
       test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:8429/health" ]
@@ -171,7 +227,6 @@ services:
   otel-collector:
     profiles: [ obs ]
     image: otel/opentelemetry-collector-contrib:0.141.0
-    user: "0:0"
     command: [ "--config=/etc/otelcol-contrib/otel.yaml" ]
     depends_on:
       victoria-metrics:
@@ -183,7 +238,7 @@ services:
     ports:
       - "127.0.0.1:${OTEL_COLLECTOR_HEALTH_PORT:-13133}:13133"
     volumes:
-      - ./otel-collector/test/otel.yaml:/etc/otelcol-contrib/otel.yaml:ro
+      - ../build/infra/otel-collector/test/otel.yaml:/etc/otelcol-contrib/otel.yaml:ro
       - ../runtime/logs:/logs:ro
       - otel_storage:/var/lib/otelcol
       - otel_backup:/var/log/app
@@ -198,6 +253,7 @@ services:
   grafana:
     profiles: [ obs ]
     image: grafana/grafana:12.3
+    command: [ "--config=/etc/grafana/custom.ini" ]
     depends_on:
       victoria-metrics:
         condition: service_healthy
@@ -209,9 +265,12 @@ services:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../build/infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../build/infra/grafana/custom.ini:/etc/grafana/custom.ini:ro
+    secrets:
+      - grafana
     environment:
-      - GF_PLUGINS_PREINSTALL=victoriametrics-logs-datasource
+      - GF_PLUGINS_PREINSTALL_SYNC=victoriametrics-logs-datasource
     healthcheck:
       test: [ "CMD", "wget", "-q", "--spider", "http://localhost:3000" ]
       start_period: 10s
@@ -220,23 +279,17 @@ services:
     networks:
       - prism-net
 
-  # ===========================================================================
-  # ai profile — local Ollama for keyword extraction / fallback parsing
-  # ===========================================================================
-  ollama:
+  opencode:
     profiles: [ ai ]
-    image: ollama/ollama:0.13.5
+    image: ghcr.io/anomalyco/opencode
+    command: [ "serve", "--port", "4096", "--hostname", "0.0.0.0" ]
+    environment:
+      OPENCODE_SERVER_USERNAME: ${OPENCODE_SERVER_USERNAME:-opencode}
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-}
     ports:
-      - "127.0.0.1:11435:11434"
-    volumes:
-      - ollama_data:/root/.ollama
+      - "127.0.0.1:${OPENCODE_PORT:-33905}:4096"
     networks:
       - prism-net
-    healthcheck:
-      test: [ "CMD-SHELL", "ollama list > /dev/null || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
 volumes:
   pgadmin_data:
@@ -247,6 +300,11 @@ volumes:
   vl-data:
   vt-data:
   grafana_data:
-  ollama_data:
   otel_storage:
   otel_backup:
+
+secrets:
+  prism_root_token:
+    file: ../${PRISM_ROOT_TOKEN_FILE:-.secrets/prism_root_token}
+  prism_admin_token:
+    file: ../${PRISM_ADMIN_TOKEN_FILE:-.secrets/prism_admin_token}

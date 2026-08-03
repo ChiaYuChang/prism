@@ -1,14 +1,120 @@
 package middleware
 
 import (
+	"context"
 	"crypto/subtle"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+
+	prismauth "github.com/ChiaYuChang/prism/internal/auth"
+	"github.com/ChiaYuChang/prism/internal/auth/permission"
+	authtoken "github.com/ChiaYuChang/prism/internal/auth/token"
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // TokenAuthHeader is the HTTP header used by operator clients to authenticate
 // to protected API routes.
 const TokenAuthHeader = "X-PRISM-TOKEN"
+
+type principalContextKey struct{}
+
+type Principal struct {
+	TokenID     uuid.UUID
+	Type        authtoken.Type
+	Name        string
+	Permissions permission.Permission
+	Source      string
+}
+
+func PrincipalFromContext(ctx context.Context) (Principal, bool) {
+	p, ok := ctx.Value(principalContextKey{}).(Principal)
+	return p, ok
+}
+
+func WithPrincipal(ctx context.Context, p Principal) context.Context {
+	return context.WithValue(ctx, principalContextKey{}, p)
+}
+
+type TokenAuthenticator struct {
+	Authenticator *prismauth.Authenticator
+	ErrorDetail   AuthErrorDetail
+}
+
+type AuthErrorDetail int
+
+const (
+	AuthErrorGeneric AuthErrorDetail = iota
+	AuthErrorAdmin
+)
+
+func TokenAuthMiddleware(auth TokenAuthenticator) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			raw := strings.TrimSpace(r.Header.Get(TokenAuthHeader))
+			principal, err := auth.authenticate(r.Context(), raw)
+			if err != nil {
+				auth.writeError(w, err)
+				return
+			}
+			setPrincipalSpanAttributes(r.Context(), principal)
+			next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), principal)))
+		})
+	}
+}
+
+func (a TokenAuthenticator) authenticate(ctx context.Context, raw string) (Principal, error) {
+	if raw == "" || a.Authenticator == nil {
+		return Principal{}, prismauth.ErrUnauthorized
+	}
+	principal, err := a.Authenticator.AuthenticateToken(ctx, raw)
+	if err != nil {
+		return Principal{}, err
+	}
+	return Principal{TokenID: principal.TokenID, Type: principal.Type, Name: principal.Name, Permissions: principal.Permissions, Source: "db"}, nil
+}
+
+func setPrincipalSpanAttributes(ctx context.Context, principal Principal) {
+	name := strings.TrimSpace(principal.Name)
+	if name == "" {
+		name = principal.TokenID.String()
+	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("prism.actor.name", name),
+		attribute.String("prism.actor.token_id", principal.TokenID.String()),
+		attribute.String("prism.actor.type", string(principal.Type)),
+		attribute.String("prism.actor.permissions", fmt.Sprintf("0x%02x", uint8(principal.Permissions))),
+	)
+}
+
+func (a TokenAuthenticator) writeError(w http.ResponseWriter, err error) {
+	if errors.Is(err, prismauth.ErrForbidden) {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+}
+
+// RequirePermissions rejects authenticated principals that lack required bits.
+func RequirePermissions(required permission.Permission) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			principal, ok := PrincipalFromContext(r.Context())
+			if !ok {
+				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+				return
+			}
+			if !principal.Permissions.Has(required) {
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
 // TokenAuth requires callers to provide TokenAuthHeader with the configured
 // token. Empty configured token disables the check so callers can compose it
