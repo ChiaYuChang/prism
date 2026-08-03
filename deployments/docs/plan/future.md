@@ -1,6 +1,9 @@
 # Project Prism — Future Roadmap
 
-Deferred refactors, dual-mode deployment plans, archive catalog refactor, and cloud anti-patterns. Carved verbatim from `plan.md` §5. Cloud anti-patterns themselves live in `spec.md` §6.
+Deferred work that is intentionally outside the active server backlog: cloud
+deployment evolution, archive catalog redesign, additional ingestion formats,
+and optional operator clients. Stable current behavior is in `spec.md`; active
+pre-analysis work is in `todo.md` and `pre-analysis.md`.
 
 ## Future Roadmap
 
@@ -38,7 +41,9 @@ Deferred refactors, dual-mode deployment plans, archive catalog refactor, and cl
   * Add schedule groups such as `party-daily` only if planner semantics require DPP/TPP/KMT to share one business batch. v1 uses one due schedule → one batch → one task.
   * Add overlap/catch-up policies only after observing operational need. v1 treats `ErrTaskAlreadyActive` as success and advances `next_fire_at`; future policies may include `skip`, `enqueue`, or bounded catch-up.
 * [ ] **Post-deployment fetch completion notifier (email/webhook).**
-  * **When:** after laptop and home-server deployment are working. v1 remains client-side polling via `GET /fetches/{id}`.
+   * **When:** after laptop and home-server deployment are working. The server
+     exposes `GET /fetches/{id}` for polling; no client application is
+     implemented in this repository.
   * **Why:** autonomous email/webhook delivery needs persisted completion transitions. Today `GET /fetches/{id}` computes `terminal` on demand and `fetches.completed_at` is intentionally unused.
   * **What:** add a small DB-polling notifier (`cmd/worker/notifier` or `cmd/trigger/user-fetch`) that combines transition detection and claiming in one SQL statement:
     ```sql
