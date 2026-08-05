@@ -31,6 +31,7 @@ type AnalysisPreflightResponse struct {
 }
 
 type AnalysisRunRequest struct {
+	AnalysisID         uuid.UUID `json:"analysis_id"`
 	analysisSelectionRequest
 	Topic              string `json:"topic"`
 	Brief              string `json:"brief"`
@@ -87,6 +88,14 @@ func (s *Server) CreateAnalysisRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
+	if req.AnalysisID == uuid.Nil {
+		writeError(w, http.StatusBadRequest, "analysis_id is required")
+		return
+	}
+	if req.AnalysisID.Version() != 7 {
+		writeError(w, http.StatusBadRequest, "analysis_id must be a UUIDv7")
+		return
+	}
 	ids := req.ids()
 	if err := validateAnalysisIDs(ids); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -115,19 +124,31 @@ func (s *Server) CreateAnalysisRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Idempotency check: if the run already exists, return the existing status
+	existingRun, err := s.AnalysisRuns.GetByID(r.Context(), req.AnalysisID)
+	if err == nil {
+		// Ensure the run belongs to the authenticated user
+		if existingRun.UserID == nil || *existingRun.UserID != principal.TokenID {
+			writeError(w, http.StatusForbidden, "analysis run belongs to another user")
+			return
+		}
+		writeJSON(w, http.StatusAccepted, analysisRunResponse(existingRun))
+		return
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		s.Logger.ErrorContext(r.Context(), "failed to check existing analysis run", slog.Any("error", err))
+		writeError(w, http.StatusInternalServerError, "failed to check existing analysis run")
+		return
+	}
+
 	fetch, err := s.UserFetches.Create(r.Context(), repo.CreateUserFetchParams{UserID: &principal.TokenID})
 	if err != nil {
 		s.Logger.ErrorContext(r.Context(), "create analysis fetch failed", slog.Any("error", err))
 		writeError(w, http.StatusInternalServerError, "failed to create fetch")
 		return
 	}
-	runID, err := uuid.NewV7()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create analysis run id")
-		return
-	}
+	
 	_, err = s.AnalysisRuns.Create(r.Context(), repo.CreateAnalysisRunParams{
-		ID: runID, UserID: &principal.TokenID, FetchID: fetch.ID,
+		ID: req.AnalysisID, UserID: &principal.TokenID, FetchID: fetch.ID,
 		Topic: strings.TrimSpace(req.Topic), Brief: strings.TrimSpace(req.Brief),
 		FetchFailurePolicy: policy, Status: repo.AnalysisRunStatusFetching,
 		OriginalSelectedCandidateIDs: ids,
@@ -137,6 +158,8 @@ func (s *Server) CreateAnalysisRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create analysis run")
 		return
 	}
+	
+	runID := req.AnalysisID
 
 	candidates, err := s.Scout.GetCandidatesByIDs(r.Context(), ids)
 	if err != nil {

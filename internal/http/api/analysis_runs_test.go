@@ -11,6 +11,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/internal/repo/mocks"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -47,6 +48,7 @@ func TestCreateAnalysisRunReusesExistingContent(t *testing.T) {
 	candidate := repo.Candidate{ID: candidateID, BatchID: uuid.Must(uuid.NewV7()), SourceAbbr: "yahoo", URL: "https://example.com/article", TraceID: "trace"}
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, []uuid.UUID{candidateID}).Return([]repo.Candidate{candidate}, nil).Twice()
+	analysisRuns.EXPECT().GetByID(mock.Anything, runID).Return(repo.AnalysisRun{}, pgx.ErrNoRows).Once()
 	m.userFetches.EXPECT().Create(mock.Anything, repo.CreateUserFetchParams{UserID: &userID}).Return(repo.UserFetch{ID: fetchID}, nil).Once()
 	analysisRuns.EXPECT().Create(mock.Anything, mock.MatchedBy(func(arg repo.CreateAnalysisRunParams) bool {
 		return arg.ID == runID || (arg.FetchID == fetchID && arg.FetchFailurePolicy == repo.AnalysisFailurePolicyIgnoreFailed && arg.Status == repo.AnalysisRunStatusFetching)
@@ -58,6 +60,7 @@ func TestCreateAnalysisRunReusesExistingContent(t *testing.T) {
 	})).Return(repo.UserFetchItem{}, nil).Once()
 
 	body, _ := json.Marshal(map[string]any{
+		"analysis_id":            runID,
 		"selected_candidate_ids": []uuid.UUID{candidateID},
 		"topic":                  "topic",
 		"brief":                  "brief",
