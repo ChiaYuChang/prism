@@ -2102,7 +2102,7 @@ func (r *PGAnalysisRuns) CreateSession(ctx context.Context, arg repo.CreateAnaly
 		}
 
 		task, err := createTaskRepo(ctx, qtx.db, qtx, repo.CreateTaskParams{
-			BatchID:    c.BatchID,
+			BatchID:    arg.AnalysisID,
 			Kind:       repo.TaskKindPageFetch,
 			SourceType: repo.SourceTypeMedia,
 			SourceAbbr: c.SourceAbbr,
