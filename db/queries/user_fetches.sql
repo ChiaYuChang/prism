@@ -23,6 +23,12 @@ INSERT INTO fetch_items (
 )
 RETURNING *;
 
+-- name: UpdateUserFetchItemTask :exec
+UPDATE fetch_items
+SET task_id = $3,
+    snapshot_status = NULL
+WHERE fetch_id = $1 AND candidate_id = $2;
+
 -- name: ListUserFetchItems :many
 SELECT
     i.fetch_id,

@@ -65,10 +65,14 @@ func (s *Server) AnalysisPreflight(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	ids, err := validateAnalysisIDs(req.ids())
+	rawIDs := req.ids()
+	ids, err := validateAnalysisIDs(rawIDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if len(ids) < len(rawIDs) {
+		s.Logger.WarnContext(r.Context(), "duplicate candidate_ids removed in preflight", slog.Int("original", len(rawIDs)), slog.Int("unique", len(ids)))
 	}
 	available, unavailable, err := s.classifyCandidates(r.Context(), ids)
 	if err != nil {
@@ -99,10 +103,14 @@ func (s *Server) CreateAnalysisRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "analysis_id must be a UUIDv7")
 		return
 	}
-	ids, err := validateAnalysisIDs(req.ids())
+	rawIDs := req.ids()
+	ids, err := validateAnalysisIDs(rawIDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if len(ids) < len(rawIDs) {
+		s.Logger.WarnContext(r.Context(), "duplicate candidate_ids removed in create session", slog.Int("original", len(rawIDs)), slog.Int("unique", len(ids)))
 	}
 	policy := strings.ToUpper(strings.TrimSpace(req.FetchFailurePolicy))
 	if policy != repo.AnalysisFailurePolicyStop && policy != repo.AnalysisFailurePolicyIgnoreFailed {
@@ -191,22 +199,15 @@ func (s *Server) ResolveFetchFailures(w http.ResponseWriter, r *http.Request) {
 	}
 	switch strings.ToUpper(strings.TrimSpace(req.Action)) {
 	case "RETRY_FAILED":
-		items, err := s.AnalysisRuns.ListItems(r.Context(), run.FetchID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to load fetch items")
+		if err := s.AnalysisRuns.RetryFailedItems(r.Context(), run.ID); err != nil {
+			s.Logger.ErrorContext(r.Context(), "failed to retry fetch items", slog.Any("error", err))
+			writeError(w, http.StatusInternalServerError, "failed to retry fetch items")
 			return
 		}
-		for _, item := range items {
-			if item.TaskStatus != nil && *item.TaskStatus == string(repo.TaskStatusFailed) && item.TaskID != nil {
-				if _, err := s.Tasks.RetryFailedTask(r.Context(), *item.TaskID); err != nil {
-					writeError(w, http.StatusInternalServerError, "failed to retry fetch")
-					return
-				}
-			}
-		}
+		var err error
 		run, err = s.AnalysisRuns.SetStatus(r.Context(), repo.SetAnalysisRunStatusParams{
 			ID: run.ID, Status: repo.AnalysisRunStatusFetching,
-			FailedCandidateIDs: run.FailedCandidateIDs,
+			FailedCandidateIDs: []uuid.UUID{}, // Clear failed IDs as they are now retried
 		})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to resume analysis run")

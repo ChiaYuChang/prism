@@ -2260,6 +2260,93 @@ func (r *PGAnalysisRuns) CancelItems(ctx context.Context, fetchID uuid.UUID) err
 	return r.q.CancelAnalysisRunItems(ctx, fetchID)
 }
 
+func (r *PGAnalysisRuns) RetryFailedItems(ctx context.Context, runID uuid.UUID) error {
+	beginner, ok := r.q.db.(pgBeginner)
+	if !ok {
+		return fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	qtx := r.q.WithTx(tx)
+
+	run, err := r.GetByID(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("get run: %w", err)
+	}
+
+	items, err := qtx.ListUserFetchItems(ctx, run.FetchID)
+	if err != nil {
+		return fmt.Errorf("list fetch items: %w", err)
+	}
+
+	var failedCandidateIDs []uuid.UUID
+	for _, item := range items {
+		if item.TaskStatus.Valid && string(item.TaskStatus.TaskStatus) == string(repo.TaskStatusFailed) {
+			failedCandidateIDs = append(failedCandidateIDs, item.CandidateID)
+		}
+	}
+
+	if len(failedCandidateIDs) == 0 {
+		return nil // nothing to retry
+	}
+
+	candidates, err := qtx.GetCandidatesByIDs(ctx, failedCandidateIDs)
+	if err != nil {
+		return fmt.Errorf("get candidates: %w", err)
+	}
+
+	candidateMap := make(map[uuid.UUID]Candidate, len(candidates))
+	for _, c := range candidates {
+		candidateMap[c.ID] = c
+	}
+
+	for _, cID := range failedCandidateIDs {
+		c, ok := candidateMap[cID]
+		if !ok {
+			return fmt.Errorf("candidate %s not found for retry", cID)
+		}
+
+		canonicalURL, err := utils.NormalizeURL(c.Url)
+		if err != nil {
+			return fmt.Errorf("normalize url: %w", err)
+		}
+
+		meta, err := json.Marshal(c)
+		if err != nil {
+			return fmt.Errorf("marshal candidate meta: %w", err)
+		}
+
+		task, err := createTaskRepo(ctx, qtx.db, qtx, repo.CreateTaskParams{
+			BatchID:    runID, // Re-use the analysis ID as batch ID
+			Kind:       repo.TaskKindPageFetch,
+			SourceType: repo.SourceTypeMedia,
+			SourceAbbr: c.SourceAbbr,
+			URL:        canonicalURL,
+			Meta:       meta,
+			TraceID:    c.TraceID,
+		})
+		if err != nil && !errors.Is(err, repo.ErrTaskAlreadyActive) {
+			return fmt.Errorf("create task for retry: %w", err)
+		}
+
+		if err := qtx.UpdateUserFetchItemTask(ctx, UpdateUserFetchItemTaskParams{
+			FetchID:     run.FetchID,
+			CandidateID: cID,
+			TaskID:      pgconv.UUIDPtrToPgUUID(&task.ID),
+		}); err != nil {
+			return fmt.Errorf("update fetch item: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
 func (r *PGReports) GetByID(ctx context.Context, id uuid.UUID) (repo.Report, error) {
 	row, err := r.q.GetReportByID(ctx, id)
 	if err != nil {

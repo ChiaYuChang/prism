@@ -428,6 +428,63 @@ func (_c *MockAnalysisRuns_ListItems_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
+// RetryFailedItems provides a mock function for the type MockAnalysisRuns
+func (_mock *MockAnalysisRuns) RetryFailedItems(ctx context.Context, runID uuid.UUID) error {
+	ret := _mock.Called(ctx, runID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RetryFailedItems")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, uuid.UUID) error); ok {
+		r0 = returnFunc(ctx, runID)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockAnalysisRuns_RetryFailedItems_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RetryFailedItems'
+type MockAnalysisRuns_RetryFailedItems_Call struct {
+	*mock.Call
+}
+
+// RetryFailedItems is a helper method to define mock.On call
+//   - ctx context.Context
+//   - runID uuid.UUID
+func (_e *MockAnalysisRuns_Expecter) RetryFailedItems(ctx interface{}, runID interface{}) *MockAnalysisRuns_RetryFailedItems_Call {
+	return &MockAnalysisRuns_RetryFailedItems_Call{Call: _e.mock.On("RetryFailedItems", ctx, runID)}
+}
+
+func (_c *MockAnalysisRuns_RetryFailedItems_Call) Run(run func(ctx context.Context, runID uuid.UUID)) *MockAnalysisRuns_RetryFailedItems_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 uuid.UUID
+		if args[1] != nil {
+			arg1 = args[1].(uuid.UUID)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockAnalysisRuns_RetryFailedItems_Call) Return(err error) *MockAnalysisRuns_RetryFailedItems_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockAnalysisRuns_RetryFailedItems_Call) RunAndReturn(run func(ctx context.Context, runID uuid.UUID) error) *MockAnalysisRuns_RetryFailedItems_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetExecution provides a mock function for the type MockAnalysisRuns
 func (_mock *MockAnalysisRuns) SetExecution(ctx context.Context, id uuid.UUID, executionID uuid.UUID) (repo.AnalysisRun, error) {
 	ret := _mock.Called(ctx, id, executionID)

@@ -224,6 +224,7 @@ type AnalysisRuns interface {
 	SetRoot(ctx context.Context, id, rootBatchID uuid.UUID) (AnalysisRun, error)
 	SetExecution(ctx context.Context, id, executionID uuid.UUID) (AnalysisRun, error)
 	CancelItems(ctx context.Context, fetchID uuid.UUID) error
+	RetryFailedItems(ctx context.Context, runID uuid.UUID) error
 }
 
 type Reports interface {

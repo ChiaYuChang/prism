@@ -182,6 +182,7 @@ type Querier interface {
 	SoftDeleteContentEmbeddings(ctx context.Context, contentID uuid.UUID) error
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
 	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
+	UpdateUserFetchItemTask(ctx context.Context, arg UpdateUserFetchItemTaskParams) error
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 	UpsertCandidateEmbeddingGemma2025(ctx context.Context, arg UpsertCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
 	UpsertContentEmbeddingGemma2025(ctx context.Context, arg UpsertContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)

@@ -223,3 +223,21 @@ func (q *Queries) MarkUserFetchCompleted(ctx context.Context, id uuid.UUID) erro
 	_, err := q.db.Exec(ctx, markUserFetchCompleted, id)
 	return err
 }
+
+const updateUserFetchItemTask = `-- name: UpdateUserFetchItemTask :exec
+UPDATE fetch_items
+SET task_id = $3,
+    snapshot_status = NULL
+WHERE fetch_id = $1 AND candidate_id = $2
+`
+
+type UpdateUserFetchItemTaskParams struct {
+	FetchID     uuid.UUID   `db:"fetch_id" json:"fetch_id"`
+	CandidateID uuid.UUID   `db:"candidate_id" json:"candidate_id"`
+	TaskID      pgtype.UUID `db:"task_id" json:"task_id"`
+}
+
+func (q *Queries) UpdateUserFetchItemTask(ctx context.Context, arg UpdateUserFetchItemTaskParams) error {
+	_, err := q.db.Exec(ctx, updateUserFetchItemTask, arg.FetchID, arg.CandidateID, arg.TaskID)
+	return err
+}
