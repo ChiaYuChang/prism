@@ -74,3 +74,47 @@ func TestCreateAnalysisRunReusesExistingContent(t *testing.T) {
 	require.NotEqual(t, uuid.Nil, response.AnalysisRunID)
 	require.Equal(t, repo.AnalysisRunStatusFetching, response.Status)
 }
+
+func TestResolveFetchFailures_API(t *testing.T) {
+	srv, _ := newTestServer(t)
+	mockRepo := mocks.NewMockAnalysisRuns(t)
+	srv.AnalysisRuns = mockRepo
+
+	analysisID := uuid.New()
+	run := repo.AnalysisRun{
+		ID:     analysisID,
+		Status: repo.AnalysisRunStatusAwaitingResolution,
+	}
+
+	testCases := []struct {
+		name       string
+		action     string
+		wantStatus int
+	}{
+		{
+			name:       "Error - CANCEL is rejected",
+			action:     "CANCEL",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "Error - Invalid action",
+			action:     "INVALID_ACTION",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRepo.EXPECT().GetByID(mock.Anything, analysisID).Return(run, nil).Once()
+
+			body := `{"action":"` + tc.action + `"}`
+			req := httptest.NewRequest(http.MethodPost, "/analysis-runs/"+analysisID.String()+"/resolve-fetch-failures", bytes.NewBufferString(body))
+			req.SetPathValue("id", analysisID.String())
+			w := httptest.NewRecorder()
+
+			srv.ResolveFetchFailures(w, req)
+
+			require.Equal(t, tc.wantStatus, w.Code)
+		})
+	}
+}

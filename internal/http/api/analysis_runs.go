@@ -217,52 +217,14 @@ func (s *Server) ResolveFetchFailures(w http.ResponseWriter, r *http.Request) {
 			s.writeAnalysisTransitionError(w, err)
 			return
 		}
-	case "CANCEL":
-		if err := s.AnalysisRuns.CancelItems(r.Context(), run.FetchID); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to cancel fetch items")
-			return
-		}
-		var err error
-		run, err = s.AnalysisRuns.SetStatus(r.Context(), repo.SetAnalysisRunStatusParams{
-			ID: run.ID, Status: repo.AnalysisRunStatusCancelled,
-		})
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to cancel analysis run")
-			return
-		}
 	default:
-		writeError(w, http.StatusBadRequest, "action must be RETRY_FAILED, IGNORE_FAILED, or CANCEL")
+		writeError(w, http.StatusBadRequest, "action must be RETRY_FAILED or IGNORE_FAILED")
 		return
 	}
 	writeJSON(w, http.StatusOK, analysisRunResponse(run))
 }
 
-func (s *Server) CancelAnalysisRun(w http.ResponseWriter, r *http.Request) {
-	if s.AnalysisRuns == nil {
-		writeError(w, http.StatusServiceUnavailable, "analysis runs are unavailable")
-		return
-	}
-	run, ok := s.loadAnalysisRun(r.Context(), w, r.PathValue("id"))
-	if !ok {
-		return
-	}
-	if run.Status == repo.AnalysisRunStatusAnalyzing || run.Status == repo.AnalysisRunStatusCompleted {
-		writeError(w, http.StatusConflict, "analysis run can no longer be cancelled")
-		return
-	}
-	if err := s.AnalysisRuns.CancelItems(r.Context(), run.FetchID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to cancel fetch items")
-		return
-	}
-	run, err := s.AnalysisRuns.SetStatus(r.Context(), repo.SetAnalysisRunStatusParams{
-		ID: run.ID, Status: repo.AnalysisRunStatusCancelled,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to cancel analysis run")
-		return
-	}
-	writeJSON(w, http.StatusOK, analysisRunResponse(run))
-}
+
 
 func (s *Server) confirmAnalysisRun(ctx context.Context, run repo.AnalysisRun) (repo.AnalysisRun, error) {
 	items, err := s.AnalysisRuns.ListItems(ctx, run.FetchID)

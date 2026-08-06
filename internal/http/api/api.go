@@ -327,7 +327,6 @@ func (s *Server) RegisterV1(r RouteRegistrar) {
 	r.Handle("GET /contents/{candidate_id}", http.HandlerFunc(s.GetContent))
 	r.Handle("GET /fetches/{id}", middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch)))
 	r.Handle("POST /analysis-runs/{id}/resolve-fetch-failures", http.HandlerFunc(s.ResolveFetchFailures))
-	r.Handle("POST /analysis-runs/{id}/cancel", http.HandlerFunc(s.CancelAnalysisRun))
 	r.Handle("GET /status", http.HandlerFunc(s.GetStatus))
 }
 
