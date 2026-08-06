@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ChiaYuChang/prism/pkg/utils"
 
 	"github.com/ChiaYuChang/prism/internal/repo"
 	"github.com/ChiaYuChang/prism/pkg/pgconv"
@@ -2032,6 +2035,134 @@ func dbUserFetchItemToRepo(row FetchItem) repo.UserFetchItem {
 		SnapshotStatus: pgconv.PgTextToStringPtr(row.SnapshotStatus),
 		CreatedAt:      *pgconv.PgTimestamptzToTimePtr(row.CreatedAt),
 	}
+}
+
+func (r *PGAnalysisRuns) CreateSession(ctx context.Context, arg repo.CreateAnalysisSessionParams) (repo.AnalysisRun, error) {
+	beginner, ok := r.q.db.(pgBeginner)
+	if !ok {
+		return repo.AnalysisRun{}, fmt.Errorf("postgres repository does not support transactions")
+	}
+	tx, err := beginner.Begin(ctx)
+	if err != nil {
+		return repo.AnalysisRun{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	qtx := r.q.WithTx(tx)
+
+	fetch, err := qtx.CreateUserFetch(ctx, pgconv.UUIDPtrToPgUUID(arg.UserID))
+	if err != nil {
+		return repo.AnalysisRun{}, fmt.Errorf("create user fetch: %w", err)
+	}
+
+	var originalSelectedCandidateIDs []uuid.UUID
+	for _, c := range arg.SelectedCandidates {
+		originalSelectedCandidateIDs = append(originalSelectedCandidateIDs, c.ID)
+	}
+
+	run, err := qtx.CreateAnalysisRun(ctx, CreateAnalysisRunParams{
+		ID:                           arg.AnalysisID,
+		UserID:                       pgconv.UUIDPtrToPgUUID(arg.UserID),
+		FetchID:                      fetch.ID,
+		Topic:                        arg.Topic,
+		Brief:                        arg.Brief,
+		FetchFailurePolicy:           arg.FetchFailurePolicy,
+		Status:                       "FETCHING",
+		OriginalSelectedCandidateIds: originalSelectedCandidateIDs,
+	})
+	if err != nil {
+		return repo.AnalysisRun{}, fmt.Errorf("create analysis run: %w", err)
+	}
+
+	for _, c := range arg.SelectedCandidates {
+		content, contentErr := qtx.GetContentByCandidateID(ctx, pgconv.UUIDToPgUUID(c.ID))
+		if contentErr == nil && !content.DeletedAt.Valid && strings.TrimSpace(content.Content) != "" {
+			snapshot := repo.UserFetchItemSnapshotAlreadyComplete
+			if _, err := qtx.CreateUserFetchItem(ctx, CreateUserFetchItemParams{
+				FetchID:        fetch.ID,
+				CandidateID:    c.ID,
+				SnapshotStatus: pgconv.StringPtrToPgText(&snapshot),
+			}); err != nil {
+				return repo.AnalysisRun{}, fmt.Errorf("create fetch item for existing content: %w", err)
+			}
+			continue
+		}
+
+		if contentErr != nil && !errors.Is(contentErr, pgx.ErrNoRows) {
+			return repo.AnalysisRun{}, fmt.Errorf("check existing content for candidate %s: %w", c.ID, contentErr)
+		}
+
+		canonicalURL, err := utils.NormalizeURL(c.URL)
+		if err != nil {
+			return repo.AnalysisRun{}, fmt.Errorf("normalize candidate %s url: %w", c.ID, err)
+		}
+
+		meta, err := json.Marshal(map[string]any{"candidate_id": c.ID.String()})
+		if err != nil {
+			return repo.AnalysisRun{}, fmt.Errorf("marshal candidate meta: %w", err)
+		}
+
+		task, err := createTaskRepo(ctx, qtx.db, qtx, repo.CreateTaskParams{
+			BatchID:    c.BatchID,
+			Kind:       repo.TaskKindPageFetch,
+			SourceType: repo.SourceTypeMedia,
+			SourceAbbr: c.SourceAbbr,
+			URL:        canonicalURL,
+			Meta:       meta,
+			TraceID:    c.TraceID,
+		})
+
+		switch {
+		case err == nil:
+			taskID := task.ID
+			if _, err := qtx.CreateUserFetchItem(ctx, CreateUserFetchItemParams{
+				FetchID:     fetch.ID,
+				CandidateID: c.ID,
+				TaskID:      pgconv.UUIDPtrToPgUUID(&taskID),
+			}); err != nil {
+				return repo.AnalysisRun{}, fmt.Errorf("create fetch item for task %s: %w", taskID, err)
+			}
+
+		case errors.Is(err, repo.ErrTaskAlreadyActive):
+			if task.ID != uuid.Nil {
+				taskID := task.ID
+				if _, err := qtx.CreateUserFetchItem(ctx, CreateUserFetchItemParams{
+					FetchID:     fetch.ID,
+					CandidateID: c.ID,
+					TaskID:      pgconv.UUIDPtrToPgUUID(&taskID),
+				}); err != nil {
+					return repo.AnalysisRun{}, fmt.Errorf("create fetch item for existing task %s: %w", taskID, err)
+				}
+				continue
+			}
+
+			// Race: task finished between checks
+			content, contentErr := qtx.GetContentByURL(ctx, canonicalURL)
+			if contentErr != nil {
+				if errors.Is(contentErr, pgx.ErrNoRows) {
+					return repo.AnalysisRun{}, fmt.Errorf("page_fetch race: active task drained without contents row (design invariant)")
+				}
+				return repo.AnalysisRun{}, fmt.Errorf("fetch contents after task drained: %w", contentErr)
+			}
+			_ = content // Content is valid
+			snapshot := repo.UserFetchItemSnapshotAlreadyComplete
+			if _, err := qtx.CreateUserFetchItem(ctx, CreateUserFetchItemParams{
+				FetchID:        fetch.ID,
+				CandidateID:    c.ID,
+				SnapshotStatus: pgconv.StringPtrToPgText(&snapshot),
+			}); err != nil {
+				return repo.AnalysisRun{}, fmt.Errorf("create fetch item after task race: %w", err)
+			}
+
+		default:
+			return repo.AnalysisRun{}, fmt.Errorf("create page_fetch task: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return repo.AnalysisRun{}, fmt.Errorf("commit analysis session: %w", err)
+	}
+
+	return dbAnalysisRunToRepo(run), nil
 }
 
 func (r *PGAnalysisRuns) Create(ctx context.Context, arg repo.CreateAnalysisRunParams) (repo.AnalysisRun, error) {

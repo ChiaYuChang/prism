@@ -44,20 +44,17 @@ func TestCreateAnalysisRunReusesExistingContent(t *testing.T) {
 	fetchID := uuid.Must(uuid.NewV7())
 	runID := uuid.Must(uuid.NewV7())
 	userID := uuid.Must(uuid.NewV7())
-	contentID := uuid.Must(uuid.NewV7())
 	candidate := repo.Candidate{ID: candidateID, BatchID: uuid.Must(uuid.NewV7()), SourceAbbr: "yahoo", URL: "https://example.com/article", TraceID: "trace"}
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, []uuid.UUID{candidateID}).Return([]repo.Candidate{candidate}, nil).Twice()
 	analysisRuns.EXPECT().GetByID(mock.Anything, runID).Return(repo.AnalysisRun{}, pgx.ErrNoRows).Once()
-	m.userFetches.EXPECT().Create(mock.Anything, repo.CreateUserFetchParams{UserID: &userID}).Return(repo.UserFetch{ID: fetchID}, nil).Once()
-	analysisRuns.EXPECT().Create(mock.Anything, mock.MatchedBy(func(arg repo.CreateAnalysisRunParams) bool {
-		return arg.ID == runID || (arg.FetchID == fetchID && arg.FetchFailurePolicy == repo.AnalysisFailurePolicyIgnoreFailed && arg.Status == repo.AnalysisRunStatusFetching)
+	
+	analysisRuns.EXPECT().CreateSession(mock.Anything, mock.MatchedBy(func(arg repo.CreateAnalysisSessionParams) bool {
+		return arg.AnalysisID == runID && 
+			arg.FetchFailurePolicy == repo.AnalysisFailurePolicyIgnoreFailed && 
+			arg.SelectedCandidates[0].ID == candidateID &&
+			arg.Topic == "topic" && arg.Brief == "brief"
 	})).Return(repo.AnalysisRun{ID: runID, FetchID: fetchID, Status: repo.AnalysisRunStatusFetching}, nil).Once()
-	m.pipeline.EXPECT().GetContentByCandidateID(mock.Anything, candidateID).Return(repo.Content{ID: contentID, CandidateID: candidateID, Content: "readable"}, nil).Once()
-	m.userFetches.EXPECT().CreateItem(mock.Anything, mock.MatchedBy(func(arg repo.CreateUserFetchItemParams) bool {
-		return arg.FetchID == fetchID && arg.CandidateID == candidateID && arg.TaskID == nil &&
-			arg.SnapshotStatus != nil && *arg.SnapshotStatus == repo.UserFetchItemSnapshotAlreadyComplete
-	})).Return(repo.UserFetchItem{}, nil).Once()
 
 	body, _ := json.Marshal(map[string]any{
 		"analysis_id":            runID,

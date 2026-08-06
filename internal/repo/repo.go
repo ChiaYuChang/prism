@@ -214,6 +214,7 @@ type UserFetches interface {
 }
 
 type AnalysisRuns interface {
+	CreateSession(ctx context.Context, arg CreateAnalysisSessionParams) (AnalysisRun, error)
 	Create(ctx context.Context, arg CreateAnalysisRunParams) (AnalysisRun, error)
 	GetByID(ctx context.Context, id uuid.UUID) (AnalysisRun, error)
 	GetByFetchID(ctx context.Context, fetchID uuid.UUID) (AnalysisRun, error)

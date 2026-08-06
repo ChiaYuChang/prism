@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
+
+	"github.com/ChiaYuChang/prism/pkg/utils"
 
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/repo"
@@ -140,25 +141,6 @@ func (s *Server) CreateAnalysisRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fetch, err := s.UserFetches.Create(r.Context(), repo.CreateUserFetchParams{UserID: &principal.TokenID})
-	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "create analysis fetch failed", slog.Any("error", err))
-		writeError(w, http.StatusInternalServerError, "failed to create fetch")
-		return
-	}
-	
-	_, err = s.AnalysisRuns.Create(r.Context(), repo.CreateAnalysisRunParams{
-		ID: req.AnalysisID, UserID: &principal.TokenID, FetchID: fetch.ID,
-		Topic: strings.TrimSpace(req.Topic), Brief: strings.TrimSpace(req.Brief),
-		FetchFailurePolicy: policy, Status: repo.AnalysisRunStatusFetching,
-		OriginalSelectedCandidateIDs: ids,
-	})
-	if err != nil {
-		s.Logger.ErrorContext(r.Context(), "create analysis run failed", slog.Any("error", err))
-		writeError(w, http.StatusInternalServerError, "failed to create analysis run")
-		return
-	}
-	
 	runID := req.AnalysisID
 
 	candidates, err := s.Scout.GetCandidatesByIDs(r.Context(), ids)
@@ -167,37 +149,23 @@ func (s *Server) CreateAnalysisRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load candidates")
 		return
 	}
-	byID := make(map[uuid.UUID]repo.Candidate, len(candidates))
-	for _, candidate := range candidates {
-		byID[candidate.ID] = candidate
+
+	run, err := s.AnalysisRuns.CreateSession(r.Context(), repo.CreateAnalysisSessionParams{
+		AnalysisID:         runID,
+		UserID:             &principal.TokenID,
+		Topic:              strings.TrimSpace(req.Topic),
+		Brief:              strings.TrimSpace(req.Brief),
+		FetchFailurePolicy: policy,
+		SelectedCandidates: candidates,
+	})
+	if err != nil {
+		s.Logger.ErrorContext(r.Context(), "create analysis session failed", slog.Any("error", err))
+		writeError(w, http.StatusInternalServerError, "failed to create analysis run session")
+		return
 	}
-	for _, id := range ids {
-		candidate := byID[id]
-		content, contentErr := s.Pipeline.GetContentByCandidateID(r.Context(), id)
-		if contentErr == nil && content.DeletedAt == nil && strings.TrimSpace(content.Content) != "" {
-			snapshot := repo.UserFetchItemSnapshotAlreadyComplete
-			if _, err := s.UserFetches.CreateItem(r.Context(), repo.CreateUserFetchItemParams{
-				FetchID: fetch.ID, CandidateID: id, SnapshotStatus: &snapshot,
-			}); err != nil {
-				s.analysisRunError(r.Context(), runID, err)
-				writeError(w, http.StatusInternalServerError, "failed to record fetch item")
-				return
-			}
-			continue
-		}
-		if contentErr != nil && !errors.Is(contentErr, pgx.ErrNoRows) {
-			s.analysisRunError(r.Context(), runID, contentErr)
-			writeError(w, http.StatusInternalServerError, "failed to check existing content")
-			return
-		}
-		if _, err := s.recordPageFetchItem(r.Context(), fetch.ID, candidate); err != nil {
-			s.analysisRunError(r.Context(), runID, err)
-			writeError(w, http.StatusInternalServerError, "failed to record fetch item")
-			return
-		}
-	}
+
 	writeJSON(w, http.StatusAccepted, AnalysisRunResponse{
-		AnalysisID: runID, AnalysisRunID: runID, FetchID: fetch.ID, Status: repo.AnalysisRunStatusFetching,
+		AnalysisID: run.ID, AnalysisRunID: run.ID, FetchID: run.FetchID, Status: run.Status,
 	})
 }
 
@@ -457,7 +425,7 @@ func (s *Server) classifyCandidates(ctx context.Context, ids []uuid.UUID) ([]uui
 	for _, id := range ids {
 		candidate, found := byID[id]
 		if found {
-			if _, err := normalizeCandidateURL(candidate.URL); err == nil {
+			if _, err := utils.NormalizeURL(candidate.URL); err == nil {
 				available = append(available, id)
 				continue
 			}
@@ -482,15 +450,6 @@ func validateAnalysisIDs(ids []uuid.UUID) error {
 	return nil
 }
 
-func normalizeCandidateURL(raw string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return "", errors.New("invalid candidate URL")
-	}
-	parsed.Scheme = strings.ToLower(parsed.Scheme)
-	parsed.Host = strings.ToLower(parsed.Host)
-	return parsed.String(), nil
-}
 
 func (s *Server) loadAnalysisRun(ctx context.Context, w http.ResponseWriter, rawID string) (repo.AnalysisRun, bool) {
 	id, err := uuid.Parse(rawID)
@@ -510,18 +469,6 @@ func (s *Server) loadAnalysisRun(ctx context.Context, w http.ResponseWriter, raw
 	return run, true
 }
 
-func (s *Server) analysisRunError(ctx context.Context, runID uuid.UUID, err error) {
-	if s.AnalysisRuns == nil {
-		return
-	}
-	_, _ = s.AnalysisRuns.SetStatus(ctx, repo.SetAnalysisRunStatusParams{
-		ID: runID, Status: repo.AnalysisRunStatusFailed,
-		FailureCode: stringPtr("ANALYSIS_SETUP_FAILED"),
-	})
-	if s.Logger != nil {
-		s.Logger.ErrorContext(ctx, "analysis run setup failed", slog.Any("error", err))
-	}
-}
 
 func stringPtr(value string) *string { return &value }
 

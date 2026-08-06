@@ -354,3 +354,12 @@ type BeginReportRemovalParams struct {
 	Reason              string
 	RequestID           *string
 }
+
+type CreateAnalysisSessionParams struct {
+	AnalysisID         uuid.UUID
+	UserID             *uuid.UUID
+	Topic              string
+	Brief              string
+	FetchFailurePolicy string
+	SelectedCandidates []Candidate
+}

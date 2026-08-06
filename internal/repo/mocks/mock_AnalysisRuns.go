@@ -162,6 +162,72 @@ func (_c *MockAnalysisRuns_Create_Call) RunAndReturn(run func(ctx context.Contex
 	return _c
 }
 
+// CreateSession provides a mock function for the type MockAnalysisRuns
+func (_mock *MockAnalysisRuns) CreateSession(ctx context.Context, arg repo.CreateAnalysisSessionParams) (repo.AnalysisRun, error) {
+	ret := _mock.Called(ctx, arg)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSession")
+	}
+
+	var r0 repo.AnalysisRun
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateAnalysisSessionParams) (repo.AnalysisRun, error)); ok {
+		return returnFunc(ctx, arg)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, repo.CreateAnalysisSessionParams) repo.AnalysisRun); ok {
+		r0 = returnFunc(ctx, arg)
+	} else {
+		r0 = ret.Get(0).(repo.AnalysisRun)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, repo.CreateAnalysisSessionParams) error); ok {
+		r1 = returnFunc(ctx, arg)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockAnalysisRuns_CreateSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSession'
+type MockAnalysisRuns_CreateSession_Call struct {
+	*mock.Call
+}
+
+// CreateSession is a helper method to define mock.On call
+//   - ctx context.Context
+//   - arg repo.CreateAnalysisSessionParams
+func (_e *MockAnalysisRuns_Expecter) CreateSession(ctx interface{}, arg interface{}) *MockAnalysisRuns_CreateSession_Call {
+	return &MockAnalysisRuns_CreateSession_Call{Call: _e.mock.On("CreateSession", ctx, arg)}
+}
+
+func (_c *MockAnalysisRuns_CreateSession_Call) Run(run func(ctx context.Context, arg repo.CreateAnalysisSessionParams)) *MockAnalysisRuns_CreateSession_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 repo.CreateAnalysisSessionParams
+		if args[1] != nil {
+			arg1 = args[1].(repo.CreateAnalysisSessionParams)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockAnalysisRuns_CreateSession_Call) Return(analysisRun repo.AnalysisRun, err error) *MockAnalysisRuns_CreateSession_Call {
+	_c.Call.Return(analysisRun, err)
+	return _c
+}
+
+func (_c *MockAnalysisRuns_CreateSession_Call) RunAndReturn(run func(ctx context.Context, arg repo.CreateAnalysisSessionParams) (repo.AnalysisRun, error)) *MockAnalysisRuns_CreateSession_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetByFetchID provides a mock function for the type MockAnalysisRuns
 func (_mock *MockAnalysisRuns) GetByFetchID(ctx context.Context, fetchID uuid.UUID) (repo.AnalysisRun, error) {
 	ret := _mock.Called(ctx, fetchID)

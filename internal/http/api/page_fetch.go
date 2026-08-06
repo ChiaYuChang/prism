@@ -9,6 +9,7 @@ import (
 
 	"github.com/ChiaYuChang/prism/internal/http/middleware"
 	"github.com/ChiaYuChang/prism/internal/repo"
+	"github.com/ChiaYuChang/prism/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -142,7 +143,7 @@ func (s *Server) PageFetch(w http.ResponseWriter, r *http.Request) {
 // by design (collector ordering CreateContent → CompleteTask), so any
 // remaining miss is an invariant violation and surfaces as 500.
 func (s *Server) recordPageFetchItem(ctx context.Context, fetchID uuid.UUID, c repo.Candidate) (string, error) {
-	canonicalURL, err := normalizeCandidateURL(c.URL)
+	canonicalURL, err := utils.NormalizeURL(c.URL)
 	if err != nil {
 		return "", err
 	}
