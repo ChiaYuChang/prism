@@ -2,10 +2,9 @@
 SELECT *
 FROM batches
 WHERE completed_at IS NULL
-  AND source_type = $1
   AND purpose = 'COLLECTION'
 ORDER BY created_at ASC
-LIMIT $2;
+LIMIT $1;
 
 -- name: ListBatches :many
 SELECT *
@@ -19,7 +18,6 @@ OFFSET sqlc.arg(off);
 SELECT id, source_type, trace_id
 FROM batches b
 WHERE b.completed_at IS NULL 
-  AND b.source_type = $1
   AND b.purpose = 'COLLECTION'
   AND EXISTS (SELECT 1 FROM tasks t WHERE t.batch_id = b.id)
   AND NOT EXISTS (
@@ -38,7 +36,7 @@ WHERE b.completed_at IS NULL
            <= (SELECT COUNT(*) FROM contents ct WHERE ct.batch_id = b.id)
    )
 ORDER BY b.created_at ASC
-LIMIT $2;
+LIMIT $1;
 
 -- name: MarkBatchCompleted :execrows
 -- Optimistic-concurrency claim: returns rows-affected so the caller can
@@ -62,10 +60,9 @@ SELECT *
 FROM batches
 WHERE completed_at IS NOT NULL
   AND published_at IS NULL
-  AND source_type = $1
   AND purpose = 'COLLECTION'
 ORDER BY completed_at ASC, created_at ASC
-LIMIT $2;
+LIMIT $1;
 
 -- name: MarkBatchPublished :exec
 UPDATE batches

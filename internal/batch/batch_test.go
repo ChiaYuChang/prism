@@ -78,7 +78,7 @@ func TestDetector_Detect(t *testing.T) {
 			}
 			mRepo := mocks.NewMockBatchTrigger(t)
 			mRepo.EXPECT().
-				FindNewlyCompletedBatches(mock.Anything, limit, repo.SourceTypeParty).
+				FindNewlyCompletedBatches(mock.Anything, limit).
 				Return([]repo.Batch{{ID: batchID, SourceType: repo.SourceTypeParty, TraceID: tc.traceID}}, nil)
 			mRepo.EXPECT().
 				MarkBatchCompleted(mock.Anything, batchID, traceID).
@@ -108,7 +108,7 @@ func TestDetector_Detect_LoserDropsBatch(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		FindNewlyCompletedBatches(mock.Anything, limit, repo.SourceTypeParty).
+		FindNewlyCompletedBatches(mock.Anything, limit).
 		Return([]repo.Batch{
 			{ID: batchID, SourceType: repo.SourceTypeParty, TraceID: &traceID},
 		}, nil)
@@ -181,7 +181,7 @@ func TestPublisher_Publish_Success(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{batchA, batchB}, nil)
 	mRepo.EXPECT().MarkBatchPublished(mock.Anything, batchA.ID).Return(nil)
 	mRepo.EXPECT().MarkBatchPublished(mock.Anything, batchB.ID).Return(nil)
@@ -202,7 +202,7 @@ func TestPublisher_Publish_Empty(t *testing.T) {
 	limit := int32(10)
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{}, nil)
 
 	fakePub := &fakeBatchCompletedPublisher{}
@@ -224,7 +224,7 @@ func TestPublisher_Publish_MQFailure_RecordsAndContinues(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{batchA, batchB}, nil)
 	// Batch A's publish fails → failure is recorded, loop continues.
 	mRepo.EXPECT().RecordBatchPublishFailure(mock.Anything, batchA.ID, mqErr.Error()).Return(nil)
@@ -250,7 +250,7 @@ func TestPublisher_Publish_RecordFailureError_Aborts(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{batchA}, nil)
 	mRepo.EXPECT().RecordBatchPublishFailure(mock.Anything, batchA.ID, mqErr.Error()).Return(dbErr)
 
@@ -274,7 +274,7 @@ func TestPublisher_Publish_MarkPublishedError_Aborts(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{batchA, batchB}, nil)
 	mRepo.EXPECT().MarkBatchPublished(mock.Anything, batchA.ID).Return(dbErr)
 	// batchB is never reached because Publish short-circuits on mark error.
@@ -295,7 +295,7 @@ func TestPublisher_Publish_ListError(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return(nil, dbErr)
 
 	fakePub := &fakeBatchCompletedPublisher{}

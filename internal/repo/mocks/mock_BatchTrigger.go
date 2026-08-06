@@ -106,8 +106,8 @@ func (_c *MockBatchTrigger_CountCandidatesByBatchID_Call) RunAndReturn(run func(
 }
 
 // FindNewlyCompletedBatches provides a mock function for the type MockBatchTrigger
-func (_mock *MockBatchTrigger) FindNewlyCompletedBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
-	ret := _mock.Called(ctx, limit, sourceType)
+func (_mock *MockBatchTrigger) FindNewlyCompletedBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	ret := _mock.Called(ctx, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FindNewlyCompletedBatches")
@@ -115,18 +115,18 @@ func (_mock *MockBatchTrigger) FindNewlyCompletedBatches(ctx context.Context, li
 
 	var r0 []repo.Batch
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) ([]repo.Batch, error)); ok {
-		return returnFunc(ctx, limit, sourceType)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) ([]repo.Batch, error)); ok {
+		return returnFunc(ctx, limit)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) []repo.Batch); ok {
-		r0 = returnFunc(ctx, limit, sourceType)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) []repo.Batch); ok {
+		r0 = returnFunc(ctx, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repo.Batch)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int32, string) error); ok {
-		r1 = returnFunc(ctx, limit, sourceType)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32) error); ok {
+		r1 = returnFunc(ctx, limit)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -141,12 +141,11 @@ type MockBatchTrigger_FindNewlyCompletedBatches_Call struct {
 // FindNewlyCompletedBatches is a helper method to define mock.On call
 //   - ctx context.Context
 //   - limit int32
-//   - sourceType string
-func (_e *MockBatchTrigger_Expecter) FindNewlyCompletedBatches(ctx interface{}, limit interface{}, sourceType interface{}) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
-	return &MockBatchTrigger_FindNewlyCompletedBatches_Call{Call: _e.mock.On("FindNewlyCompletedBatches", ctx, limit, sourceType)}
+func (_e *MockBatchTrigger_Expecter) FindNewlyCompletedBatches(ctx interface{}, limit interface{}) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
+	return &MockBatchTrigger_FindNewlyCompletedBatches_Call{Call: _e.mock.On("FindNewlyCompletedBatches", ctx, limit)}
 }
 
-func (_c *MockBatchTrigger_FindNewlyCompletedBatches_Call) Run(run func(ctx context.Context, limit int32, sourceType string)) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
+func (_c *MockBatchTrigger_FindNewlyCompletedBatches_Call) Run(run func(ctx context.Context, limit int32)) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -156,14 +155,9 @@ func (_c *MockBatchTrigger_FindNewlyCompletedBatches_Call) Run(run func(ctx cont
 		if args[1] != nil {
 			arg1 = args[1].(int32)
 		}
-		var arg2 string
-		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
 		run(
 			arg0,
 			arg1,
-			arg2,
 		)
 	})
 	return _c
@@ -174,7 +168,7 @@ func (_c *MockBatchTrigger_FindNewlyCompletedBatches_Call) Return(batchs []repo.
 	return _c
 }
 
-func (_c *MockBatchTrigger_FindNewlyCompletedBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error)) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
+func (_c *MockBatchTrigger_FindNewlyCompletedBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Batch, error)) *MockBatchTrigger_FindNewlyCompletedBatches_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -248,8 +242,8 @@ func (_c *MockBatchTrigger_ListContentsByBatchID_Call) RunAndReturn(run func(ctx
 }
 
 // ListPendingCompletionBatches provides a mock function for the type MockBatchTrigger
-func (_mock *MockBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
-	ret := _mock.Called(ctx, limit, sourceType)
+func (_mock *MockBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	ret := _mock.Called(ctx, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListPendingCompletionBatches")
@@ -257,18 +251,18 @@ func (_mock *MockBatchTrigger) ListPendingCompletionBatches(ctx context.Context,
 
 	var r0 []repo.Batch
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) ([]repo.Batch, error)); ok {
-		return returnFunc(ctx, limit, sourceType)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) ([]repo.Batch, error)); ok {
+		return returnFunc(ctx, limit)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) []repo.Batch); ok {
-		r0 = returnFunc(ctx, limit, sourceType)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) []repo.Batch); ok {
+		r0 = returnFunc(ctx, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repo.Batch)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int32, string) error); ok {
-		r1 = returnFunc(ctx, limit, sourceType)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32) error); ok {
+		r1 = returnFunc(ctx, limit)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -283,12 +277,11 @@ type MockBatchTrigger_ListPendingCompletionBatches_Call struct {
 // ListPendingCompletionBatches is a helper method to define mock.On call
 //   - ctx context.Context
 //   - limit int32
-//   - sourceType string
-func (_e *MockBatchTrigger_Expecter) ListPendingCompletionBatches(ctx interface{}, limit interface{}, sourceType interface{}) *MockBatchTrigger_ListPendingCompletionBatches_Call {
-	return &MockBatchTrigger_ListPendingCompletionBatches_Call{Call: _e.mock.On("ListPendingCompletionBatches", ctx, limit, sourceType)}
+func (_e *MockBatchTrigger_Expecter) ListPendingCompletionBatches(ctx interface{}, limit interface{}) *MockBatchTrigger_ListPendingCompletionBatches_Call {
+	return &MockBatchTrigger_ListPendingCompletionBatches_Call{Call: _e.mock.On("ListPendingCompletionBatches", ctx, limit)}
 }
 
-func (_c *MockBatchTrigger_ListPendingCompletionBatches_Call) Run(run func(ctx context.Context, limit int32, sourceType string)) *MockBatchTrigger_ListPendingCompletionBatches_Call {
+func (_c *MockBatchTrigger_ListPendingCompletionBatches_Call) Run(run func(ctx context.Context, limit int32)) *MockBatchTrigger_ListPendingCompletionBatches_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -298,14 +291,9 @@ func (_c *MockBatchTrigger_ListPendingCompletionBatches_Call) Run(run func(ctx c
 		if args[1] != nil {
 			arg1 = args[1].(int32)
 		}
-		var arg2 string
-		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
 		run(
 			arg0,
 			arg1,
-			arg2,
 		)
 	})
 	return _c
@@ -316,14 +304,14 @@ func (_c *MockBatchTrigger_ListPendingCompletionBatches_Call) Return(batchs []re
 	return _c
 }
 
-func (_c *MockBatchTrigger_ListPendingCompletionBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error)) *MockBatchTrigger_ListPendingCompletionBatches_Call {
+func (_c *MockBatchTrigger_ListPendingCompletionBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Batch, error)) *MockBatchTrigger_ListPendingCompletionBatches_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ListReadyToPublishBatches provides a mock function for the type MockBatchTrigger
-func (_mock *MockBatchTrigger) ListReadyToPublishBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
-	ret := _mock.Called(ctx, limit, sourceType)
+func (_mock *MockBatchTrigger) ListReadyToPublishBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	ret := _mock.Called(ctx, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListReadyToPublishBatches")
@@ -331,18 +319,18 @@ func (_mock *MockBatchTrigger) ListReadyToPublishBatches(ctx context.Context, li
 
 	var r0 []repo.Batch
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) ([]repo.Batch, error)); ok {
-		return returnFunc(ctx, limit, sourceType)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) ([]repo.Batch, error)); ok {
+		return returnFunc(ctx, limit)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int32, string) []repo.Batch); ok {
-		r0 = returnFunc(ctx, limit, sourceType)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int32) []repo.Batch); ok {
+		r0 = returnFunc(ctx, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]repo.Batch)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int32, string) error); ok {
-		r1 = returnFunc(ctx, limit, sourceType)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int32) error); ok {
+		r1 = returnFunc(ctx, limit)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -357,12 +345,11 @@ type MockBatchTrigger_ListReadyToPublishBatches_Call struct {
 // ListReadyToPublishBatches is a helper method to define mock.On call
 //   - ctx context.Context
 //   - limit int32
-//   - sourceType string
-func (_e *MockBatchTrigger_Expecter) ListReadyToPublishBatches(ctx interface{}, limit interface{}, sourceType interface{}) *MockBatchTrigger_ListReadyToPublishBatches_Call {
-	return &MockBatchTrigger_ListReadyToPublishBatches_Call{Call: _e.mock.On("ListReadyToPublishBatches", ctx, limit, sourceType)}
+func (_e *MockBatchTrigger_Expecter) ListReadyToPublishBatches(ctx interface{}, limit interface{}) *MockBatchTrigger_ListReadyToPublishBatches_Call {
+	return &MockBatchTrigger_ListReadyToPublishBatches_Call{Call: _e.mock.On("ListReadyToPublishBatches", ctx, limit)}
 }
 
-func (_c *MockBatchTrigger_ListReadyToPublishBatches_Call) Run(run func(ctx context.Context, limit int32, sourceType string)) *MockBatchTrigger_ListReadyToPublishBatches_Call {
+func (_c *MockBatchTrigger_ListReadyToPublishBatches_Call) Run(run func(ctx context.Context, limit int32)) *MockBatchTrigger_ListReadyToPublishBatches_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -372,14 +359,9 @@ func (_c *MockBatchTrigger_ListReadyToPublishBatches_Call) Run(run func(ctx cont
 		if args[1] != nil {
 			arg1 = args[1].(int32)
 		}
-		var arg2 string
-		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
 		run(
 			arg0,
 			arg1,
-			arg2,
 		)
 	})
 	return _c
@@ -390,7 +372,7 @@ func (_c *MockBatchTrigger_ListReadyToPublishBatches_Call) Return(batchs []repo.
 	return _c
 }
 
-func (_c *MockBatchTrigger_ListReadyToPublishBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error)) *MockBatchTrigger_ListReadyToPublishBatches_Call {
+func (_c *MockBatchTrigger_ListReadyToPublishBatches_Call) RunAndReturn(run func(ctx context.Context, limit int32) ([]repo.Batch, error)) *MockBatchTrigger_ListReadyToPublishBatches_Call {
 	_c.Call.Return(run)
 	return _c
 }

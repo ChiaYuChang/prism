@@ -224,20 +224,26 @@ func (q *Queries) MarkUserFetchCompleted(ctx context.Context, id uuid.UUID) erro
 	return err
 }
 
-const updateUserFetchItemTask = `-- name: UpdateUserFetchItemTask :exec
+const updateUserFetchItemStatus = `-- name: UpdateUserFetchItemStatus :exec
 UPDATE fetch_items
 SET task_id = $3,
-    snapshot_status = NULL
+    snapshot_status = $4
 WHERE fetch_id = $1 AND candidate_id = $2
 `
 
-type UpdateUserFetchItemTaskParams struct {
-	FetchID     uuid.UUID   `db:"fetch_id" json:"fetch_id"`
-	CandidateID uuid.UUID   `db:"candidate_id" json:"candidate_id"`
-	TaskID      pgtype.UUID `db:"task_id" json:"task_id"`
+type UpdateUserFetchItemStatusParams struct {
+	FetchID        uuid.UUID   `db:"fetch_id" json:"fetch_id"`
+	CandidateID    uuid.UUID   `db:"candidate_id" json:"candidate_id"`
+	TaskID         pgtype.UUID `db:"task_id" json:"task_id"`
+	SnapshotStatus pgtype.Text `db:"snapshot_status" json:"snapshot_status"`
 }
 
-func (q *Queries) UpdateUserFetchItemTask(ctx context.Context, arg UpdateUserFetchItemTaskParams) error {
-	_, err := q.db.Exec(ctx, updateUserFetchItemTask, arg.FetchID, arg.CandidateID, arg.TaskID)
+func (q *Queries) UpdateUserFetchItemStatus(ctx context.Context, arg UpdateUserFetchItemStatusParams) error {
+	_, err := q.db.Exec(ctx, updateUserFetchItemStatus,
+		arg.FetchID,
+		arg.CandidateID,
+		arg.TaskID,
+		arg.SnapshotStatus,
+	)
 	return err
 }

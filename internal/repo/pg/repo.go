@@ -1653,11 +1653,8 @@ func (r *PGPipeline) RestoreContent(ctx context.Context, id uuid.UUID) (repo.Con
 }
 
 // Batch Trigger repository.
-func (r *PGBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
-	rows, err := r.q.ListPendingCompletionBatches(ctx, ListPendingCompletionBatchesParams{
-		SourceType: SourceType(sourceType),
-		Limit:      limit,
-	})
+func (r *PGBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	rows, err := r.q.ListPendingCompletionBatches(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1686,11 +1683,8 @@ func (r *PGBatchTrigger) ListPendingCompletionBatches(ctx context.Context, limit
 	return out, nil
 }
 
-func (r *PGBatchTrigger) FindNewlyCompletedBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
-	rows, err := r.q.FindNewlyCompletedBatches(ctx, FindNewlyCompletedBatchesParams{
-		SourceType: SourceType(sourceType),
-		Limit:      limit,
-	})
+func (r *PGBatchTrigger) FindNewlyCompletedBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	rows, err := r.q.FindNewlyCompletedBatches(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1713,11 +1707,8 @@ func (r *PGBatchTrigger) MarkBatchCompleted(ctx context.Context, batchID uuid.UU
 	})
 }
 
-func (r *PGBatchTrigger) ListReadyToPublishBatches(ctx context.Context, limit int32, sourceType string) ([]repo.Batch, error) {
-	rows, err := r.q.ListReadyToPublishBatches(ctx, ListReadyToPublishBatchesParams{
-		SourceType: SourceType(sourceType),
-		Limit:      limit,
-	})
+func (r *PGBatchTrigger) ListReadyToPublishBatches(ctx context.Context, limit int32) ([]repo.Batch, error) {
+	rows, err := r.q.ListReadyToPublishBatches(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -2328,16 +2319,52 @@ func (r *PGAnalysisRuns) RetryFailedItems(ctx context.Context, runID uuid.UUID) 
 			Meta:       meta,
 			TraceID:    c.TraceID,
 		})
-		if err != nil && !errors.Is(err, repo.ErrTaskAlreadyActive) {
-			return fmt.Errorf("create task for retry: %w", err)
-		}
+		switch {
+		case err == nil:
+			taskID := task.ID
+			if err := qtx.UpdateUserFetchItemStatus(ctx, UpdateUserFetchItemStatusParams{
+				FetchID:     run.FetchID,
+				CandidateID: cID,
+				TaskID:      pgconv.UUIDPtrToPgUUID(&taskID),
+			}); err != nil {
+				return fmt.Errorf("update fetch item: %w", err)
+			}
+			
+		case errors.Is(err, repo.ErrTaskAlreadyActive):
+			if task.ID != uuid.Nil {
+				taskID := task.ID
+				if err := qtx.UpdateUserFetchItemStatus(ctx, UpdateUserFetchItemStatusParams{
+					FetchID:     run.FetchID,
+					CandidateID: cID,
+					TaskID:      pgconv.UUIDPtrToPgUUID(&taskID),
+				}); err != nil {
+					return fmt.Errorf("update fetch item for existing task: %w", err)
+				}
+				continue
+			}
 
-		if err := qtx.UpdateUserFetchItemTask(ctx, UpdateUserFetchItemTaskParams{
-			FetchID:     run.FetchID,
-			CandidateID: cID,
-			TaskID:      pgconv.UUIDPtrToPgUUID(&task.ID),
-		}); err != nil {
-			return fmt.Errorf("update fetch item: %w", err)
+			// Race: task finished between checks
+			content, contentErr := qtx.GetContentByURL(ctx, canonicalURL)
+			if contentErr != nil {
+				if errors.Is(contentErr, pgx.ErrNoRows) {
+					return fmt.Errorf("retry race: active task drained without contents row (design invariant)")
+				}
+				return fmt.Errorf("fetch contents after retry task drained: %w", contentErr)
+			}
+			if content.DeletedAt.Valid || strings.TrimSpace(content.Content) == "" {
+				return fmt.Errorf("retry race: active task drained but content is unavailable")
+			}
+			snapshot := repo.UserFetchItemSnapshotAlreadyComplete
+			if err := qtx.UpdateUserFetchItemStatus(ctx, UpdateUserFetchItemStatusParams{
+				FetchID:        run.FetchID,
+				CandidateID:    cID,
+				SnapshotStatus: pgconv.StringPtrToPgText(&snapshot),
+			}); err != nil {
+				return fmt.Errorf("update fetch item after retry task race: %w", err)
+			}
+
+		default:
+			return fmt.Errorf("create task for retry: %w", err)
 		}
 	}
 

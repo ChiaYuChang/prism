@@ -43,7 +43,7 @@ func (d *Detector) Detect(ctx context.Context, limit int32) ([]CompletedBatch, e
 	defer span.End()
 
 	// Use the optimized bulk query for efficient detection.
-	batches, err := d.repo.FindNewlyCompletedBatches(ctx, limit, repo.SourceTypeParty)
+	batches, err := d.repo.FindNewlyCompletedBatches(ctx, limit)
 	if err != nil {
 		return nil, fmt.Errorf("find newly completed batches: %w", err)
 	}

@@ -276,9 +276,9 @@ func TestCollectionCompletionPredicate(t *testing.T) {
 			require.NoError(t, insertCollectionBatch(ctx, pool, batchID, abbr, tc.statuses, tc.candidateCount, tc.contentCount))
 
 			trigger := NewPostgresRepository(pool).BatchTrigger()
-			ready, queryErr := trigger.FindNewlyCompletedBatches(ctx, 100, repo.SourceTypeParty)
-			require.NoError(t, queryErr)
-			found := containsBatchID(ready, batchID)
+			batches, err := trigger.FindNewlyCompletedBatches(ctx, 10)
+			require.NoError(t, err)
+			found := containsBatchID(batches, batchID)
 			require.Equal(t, tc.wantFinished, found)
 			if !tc.wantFinished {
 				return

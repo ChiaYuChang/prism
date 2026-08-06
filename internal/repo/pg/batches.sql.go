@@ -284,7 +284,6 @@ const findNewlyCompletedBatches = `-- name: FindNewlyCompletedBatches :many
 SELECT id, source_type, trace_id
 FROM batches b
 WHERE b.completed_at IS NULL 
-  AND b.source_type = $1
   AND b.purpose = 'COLLECTION'
   AND EXISTS (SELECT 1 FROM tasks t WHERE t.batch_id = b.id)
   AND NOT EXISTS (
@@ -303,13 +302,8 @@ WHERE b.completed_at IS NULL
            <= (SELECT COUNT(*) FROM contents ct WHERE ct.batch_id = b.id)
    )
 ORDER BY b.created_at ASC
-LIMIT $2
+LIMIT $1
 `
-
-type FindNewlyCompletedBatchesParams struct {
-	SourceType SourceType `db:"source_type" json:"source_type"`
-	Limit      int32      `db:"limit" json:"limit"`
-}
 
 type FindNewlyCompletedBatchesRow struct {
 	ID         uuid.UUID   `db:"id" json:"id"`
@@ -318,8 +312,8 @@ type FindNewlyCompletedBatchesRow struct {
 }
 
 // Finds batches where all tasks are completed and all candidates are promoted to contents.
-func (q *Queries) FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error) {
-	rows, err := q.db.Query(ctx, findNewlyCompletedBatches, arg.SourceType, arg.Limit)
+func (q *Queries) FindNewlyCompletedBatches(ctx context.Context, limit int32) ([]FindNewlyCompletedBatchesRow, error) {
+	rows, err := q.db.Query(ctx, findNewlyCompletedBatches, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -548,19 +542,13 @@ const listPendingCompletionBatches = `-- name: ListPendingCompletionBatches :man
 SELECT id, source_type, trace_id, created_at, updated_at, completed_at, published_at, last_publish_attempt_at, publish_retry_count, publish_error, stalled_at, n_subtasks, parent_id, parent_task_id, succeeded, pipeline_published_at, pipeline_publish_retry_count, pipeline_publish_error, purpose, pipeline_definition_hash, pipeline_idempotency_key, pipeline_request_fingerprint, pipeline_input_snapshot_at, analysis_execution_id, failure_kind, failure_task_id, failure_recorded_at
 FROM batches
 WHERE completed_at IS NULL
-  AND source_type = $1
   AND purpose = 'COLLECTION'
 ORDER BY created_at ASC
-LIMIT $2
+LIMIT $1
 `
 
-type ListPendingCompletionBatchesParams struct {
-	SourceType SourceType `db:"source_type" json:"source_type"`
-	Limit      int32      `db:"limit" json:"limit"`
-}
-
-func (q *Queries) ListPendingCompletionBatches(ctx context.Context, arg ListPendingCompletionBatchesParams) ([]Batch, error) {
-	rows, err := q.db.Query(ctx, listPendingCompletionBatches, arg.SourceType, arg.Limit)
+func (q *Queries) ListPendingCompletionBatches(ctx context.Context, limit int32) ([]Batch, error) {
+	rows, err := q.db.Query(ctx, listPendingCompletionBatches, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -792,19 +780,13 @@ SELECT id, source_type, trace_id, created_at, updated_at, completed_at, publishe
 FROM batches
 WHERE completed_at IS NOT NULL
   AND published_at IS NULL
-  AND source_type = $1
   AND purpose = 'COLLECTION'
 ORDER BY completed_at ASC, created_at ASC
-LIMIT $2
+LIMIT $1
 `
 
-type ListReadyToPublishBatchesParams struct {
-	SourceType SourceType `db:"source_type" json:"source_type"`
-	Limit      int32      `db:"limit" json:"limit"`
-}
-
-func (q *Queries) ListReadyToPublishBatches(ctx context.Context, arg ListReadyToPublishBatchesParams) ([]Batch, error) {
-	rows, err := q.db.Query(ctx, listReadyToPublishBatches, arg.SourceType, arg.Limit)
+func (q *Queries) ListReadyToPublishBatches(ctx context.Context, limit int32) ([]Batch, error) {
+	rows, err := q.db.Query(ctx, listReadyToPublishBatches, limit)
 	if err != nil {
 		return nil, err
 	}

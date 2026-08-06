@@ -53,7 +53,7 @@ type Querier interface {
 	FindFinishedPipelineBatches(ctx context.Context, limit int32) ([]FindFinishedPipelineBatchesRow, error)
 	FindFinishedPipelineRootBatches(ctx context.Context, limit int32) ([]FindFinishedPipelineRootBatchesRow, error)
 	// Finds batches where all tasks are completed and all candidates are promoted to contents.
-	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
+	FindNewlyCompletedBatches(ctx context.Context, limit int32) ([]FindNewlyCompletedBatchesRow, error)
 	FindReportCacheHit(ctx context.Context, analysisExecutionID uuid.UUID) (Report, error)
 	GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error)
 	GetAnalysisRunByFetchID(ctx context.Context, fetchID uuid.UUID) (AnalysisRun, error)
@@ -105,13 +105,13 @@ type Querier interface {
 	ListContentsByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Content, error)
 	ListEntities(ctx context.Context, arg ListEntitiesParams) ([]Entity, error)
 	ListModels(ctx context.Context, arg ListModelsParams) ([]Model, error)
-	ListPendingCompletionBatches(ctx context.Context, arg ListPendingCompletionBatchesParams) ([]Batch, error)
+	ListPendingCompletionBatches(ctx context.Context, limit int32) ([]Batch, error)
 	ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]ListPipelineInputCandidatesRow, error)
 	ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]ListPipelineInputContentsRow, error)
 	ListPromptVersions(ctx context.Context, arg ListPromptVersionsParams) ([]ListPromptVersionsRow, error)
 	ListPromptVersionsByKey(ctx context.Context, arg ListPromptVersionsByKeyParams) ([]ListPromptVersionsByKeyRow, error)
 	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
-	ListReadyToPublishBatches(ctx context.Context, arg ListReadyToPublishBatchesParams) ([]Batch, error)
+	ListReadyToPublishBatches(ctx context.Context, limit int32) ([]Batch, error)
 	ListRecentFailedTasks(ctx context.Context, limit int32) ([]ListRecentFailedTasksRow, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
@@ -182,7 +182,7 @@ type Querier interface {
 	SoftDeleteContentEmbeddings(ctx context.Context, contentID uuid.UUID) error
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
 	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
-	UpdateUserFetchItemTask(ctx context.Context, arg UpdateUserFetchItemTaskParams) error
+	UpdateUserFetchItemStatus(ctx context.Context, arg UpdateUserFetchItemStatusParams) error
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 	UpsertCandidateEmbeddingGemma2025(ctx context.Context, arg UpsertCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
 	UpsertContentEmbeddingGemma2025(ctx context.Context, arg UpsertContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)

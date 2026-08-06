@@ -23,10 +23,10 @@ INSERT INTO fetch_items (
 )
 RETURNING *;
 
--- name: UpdateUserFetchItemTask :exec
+-- name: UpdateUserFetchItemStatus :exec
 UPDATE fetch_items
-SET task_id = $3,
-    snapshot_status = NULL
+SET task_id = sqlc.narg(task_id),
+    snapshot_status = sqlc.narg(snapshot_status)
 WHERE fetch_id = $1 AND candidate_id = $2;
 
 -- name: ListUserFetchItems :many
