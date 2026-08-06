@@ -2143,7 +2143,9 @@ func (r *PGAnalysisRuns) CreateSession(ctx context.Context, arg repo.CreateAnaly
 				}
 				return repo.AnalysisRun{}, fmt.Errorf("fetch contents after task drained: %w", contentErr)
 			}
-			_ = content // Content is valid
+			if content.DeletedAt.Valid || strings.TrimSpace(content.Content) == "" {
+				return repo.AnalysisRun{}, fmt.Errorf("page_fetch race: active task drained but content is unavailable")
+			}
 			snapshot := repo.UserFetchItemSnapshotAlreadyComplete
 			if _, err := qtx.CreateUserFetchItem(ctx, CreateUserFetchItemParams{
 				FetchID:        fetch.ID,

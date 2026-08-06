@@ -81,8 +81,10 @@ func TestResolveFetchFailures_API(t *testing.T) {
 	srv.AnalysisRuns = mockRepo
 
 	analysisID := uuid.New()
+	userID := uuid.New()
 	run := repo.AnalysisRun{
 		ID:     analysisID,
+		UserID: &userID,
 		Status: repo.AnalysisRunStatusAwaitingResolution,
 	}
 
@@ -109,6 +111,7 @@ func TestResolveFetchFailures_API(t *testing.T) {
 
 			body := `{"action":"` + tc.action + `"}`
 			req := httptest.NewRequest(http.MethodPost, "/analysis-runs/"+analysisID.String()+"/resolve-fetch-failures", bytes.NewBufferString(body))
+			req = withUserPrincipal(req, userID)
 			req.SetPathValue("id", analysisID.String())
 			w := httptest.NewRecorder()
 

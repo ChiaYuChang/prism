@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/ChiaYuChang/prism/pkg/utils"
@@ -63,8 +65,8 @@ func (s *Server) AnalysisPreflight(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	ids := req.ids()
-	if err := validateAnalysisIDs(ids); err != nil {
+	ids, err := validateAnalysisIDs(req.ids())
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -97,8 +99,8 @@ func (s *Server) CreateAnalysisRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "analysis_id must be a UUIDv7")
 		return
 	}
-	ids := req.ids()
-	if err := validateAnalysisIDs(ids); err != nil {
+	ids, err := validateAnalysisIDs(req.ids())
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -397,19 +399,33 @@ func (s *Server) classifyCandidates(ctx context.Context, ids []uuid.UUID) ([]uui
 	return available, unavailable, nil
 }
 
-func validateAnalysisIDs(ids []uuid.UUID) error {
+func validateAnalysisIDs(ids []uuid.UUID) ([]uuid.UUID, error) {
 	if len(ids) == 0 {
-		return errors.New("ANALYSIS_INPUT_EMPTY")
+		return nil, errors.New("ANALYSIS_INPUT_EMPTY")
 	}
 	if len(ids) > maxAnalysisCandidates {
-		return fmt.Errorf("too many candidate_ids (max %d)", maxAnalysisCandidates)
+		return nil, fmt.Errorf("too many candidate_ids (max %d)", maxAnalysisCandidates)
 	}
-	for _, id := range ids {
+
+	slices.SortFunc(ids, func(a, b uuid.UUID) int {
+		return bytes.Compare(a[:], b[:])
+	})
+
+	unique := []uuid.UUID{ids[0]}
+	for _, id := range ids[1:] {
 		if id == uuid.Nil {
-			return errors.New("candidate_ids contains an invalid id")
+			return nil, errors.New("candidate_ids contains an invalid id")
+		}
+		if unique[len(unique)-1] != id {
+			unique = append(unique, id)
 		}
 	}
-	return nil
+	// Check the first element as well, since we skipped it in the loop
+	if unique[0] == uuid.Nil {
+		return nil, errors.New("candidate_ids contains an invalid id")
+	}
+
+	return unique, nil
 }
 
 
@@ -426,6 +442,11 @@ func (s *Server) loadAnalysisRun(ctx context.Context, w http.ResponseWriter, raw
 		} else {
 			writeError(w, http.StatusInternalServerError, "failed to load analysis run")
 		}
+		return repo.AnalysisRun{}, false
+	}
+	principal, ok := middleware.PrincipalFromContext(ctx)
+	if !ok || run.UserID == nil || *run.UserID != principal.TokenID {
+		writeError(w, http.StatusNotFound, "analysis run not found")
 		return repo.AnalysisRun{}, false
 	}
 	return run, true
