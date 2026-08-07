@@ -7,15 +7,17 @@ import "github.com/ChiaYuChang/prism/internal/llm"
 type Packet[I, S, O any] struct {
 	input I
 
+	RepairHint *RepairHint
+
 	State    S
 	Request  *llm.GenerateRequest
 	Response *llm.GenerateResponse
 	Output   O
 }
 
-// NewPacket creates a Packet for input.
-func NewPacket[I, S, O any](input I) *Packet[I, S, O] {
-	return &Packet[I, S, O]{input: input}
+// NewPacket creates a Packet for input and optional repair hint.
+func NewPacket[I, S, O any](input I, hint *RepairHint) *Packet[I, S, O] {
+	return &Packet[I, S, O]{input: input, RepairHint: hint}
 }
 
 // Input returns the immutable input associated with the Packet.
