@@ -8,6 +8,7 @@ import (
 
 	"github.com/ChiaYuChang/prism/internal/discovery"
 	"github.com/ChiaYuChang/prism/internal/message"
+	"github.com/ChiaYuChang/prism/internal/repo"
 	wm "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
@@ -56,6 +57,10 @@ func (h *Handler) HandleMessage(ctx context.Context, msg *wm.Message) (bool, err
 	}
 	if sig.BatchID == uuid.Nil {
 		return true, fmt.Errorf("%w: batch_id is empty", ErrInvalidSignal)
+	}
+	if sig.SourceType != repo.SourceTypeParty {
+		h.logger.InfoContext(ctx, "ignoring non-party batch", slog.String("source_type", sig.SourceType))
+		return true, nil
 	}
 
 	ctx, err := message.ExtractTraceContext(ctx, msg)

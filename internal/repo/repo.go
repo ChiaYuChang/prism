@@ -17,6 +17,8 @@ type Repository interface {
 	Analysis() Analysis
 	BatchTrigger() BatchTrigger
 	UserFetches() UserFetches
+	AnalysisRuns() AnalysisRuns
+	Reports() Reports
 	Schedules() Schedules
 	Operator() Operator
 	Prompts() Prompts
@@ -147,6 +149,8 @@ type Pipeline interface {
 
 type PipelineRuntime interface {
 	GetPipelineBatch(ctx context.Context, batchID uuid.UUID) (Batch, error)
+	ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]PipelineInputCandidate, error)
+	ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]PipelineInputContent, error)
 	InitializePipeline(ctx context.Context, arg InitializePipelineParams) error
 	InitializePipelineStage(ctx context.Context, arg InitializePipelineStageParams) (uuid.UUID, error)
 	CreatePipelineRoot(ctx context.Context, arg CreateTaskParams) (Task, error)
@@ -155,20 +159,24 @@ type PipelineRuntime interface {
 	SetNSubtasks(ctx context.Context, batchID uuid.UUID, count int32) (Batch, error)
 	MarkBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
 	MarkRootBatchFinished(ctx context.Context, batchID uuid.UUID, succeeded bool, traceID string) (int64, error)
+	// FailPipelineTask records the task failure and converges its root state in
+	// one transaction. terminal reports whether the task exhausted its retries.
+	FailPipelineTask(ctx context.Context, taskID, rootBatchID uuid.UUID, retryMax int, reason string) (terminal bool, err error)
 	ConvergePipelineFailure(ctx context.Context, taskID, rootBatchID uuid.UUID, reason string) error
 	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
 	MarkPipelinePublished(ctx context.Context, batchID uuid.UUID) error
 	RecordPipelinePublishFailure(ctx context.Context, batchID uuid.UUID, message string) error
+	CompleteAnalysisReport(ctx context.Context, arg CompleteAnalysisReportParams) (Report, error)
 }
 
 type BatchTrigger interface {
-	ListPendingCompletionBatches(ctx context.Context, limit int32, sourceType string) ([]Batch, error)
-	FindNewlyCompletedBatches(ctx context.Context, limit int32, sourceType string) ([]Batch, error)
+	ListPendingCompletionBatches(ctx context.Context, limit int32) ([]Batch, error)
+	FindNewlyCompletedBatches(ctx context.Context, limit int32) ([]Batch, error)
 	// MarkBatchCompleted is an optimistic claim. Returns rows-affected so
 	// callers can distinguish the winning instance (1) from a loser racing
 	// against another instance (0). Only the winner should publish.
 	MarkBatchCompleted(ctx context.Context, batchID uuid.UUID, traceID string) (int64, error)
-	ListReadyToPublishBatches(ctx context.Context, limit int32, sourceType string) ([]Batch, error)
+	ListReadyToPublishBatches(ctx context.Context, limit int32) ([]Batch, error)
 	MarkBatchPublished(ctx context.Context, batchID uuid.UUID) error
 	RecordBatchPublishFailure(ctx context.Context, batchID uuid.UUID, publishErr string) error
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
@@ -203,6 +211,31 @@ type UserFetches interface {
 	// v1 callers compute terminal on-the-fly from GetProgress and may
 	// skip this entirely.
 	MarkCompleted(ctx context.Context, fetchID uuid.UUID) error
+}
+
+type AnalysisRuns interface {
+	CreateSession(ctx context.Context, arg CreateAnalysisSessionParams) (AnalysisRun, error)
+	Create(ctx context.Context, arg CreateAnalysisRunParams) (AnalysisRun, error)
+	GetByID(ctx context.Context, id uuid.UUID) (AnalysisRun, error)
+	GetByFetchID(ctx context.Context, fetchID uuid.UUID) (AnalysisRun, error)
+	ListItems(ctx context.Context, fetchID uuid.UUID) ([]AnalysisRunItem, error)
+	SetManifest(ctx context.Context, arg SetAnalysisRunManifestParams) (AnalysisRun, error)
+	SetStatus(ctx context.Context, arg SetAnalysisRunStatusParams) (AnalysisRun, error)
+	SetRoot(ctx context.Context, id, rootBatchID uuid.UUID) (AnalysisRun, error)
+	SetExecution(ctx context.Context, id, executionID uuid.UUID) (AnalysisRun, error)
+	CancelItems(ctx context.Context, fetchID uuid.UUID) error
+	RetryFailedItems(ctx context.Context, runID uuid.UUID) error
+}
+
+type Reports interface {
+	EnsureExecution(ctx context.Context, id uuid.UUID, fingerprint string) error
+	GetByID(ctx context.Context, id uuid.UUID) (Report, error)
+	GetByExecutionID(ctx context.Context, id uuid.UUID) (Report, error)
+	FindCacheHit(ctx context.Context, id uuid.UUID) (Report, error)
+	MarkMissing(ctx context.Context, id uuid.UUID, requestID *string) (bool, error)
+	MarkCorrupt(ctx context.Context, arg MarkReportCorruptParams) (bool, error)
+	BeginRemoval(ctx context.Context, arg BeginReportRemovalParams) (Report, error)
+	RecordAuditEvent(ctx context.Context, arg ReportAuditEventParams) error
 }
 
 type Analysis interface {

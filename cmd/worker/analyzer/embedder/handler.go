@@ -239,8 +239,32 @@ func (h *Handler) process(ctx context.Context, sig message.TaskSignal) error {
 	}
 	switch sig.Kind {
 	case repo.TaskKindEmbedCandidate:
+		var meta struct {
+			Snapshot *repo.Candidate `json:"snapshot"`
+		}
+		if err := json.Unmarshal(sig.Meta, &meta); err != nil {
+			return fmt.Errorf("%w: decode candidate snapshot: %w", ErrInvalidTaskSignal, err)
+		}
+		if meta.Snapshot != nil {
+			if meta.Snapshot.ID != targetID {
+				return fmt.Errorf("%w: candidate snapshot ID does not match candidate_id", ErrInvalidTaskSignal)
+			}
+			return h.Service.EmbedCandidateSnapshot(ctx, *meta.Snapshot, sig.TraceID)
+		}
 		return h.Service.EmbedCandidate(ctx, targetID, sig.TraceID)
 	case repo.TaskKindEmbedContent:
+		var meta struct {
+			Snapshot *repo.Content `json:"snapshot"`
+		}
+		if err := json.Unmarshal(sig.Meta, &meta); err != nil {
+			return fmt.Errorf("%w: decode content snapshot: %w", ErrInvalidTaskSignal, err)
+		}
+		if meta.Snapshot != nil {
+			if meta.Snapshot.ID != targetID {
+				return fmt.Errorf("%w: content snapshot ID does not match content_id", ErrInvalidTaskSignal)
+			}
+			return h.Service.EmbedContentSnapshot(ctx, *meta.Snapshot, sig.TraceID)
+		}
 		return h.Service.EmbedContent(ctx, targetID, sig.TraceID)
 	default:
 		return nil
@@ -248,7 +272,7 @@ func (h *Handler) process(ctx context.Context, sig message.TaskSignal) error {
 }
 
 func targetID(meta json.RawMessage, kind string) (uuid.UUID, error) {
-	var values map[string]string
+	var values map[string]json.RawMessage
 	if err := json.Unmarshal(meta, &values); err != nil {
 		return uuid.Nil, fmt.Errorf("%w: decode %s metadata: %w", ErrInvalidTaskSignal, kind, err)
 	}
@@ -256,7 +280,11 @@ func targetID(meta json.RawMessage, kind string) (uuid.UUID, error) {
 	if kind == repo.TaskKindEmbedContent {
 		key = "content_id"
 	}
-	id, err := uuid.Parse(values[key])
+	var rawID string
+	if err := json.Unmarshal(values[key], &rawID); err != nil {
+		return uuid.Nil, fmt.Errorf("%w: %s is missing or invalid", ErrInvalidTaskSignal, key)
+	}
+	id, err := uuid.Parse(rawID)
 	if err != nil || id == uuid.Nil {
 		return uuid.Nil, fmt.Errorf("%w: %s is missing or invalid", ErrInvalidTaskSignal, key)
 	}

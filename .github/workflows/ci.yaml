@@ -79,7 +79,7 @@ jobs:
         run: go run -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.3 -path db/migrations -database "$PRISM_TEST_DATABASE_URL" up
 
       - name: Run pipeline integration tests
-        run: go test -v -run 'Test(InitializePipelineConcurrentIsAtomicAndIdempotent|MarkPipelineBatchFinishedHasSingleWinner|PipelinePublishFailureRemainsRetryable|PipelineRootFailureConvergesAndFinalizes)$' ./internal/repo/pg
+        run: go test -v ./internal/repo/pg
 
   web:
     name: Control Room Web

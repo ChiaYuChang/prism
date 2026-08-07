@@ -127,6 +127,14 @@ func (s *Service) EmbedCandidate(ctx context.Context, candidateID uuid.UUID, tra
 	if err != nil {
 		return fmt.Errorf("get candidate %s: %w", candidateID, err)
 	}
+	return s.EmbedCandidateSnapshot(ctx, candidate, traceID)
+}
+
+// EmbedCandidateSnapshot embeds a candidate captured by a pipeline input
+// snapshot, avoiding a mutable live-row read.
+func (s *Service) EmbedCandidateSnapshot(ctx context.Context, candidate repo.Candidate, traceID string) error {
+	ctx, span := s.tracer.Start(ctx, "analyzer.embedder.embed_candidate_snapshot")
+	defer span.End()
 
 	inputs := make([]embeddingInput, 0, 2)
 	if text := strings.TrimSpace(candidate.Title); text != "" {
@@ -167,6 +175,14 @@ func (s *Service) EmbedContent(ctx context.Context, contentID uuid.UUID, traceID
 	if content.DeletedAt != nil {
 		return nil
 	}
+	return s.EmbedContentSnapshot(ctx, content, traceID)
+}
+
+// EmbedContentSnapshot embeds content captured by a pipeline input snapshot,
+// including records later soft-deleted from the live content table.
+func (s *Service) EmbedContentSnapshot(ctx context.Context, content repo.Content, traceID string) error {
+	ctx, span := s.tracer.Start(ctx, "analyzer.embedder.embed_content_snapshot")
+	defer span.End()
 
 	text := CanonicalDocumentText(content)
 	if strings.TrimSpace(text) == "" {

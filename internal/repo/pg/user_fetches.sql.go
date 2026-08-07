@@ -97,6 +97,7 @@ WITH resolved AS (
     FROM fetch_items i
     LEFT JOIN tasks t ON t.id = i.task_id
     WHERE i.fetch_id = $1
+      AND i.snapshot_status IS DISTINCT FROM 'CANCELLED'
 )
 SELECT
     (SELECT COUNT(*) FROM resolved)                                            AS total,
@@ -220,5 +221,29 @@ WHERE id = $1
 // computes terminal on-the-fly. Reserved for v2 notification dispatcher.
 func (q *Queries) MarkUserFetchCompleted(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markUserFetchCompleted, id)
+	return err
+}
+
+const updateUserFetchItemStatus = `-- name: UpdateUserFetchItemStatus :exec
+UPDATE fetch_items
+SET task_id = $3,
+    snapshot_status = $4
+WHERE fetch_id = $1 AND candidate_id = $2
+`
+
+type UpdateUserFetchItemStatusParams struct {
+	FetchID        uuid.UUID   `db:"fetch_id" json:"fetch_id"`
+	CandidateID    uuid.UUID   `db:"candidate_id" json:"candidate_id"`
+	TaskID         pgtype.UUID `db:"task_id" json:"task_id"`
+	SnapshotStatus pgtype.Text `db:"snapshot_status" json:"snapshot_status"`
+}
+
+func (q *Queries) UpdateUserFetchItemStatus(ctx context.Context, arg UpdateUserFetchItemStatusParams) error {
+	_, err := q.db.Exec(ctx, updateUserFetchItemStatus,
+		arg.FetchID,
+		arg.CandidateID,
+		arg.TaskID,
+		arg.SnapshotStatus,
+	)
 	return err
 }

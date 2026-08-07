@@ -14,6 +14,7 @@ func Mux(logger *slog.Logger) *http.ServeMux {
 		m := map[string]any{}
 		m["status"] = "OK"
 		m["time"] = time.Now().Format(time.RFC3339)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		b, _ := json.Marshal(m)
 		if _, err := w.Write(b); err != nil {
@@ -45,6 +46,7 @@ func Mux(logger *slog.Logger) *http.ServeMux {
 			m["status"] = "error"
 			m["message"] = "category is required"
 			b, _ := json.Marshal(m)
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusBadRequest)
 			if _, err := w.Write(b); err != nil {
 				logger.Error("failed to write yahoo error response", "category", category, "error", err)
@@ -61,6 +63,7 @@ func Mux(logger *slog.Logger) *http.ServeMux {
 			m["status"] = "error"
 			m["message"] = err.Error()
 			b, _ := json.Marshal(m)
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusInternalServerError)
 			if _, err := w.Write(b); err != nil {
 				logger.Error("failed to write yahoo error response", "category", category, "error", err)
@@ -73,6 +76,7 @@ func Mux(logger *slog.Logger) *http.ServeMux {
 		*status = http.StatusOK
 		*length = len(rss)
 		*level = slog.LevelInfo
+		w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte(rss)); err != nil {
 			logger.Error("failed to write yahoo rss response", "category", category, "error", err)

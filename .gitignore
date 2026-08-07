@@ -98,3 +98,5 @@ web/prismctl-web/node_modules/
 web/prismctl-web/dist/
 assets/static/prismctl-web/
 pipeline-dag-implementation-spec.md
+pre-analysis.md
+review.md

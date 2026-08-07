@@ -2,6 +2,9 @@ package appconfig
 
 import (
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 	"time"
 
 	prismlogger "github.com/ChiaYuChang/prism/pkg/logger"
@@ -47,8 +50,13 @@ func (p *PostgresConfig) ResolveSecrets() error {
 }
 
 func (p *PostgresConfig) ConnString() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		p.Username, p.Password, p.Host, p.Port, p.DB, p.SSLMode)
+	return (&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(p.Username, p.Password),
+		Host:     net.JoinHostPort(p.Host, strconv.Itoa(p.Port)),
+		Path:     "/" + p.DB,
+		RawQuery: url.Values{"sslmode": []string{p.SSLMode}}.Encode(),
+	}).String()
 }
 
 func (p PostgresConfig) String() string {

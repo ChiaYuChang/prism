@@ -23,6 +23,8 @@ type fakeBatchCompletedPublisher struct {
 	errs      []error // pop front on each call; if empty, return nil
 }
 
+func stringPtr(value string) *string { return &value }
+
 func (f *fakeBatchCompletedPublisher) PublishBatchCompleted(_ context.Context, sig *message.BatchCompletedSignal) error {
 	f.published = append(f.published, sig)
 	if len(f.errs) == 0 {
@@ -34,28 +36,65 @@ func (f *fakeBatchCompletedPublisher) PublishBatchCompleted(_ context.Context, s
 }
 
 func TestDetector_Detect(t *testing.T) {
-	batchID := uuid.Must(uuid.NewV7())
-	traceID := "trace-123"
 	limit := int32(10)
+	testCases := []struct {
+		name        string
+		traceID     *string
+		claimed     int64
+		wantBatches int
+	}{
+		{
+			name:        "selected successful zero-output collection batch is claimed",
+			traceID:     stringPtr("trace-successful-zero-output"),
+			claimed:     1,
+			wantBatches: 1,
+		},
+		{
+			name:        "selected failed zero-output collection batch is claimed",
+			traceID:     stringPtr("trace-failed-zero-output"),
+			claimed:     1,
+			wantBatches: 1,
+		},
+		{
+			name:        "selected partial failure collection batch is claimed",
+			traceID:     stringPtr("trace-partial-failure"),
+			claimed:     1,
+			wantBatches: 1,
+		},
+		{
+			name:        "another detector already claimed the selected batch",
+			traceID:     stringPtr("trace-loser"),
+			claimed:     0,
+			wantBatches: 0,
+		},
+	}
 
-	mRepo := mocks.NewMockBatchTrigger(t)
-	mRepo.EXPECT().
-		FindNewlyCompletedBatches(mock.Anything, limit, repo.SourceTypeParty).
-		Return([]repo.Batch{
-			{ID: batchID, SourceType: repo.SourceTypeParty, TraceID: &traceID},
-		}, nil)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			batchID := uuid.Must(uuid.NewV7())
+			traceID := ""
+			if tc.traceID != nil {
+				traceID = *tc.traceID
+			}
+			mRepo := mocks.NewMockBatchTrigger(t)
+			mRepo.EXPECT().
+				FindNewlyCompletedBatches(mock.Anything, limit).
+				Return([]repo.Batch{{ID: batchID, SourceType: repo.SourceTypeParty, TraceID: tc.traceID}}, nil)
+			mRepo.EXPECT().
+				MarkBatchCompleted(mock.Anything, batchID, traceID).
+				Return(tc.claimed, nil)
 
-	mRepo.EXPECT().
-		MarkBatchCompleted(mock.Anything, batchID, traceID).
-		Return(int64(1), nil)
+			d, err := NewDetector(testutils.Logger(), noop.NewTracerProvider().Tracer("test"), mRepo)
+			require.NoError(t, err)
 
-	d, err := NewDetector(testutils.Logger(), noop.NewTracerProvider().Tracer("test"), mRepo)
-	require.NoError(t, err)
-
-	got, err := d.Detect(context.Background(), limit)
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.Equal(t, batchID, got[0].BatchID)
+			got, err := d.Detect(context.Background(), limit)
+			require.NoError(t, err)
+			require.Len(t, got, tc.wantBatches)
+			if tc.wantBatches == 1 {
+				require.Equal(t, batchID, got[0].BatchID)
+			}
+		})
+	}
 }
 
 // TestDetector_Detect_LoserDropsBatch verifies that when MarkBatchCompleted
@@ -69,7 +108,7 @@ func TestDetector_Detect_LoserDropsBatch(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		FindNewlyCompletedBatches(mock.Anything, limit, repo.SourceTypeParty).
+		FindNewlyCompletedBatches(mock.Anything, limit).
 		Return([]repo.Batch{
 			{ID: batchID, SourceType: repo.SourceTypeParty, TraceID: &traceID},
 		}, nil)
@@ -142,7 +181,7 @@ func TestPublisher_Publish_Success(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{batchA, batchB}, nil)
 	mRepo.EXPECT().MarkBatchPublished(mock.Anything, batchA.ID).Return(nil)
 	mRepo.EXPECT().MarkBatchPublished(mock.Anything, batchB.ID).Return(nil)
@@ -163,7 +202,7 @@ func TestPublisher_Publish_Empty(t *testing.T) {
 	limit := int32(10)
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{}, nil)
 
 	fakePub := &fakeBatchCompletedPublisher{}
@@ -185,7 +224,7 @@ func TestPublisher_Publish_MQFailure_RecordsAndContinues(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{batchA, batchB}, nil)
 	// Batch A's publish fails → failure is recorded, loop continues.
 	mRepo.EXPECT().RecordBatchPublishFailure(mock.Anything, batchA.ID, mqErr.Error()).Return(nil)
@@ -211,7 +250,7 @@ func TestPublisher_Publish_RecordFailureError_Aborts(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{batchA}, nil)
 	mRepo.EXPECT().RecordBatchPublishFailure(mock.Anything, batchA.ID, mqErr.Error()).Return(dbErr)
 
@@ -235,7 +274,7 @@ func TestPublisher_Publish_MarkPublishedError_Aborts(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return([]repo.Batch{batchA, batchB}, nil)
 	mRepo.EXPECT().MarkBatchPublished(mock.Anything, batchA.ID).Return(dbErr)
 	// batchB is never reached because Publish short-circuits on mark error.
@@ -256,7 +295,7 @@ func TestPublisher_Publish_ListError(t *testing.T) {
 
 	mRepo := mocks.NewMockBatchTrigger(t)
 	mRepo.EXPECT().
-		ListReadyToPublishBatches(mock.Anything, limit, repo.SourceTypeParty).
+		ListReadyToPublishBatches(mock.Anything, limit).
 		Return(nil, dbErr)
 
 	fakePub := &fakeBatchCompletedPublisher{}

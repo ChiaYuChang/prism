@@ -94,17 +94,18 @@ tasks:
       - task: secrets:sync
       - task: bake
       - mkdir -p {{.TASK_DIR}}
-      - mkdir -p runtime/prompts runtime/logs/{api-server,cron-trigger,batch-detector,batch-publisher,analyzer-pipeline,scheduler-fast,scheduler-slow,discovery,collector,planner}
+      - mkdir -p runtime/prompts runtime/reports runtime/logs/{api-server,cron-trigger,batch-detector,batch-publisher,analyzer-pipeline,scheduler-fast,scheduler-slow,discovery,collector,planner}
       - chmod 0777 runtime/logs runtime/logs/{api-server,cron-trigger,batch-detector,batch-publisher,analyzer-pipeline,scheduler-fast,scheduler-slow,discovery,collector,planner}
-      - chmod 0777 runtime/prompts
+      - chmod 0777 runtime/prompts runtime/reports
       - |
         docker run --rm \
           --env HOST_UID="$(id -u)" \
           --env HOST_GID="$(id -g)" \
           -v "$PWD/runtime/logs:/logs" \
           -v "$PWD/runtime/prompts:/prompts" \
+          -v "$PWD/runtime/reports:/reports" \
           alpine:3.20 sh -c \
-          'chown -R "$HOST_UID:$HOST_GID" /logs /prompts && chmod -R a+rwX /logs /prompts'
+          'chown -R "$HOST_UID:$HOST_GID" /logs /prompts /reports && chmod -R a+rwX /logs /prompts /reports'
       - |
         if [[ ",{{.COMPOSE_PROFILES}}," == *",obs,"* ]]; then
           docker volume create "{{.PROJECT}}_otel_storage" >/dev/null

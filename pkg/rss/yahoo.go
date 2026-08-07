@@ -1,8 +1,6 @@
 package rss
 
 import (
-	"crypto/md5"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	httpclient "github.com/ChiaYuChang/prism/internal/http/client"
+	"github.com/google/uuid"
 	"github.com/gorilla/feeds"
 )
 
@@ -88,11 +87,9 @@ func YahooNews(category string) (string, error) {
 			continue
 		}
 
-		hasher := md5.New()
-		hasher.Write([]byte(item.Url))
 		feed.Items = append(feed.Items, &feeds.Item{
 			Title:       item.Title,
-			Id:          base64.StdEncoding.EncodeToString(hasher.Sum(nil)),
+			Id:          uuid.NewSHA1(uuid.NameSpaceURL, []byte(item.Url)).String(),
 			Link:        &feeds.Link{Href: item.Url},
 			Description: item.Summary,
 			Author:      &feeds.Author{Name: item.Publisher},

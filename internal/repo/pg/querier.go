@@ -12,13 +12,16 @@ import (
 )
 
 type Querier interface {
+	CancelAnalysisRunItems(ctx context.Context, fetchID uuid.UUID) error
 	CancelPendingTasksByBatchID(ctx context.Context, arg CancelPendingTasksByBatchIDParams) (int64, error)
 	ClaimDueSchedules(ctx context.Context, lim int32) ([]Schedule, error)
 	ClaimTasks(ctx context.Context, arg ClaimTasksParams) ([]Task, error)
+	CompleteReportTask(ctx context.Context, arg CompleteReportTaskParams) (int64, error)
 	CompleteTask(ctx context.Context, id uuid.UUID) error
 	CountActiveAdminTokensExcluding(ctx context.Context, id uuid.UUID) (int64, error)
 	CountCandidatesByBatchID(ctx context.Context, batchID pgtype.UUID) (int64, error)
 	CountTasksByBatchID(ctx context.Context, batchID uuid.UUID) (int64, error)
+	CreateAnalysisRun(ctx context.Context, arg CreateAnalysisRunParams) (AnalysisRun, error)
 	CreateCandidate(ctx context.Context, arg CreateCandidateParams) (Candidate, error)
 	CreateContent(ctx context.Context, arg CreateContentParams) (Content, error)
 	CreateContentExtraction(ctx context.Context, arg CreateContentExtractionParams) (ContentExtraction, error)
@@ -37,8 +40,10 @@ type Querier interface {
 	CreateUserFetch(ctx context.Context, userID pgtype.UUID) (Fetch, error)
 	CreateUserFetchItem(ctx context.Context, arg CreateUserFetchItemParams) (FetchItem, error)
 	DeleteSource(ctx context.Context, abbr string) (Source, error)
+	EnsureAnalysisExecution(ctx context.Context, arg EnsureAnalysisExecutionParams) error
 	EnsureBatchExists(ctx context.Context, arg EnsureBatchExistsParams) error
 	EnsurePipelineChildBatch(ctx context.Context, arg EnsurePipelineChildBatchParams) (uuid.UUID, error)
+	EnsurePipelineRoot(ctx context.Context, arg EnsurePipelineRootParams) error
 	// Updates expires_at on an existing PENDING/RUNNING task identified by its dedup key.
 	// Used when CreateTask returns ErrTaskAlreadyActive to refresh the task's lifetime.
 	ExtendActiveTaskExpiry(ctx context.Context, arg ExtendActiveTaskExpiryParams) error
@@ -48,8 +53,11 @@ type Querier interface {
 	FindFinishedPipelineBatches(ctx context.Context, limit int32) ([]FindFinishedPipelineBatchesRow, error)
 	FindFinishedPipelineRootBatches(ctx context.Context, limit int32) ([]FindFinishedPipelineRootBatchesRow, error)
 	// Finds batches where all tasks are completed and all candidates are promoted to contents.
-	FindNewlyCompletedBatches(ctx context.Context, arg FindNewlyCompletedBatchesParams) ([]FindNewlyCompletedBatchesRow, error)
+	FindNewlyCompletedBatches(ctx context.Context, limit int32) ([]FindNewlyCompletedBatchesRow, error)
+	FindReportCacheHit(ctx context.Context, analysisExecutionID uuid.UUID) (Report, error)
 	GetActiveTaskByPayloadDedup(ctx context.Context, arg GetActiveTaskByPayloadDedupParams) (Task, error)
+	GetAnalysisRunByFetchID(ctx context.Context, fetchID uuid.UUID) (AnalysisRun, error)
+	GetAnalysisRunByID(ctx context.Context, id uuid.UUID) (AnalysisRun, error)
 	GetBatchByID(ctx context.Context, id uuid.UUID) (Batch, error)
 	GetCandidateByFingerprint(ctx context.Context, fingerprint string) (Candidate, error)
 	GetCandidateByID(ctx context.Context, id uuid.UUID) (Candidate, error)
@@ -65,8 +73,11 @@ type Querier interface {
 	GetLatestPromptVersionByName(ctx context.Context, name string) (GetLatestPromptVersionByNameRow, error)
 	GetModelByID(ctx context.Context, id int16) (Model, error)
 	GetModelByNameAndType(ctx context.Context, arg GetModelByNameAndTypeParams) (Model, error)
+	GetPipelineRootByIdempotency(ctx context.Context, arg GetPipelineRootByIdempotencyParams) (Batch, error)
 	GetPromptVersionByID(ctx context.Context, id uuid.UUID) (GetPromptVersionByIDRow, error)
 	GetPromptVersionByNameAndVersion(ctx context.Context, arg GetPromptVersionByNameAndVersionParams) (GetPromptVersionByNameAndVersionRow, error)
+	GetReportByExecutionID(ctx context.Context, analysisExecutionID uuid.UUID) (Report, error)
+	GetReportByID(ctx context.Context, id uuid.UUID) (Report, error)
 	GetRootToken(ctx context.Context) (Token, error)
 	GetSourceByAbbr(ctx context.Context, abbr string) (Source, error)
 	GetTaskByBatchLogicalKey(ctx context.Context, arg GetTaskByBatchLogicalKeyParams) (Task, error)
@@ -77,7 +88,11 @@ type Querier interface {
 	// Returns candidate IDs grouped by status plus a derived `terminal` flag (all
 	// items in COMPLETED / FAILED / ALREADY_COMPLETE).
 	GetUserFetchProgress(ctx context.Context, fetchID uuid.UUID) (GetUserFetchProgressRow, error)
+	InsertReport(ctx context.Context, arg InsertReportParams) (Report, error)
+	InsertReportAuditEvent(ctx context.Context, arg InsertReportAuditEventParams) error
 	IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
+	LinkTaskSuccessor(ctx context.Context, arg LinkTaskSuccessorParams) (int64, error)
+	ListAnalysisRunItems(ctx context.Context, fetchID uuid.UUID) ([]ListAnalysisRunItemsRow, error)
 	ListBatches(ctx context.Context, arg ListBatchesParams) ([]Batch, error)
 	ListCandidateEmbeddingsByCandidateID(ctx context.Context, candidateID uuid.UUID) ([]CandidateEmbeddingsGemma2025, error)
 	ListCandidateEmbeddingsGemma2025(ctx context.Context, arg ListCandidateEmbeddingsGemma2025Params) ([]ListCandidateEmbeddingsGemma2025Row, error)
@@ -90,11 +105,13 @@ type Querier interface {
 	ListContentsByBatchID(ctx context.Context, batchID pgtype.UUID) ([]Content, error)
 	ListEntities(ctx context.Context, arg ListEntitiesParams) ([]Entity, error)
 	ListModels(ctx context.Context, arg ListModelsParams) ([]Model, error)
-	ListPendingCompletionBatches(ctx context.Context, arg ListPendingCompletionBatchesParams) ([]Batch, error)
+	ListPendingCompletionBatches(ctx context.Context, limit int32) ([]Batch, error)
+	ListPipelineInputCandidates(ctx context.Context, rootBatchID uuid.UUID) ([]ListPipelineInputCandidatesRow, error)
+	ListPipelineInputContents(ctx context.Context, rootBatchID uuid.UUID) ([]ListPipelineInputContentsRow, error)
 	ListPromptVersions(ctx context.Context, arg ListPromptVersionsParams) ([]ListPromptVersionsRow, error)
 	ListPromptVersionsByKey(ctx context.Context, arg ListPromptVersionsByKeyParams) ([]ListPromptVersionsByKeyRow, error)
 	ListReadyPipelineBatches(ctx context.Context, limit int32) ([]Batch, error)
-	ListReadyToPublishBatches(ctx context.Context, arg ListReadyToPublishBatchesParams) ([]Batch, error)
+	ListReadyToPublishBatches(ctx context.Context, limit int32) ([]Batch, error)
 	ListRecentFailedTasks(ctx context.Context, limit int32) ([]ListRecentFailedTasksRow, error)
 	ListRecentSeedContents(ctx context.Context, limit int32) ([]Content, error)
 	ListRunnableTasks(ctx context.Context, limit int32) ([]Task, error)
@@ -105,15 +122,24 @@ type Querier interface {
 	ListTasksByBatchID(ctx context.Context, batchID uuid.UUID) ([]Task, error)
 	ListTokens(ctx context.Context, arg ListTokensParams) ([]Token, error)
 	ListUserFetchItems(ctx context.Context, fetchID uuid.UUID) ([]ListUserFetchItemsRow, error)
+	LockAnalysisExecution(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	LockBatchForTaskInsert(ctx context.Context, id uuid.UUID) (LockBatchForTaskInsertRow, error)
+	LockReportByExecutionID(ctx context.Context, analysisExecutionID uuid.UUID) (Report, error)
+	LockReportForRemoval(ctx context.Context, analysisExecutionID uuid.UUID) (Report, error)
+	LockReportRoot(ctx context.Context, arg LockReportRootParams) (Batch, error)
+	LockReportTask(ctx context.Context, id uuid.UUID) (Task, error)
 	// Optimistic-concurrency claim: returns rows-affected so the caller can
 	// distinguish the winner (1) from a loser racing against another instance
 	// (0). Only the winner should publish the batch.completed signal.
 	MarkBatchCompleted(ctx context.Context, arg MarkBatchCompletedParams) (int64, error)
 	MarkBatchPublished(ctx context.Context, id uuid.UUID) error
 	MarkPipelineBatchFinished(ctx context.Context, arg MarkPipelineBatchFinishedParams) (int64, error)
+	MarkPipelineInputSnapshot(ctx context.Context, rootBatchID uuid.UUID) (int64, error)
 	MarkPipelinePublished(ctx context.Context, id uuid.UUID) error
 	MarkPipelineRootFinished(ctx context.Context, arg MarkPipelineRootFinishedParams) (int64, error)
+	MarkReportCorrupt(ctx context.Context, arg MarkReportCorruptParams) (int64, error)
+	MarkReportMissing(ctx context.Context, id uuid.UUID) (int64, error)
+	MarkReportRemoved(ctx context.Context, arg MarkReportRemovedParams) (int64, error)
 	MarkScheduleError(ctx context.Context, arg MarkScheduleErrorParams) error
 	MarkScheduleMaterialized(ctx context.Context, arg MarkScheduleMaterializedParams) error
 	MarkSchedulesConfigAbsent(ctx context.Context) error
@@ -142,12 +168,21 @@ type Querier interface {
 	SearchCandidatesByText(ctx context.Context, arg SearchCandidatesByTextParams) ([]Candidate, error)
 	SearchCandidatesByVector(ctx context.Context, arg SearchCandidatesByVectorParams) ([]SearchCandidatesByVectorRow, error)
 	SearchContentsByVector(ctx context.Context, arg SearchContentsByVectorParams) ([]SearchContentsByVectorRow, error)
+	SetAnalysisRunExecution(ctx context.Context, arg SetAnalysisRunExecutionParams) (AnalysisRun, error)
+	SetAnalysisRunManifest(ctx context.Context, arg SetAnalysisRunManifestParams) (AnalysisRun, error)
+	SetAnalysisRunRoot(ctx context.Context, arg SetAnalysisRunRootParams) (AnalysisRun, error)
+	SetAnalysisRunStatus(ctx context.Context, arg SetAnalysisRunStatusParams) (AnalysisRun, error)
 	SetBatchNSubtasks(ctx context.Context, arg SetBatchNSubtasksParams) (SetBatchNSubtasksRow, error)
 	SetPipelineRootFailure(ctx context.Context, id uuid.UUID) error
+	SnapshotPipelineCandidates(ctx context.Context, arg SnapshotPipelineCandidatesParams) error
+	SnapshotPipelineCandidatesByIDs(ctx context.Context, arg SnapshotPipelineCandidatesByIDsParams) error
+	SnapshotPipelineContents(ctx context.Context, arg SnapshotPipelineContentsParams) error
+	SnapshotPipelineContentsByIDs(ctx context.Context, arg SnapshotPipelineContentsByIDsParams) error
 	SoftDeleteContent(ctx context.Context, id uuid.UUID) (Content, error)
 	SoftDeleteContentEmbeddings(ctx context.Context, contentID uuid.UUID) error
 	UpdateContentMetadata(ctx context.Context, arg UpdateContentMetadataParams) (Content, error)
 	UpdateSource(ctx context.Context, arg UpdateSourceParams) (Source, error)
+	UpdateUserFetchItemStatus(ctx context.Context, arg UpdateUserFetchItemStatusParams) error
 	UpsertCandidate(ctx context.Context, arg UpsertCandidateParams) (Candidate, error)
 	UpsertCandidateEmbeddingGemma2025(ctx context.Context, arg UpsertCandidateEmbeddingGemma2025Params) (CandidateEmbeddingsGemma2025, error)
 	UpsertContentEmbeddingGemma2025(ctx context.Context, arg UpsertContentEmbeddingGemma2025Params) (ContentEmbeddingsGemma2025, error)

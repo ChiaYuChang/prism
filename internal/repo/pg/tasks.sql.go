@@ -544,6 +544,27 @@ func (q *Queries) IsTaskRunning(ctx context.Context, id uuid.UUID) (bool, error)
 	return is_running, err
 }
 
+const linkTaskSuccessor = `-- name: LinkTaskSuccessor :execrows
+UPDATE tasks
+SET next_task_id = $1,
+    updated_at = NOW()
+WHERE id = $2
+  AND (next_task_id IS NULL OR next_task_id = $1)
+`
+
+type LinkTaskSuccessorParams struct {
+	SuccessorID   pgtype.UUID `db:"successor_id" json:"successor_id"`
+	PredecessorID uuid.UUID   `db:"predecessor_id" json:"predecessor_id"`
+}
+
+func (q *Queries) LinkTaskSuccessor(ctx context.Context, arg LinkTaskSuccessorParams) (int64, error) {
+	result, err := q.db.Exec(ctx, linkTaskSuccessor, arg.SuccessorID, arg.PredecessorID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listRecentFailedTasks = `-- name: ListRecentFailedTasks :many
 SELECT id, kind, source_abbr, url, failure_message, updated_at
 FROM tasks

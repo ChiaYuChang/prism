@@ -164,7 +164,10 @@ Tests added:
 * [x] `internal/collector/parser/config/config_test.go` — `LoadConfig` with `fallback.enable=true` resolves `key_file`, missing provider triggers validation error, fallback disabled skips LLM validation.
 * [x] `internal/llm/factory/factory_test.go` — unsupported-provider error path (real-provider construction lives in per-provider unit tests).
 
-`docs/plan/spec.md` §6 — LLM dual-role entry covers parse-time fallback + config-snippet generator, global `fallback.enable` activation, no-automatic-promotion workflow, v1 HTML-shape input assumption, and the deliberate non-support of per-host overrides.
+`spec.md` §6 covers the LLM dual-role entry: parse-time fallback plus
+config-snippet generation, global `fallback.enable` activation,
+no-automatic-promotion workflow, v1 HTML-shape input assumption, and the
+deliberate non-support of per-host overrides.
 
 `go test -short ./...` = full suite green except the pre-existing `internal/collector/archiver` SeaweedFS testcontainer flake (Phase 5 track).
 
@@ -201,7 +204,7 @@ Commits:
 
 ## Plan restructure + item A verification (2026-05-04)
 
-* [x] Split `plan.md` (576 lines) into `docs/plan/{spec,todo,done,future}.md`; `plan.md` rewritten as ~15-line index.
+* [x] Split `plan.md` (576 lines) into `deployments/docs/plan/{spec,todo,done,future}.md`; `plan.md` rewritten as a short index.
 * [x] Cross-refs updated in `internal/collector/archiver/{archiver,meta,local}.go`, `docs/integration-test-plan.md`, `SESSION_SUMMARY.md`.
 * [x] Deleted `docs/database-tables.md`; per-table semantics live in `COMMENT ON` statements in `db/migrations/000001_init.up.sql`.
 * [x] **Item A verified** — replay tick speedup (`22ad358`): 26/26 PAGE_FETCH + 3/3 DIRECTORY_FETCH COMPLETED, 0 failures, drained well under 30s target.
@@ -393,4 +396,37 @@ Shipped input-type validation for the LLM fallback parser (rejecting non-HTML in
   * Transitioned the `HTML` rule block under `ParserConfig` to an optional pointer `*html.RuleConfig`.
   * Enforced validation at startup (`BuildRegistry`) rejecting configurations missing the `HTML` block or specifying unsupported formats.
 * [x] **Future Integration Documentation**:
-  * Added detailed implementation notes in `docs/plan/future.md` detailing the YAML schema design, configuration structures, and registry wiring required for introducing concrete JSON/XML parsers in the future.
+   * Added detailed implementation notes in `future.md` detailing the YAML
+     schema design, configuration structures, and registry wiring required for
+     introducing concrete JSON/XML parsers in the future.
+
+## Analyzer Pipeline Runtime (2026-08)
+
+Shipped the declarative analyzer pipeline runtime. The deployed definition is
+fixed at `configs/llm_pipeline.yaml`; it currently materializes
+`EMBED_CANDIDATE` and `EMBED_CONTENT` work.
+
+* [x] Added pipeline Root and stage batch purposes, `PIPELINE_INIT` and
+  `PIPELINE_STAGE` task kinds, runtime configuration loading, and scheduler
+  routing for declarative stages.
+* [x] Added analyzer workers and coordinator logic that materializes stage
+  child batches, converges terminal state, and remains retry-safe when child
+  work is recreated or redelivered.
+* [x] Added fixed-definition enforcement: the API rejects request-selected
+  pipeline files and workers reject definitions that do not match the deployed
+  configuration hash.
+* [x] Added Root idempotency scoped to the input collection batch and deployed
+  definition hash. Reusing a key with different request semantics returns a
+  conflict; requests without a key intentionally create independent Roots.
+* [x] Added `REPEATABLE READ` Root creation that snapshots complete candidate
+  and readable content inputs atomically with the Root and `PIPELINE_INIT`.
+  Later source mutations or soft deletes do not change a run's embedded input.
+* [x] Hardened collection completion and pipeline convergence: failed or
+  zero-output collection input cannot create a valid Root, and failed stage
+  work terminates the Root rather than leaving it indefinitely runnable.
+* [x] Added repository, API, worker, scheduler, and integration coverage for
+  initialization, snapshots, idempotency, retries, and terminal convergence.
+
+Reference: `docs/pipeline.md` describes the current runtime contract. The
+user-selected pre-analysis acquisition and confirmed-manifest flow remains
+planned in `pre-analysis.md` and `todo.md`.

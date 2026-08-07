@@ -114,6 +114,7 @@ func dbScheduleToRepoSchedule(s Schedule) repo.Schedule {
 
 func dbBatchToRepoBatch(
 	id uuid.UUID,
+	purpose string,
 	parentID *uuid.UUID,
 	nSubtasks *int32,
 	parentTaskID *uuid.UUID,
@@ -131,6 +132,7 @@ func dbBatchToRepoBatch(
 ) repo.Batch {
 	return repo.Batch{
 		ID:                   id,
+		Purpose:              purpose,
 		ParentID:             parentID,
 		NSubtasks:            nSubtasks,
 		ParentTaskID:         parentTaskID,

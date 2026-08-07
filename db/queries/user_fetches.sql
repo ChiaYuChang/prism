@@ -23,6 +23,12 @@ INSERT INTO fetch_items (
 )
 RETURNING *;
 
+-- name: UpdateUserFetchItemStatus :exec
+UPDATE fetch_items
+SET task_id = sqlc.narg(task_id),
+    snapshot_status = sqlc.narg(snapshot_status)
+WHERE fetch_id = $1 AND candidate_id = $2;
+
 -- name: ListUserFetchItems :many
 SELECT
     i.fetch_id,
@@ -47,6 +53,7 @@ WITH resolved AS (
     FROM fetch_items i
     LEFT JOIN tasks t ON t.id = i.task_id
     WHERE i.fetch_id = $1
+      AND i.snapshot_status IS DISTINCT FROM 'CANCELLED'
 )
 SELECT
     (SELECT COUNT(*) FROM resolved)                                            AS total,

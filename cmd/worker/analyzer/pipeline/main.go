@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -14,6 +16,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/message"
 	"github.com/ChiaYuChang/prism/internal/obs"
 	"github.com/ChiaYuChang/prism/internal/repo/pg"
+	"github.com/ChiaYuChang/prism/internal/storage"
 	wm "github.com/ThreeDotsLabs/watermill/message"
 )
 
@@ -71,9 +74,30 @@ func main() {
 		logger.Error("failed to load pipeline definition", "error", err)
 		os.Exit(1)
 	}
+	pipelineData, err := os.ReadFile(config.PipelineFile)
+	if err != nil {
+		logger.Error("failed to read pipeline definition for hashing", "error", err)
+		os.Exit(1)
+	}
+	definitionHash := fmt.Sprintf("%x", sha256.Sum256(pipelineData))
 	registry, err := pipeline.NewRegistry(pipeline.EmbedCandidateBuilder{}, pipeline.EmbedContentBuilder{})
 	if err != nil {
 		logger.Error("failed to create pipeline work registry", "error", err)
+		os.Exit(1)
+	}
+	reportStore, err := appconfig.NewStorage(ctx, config.ReportStorageURI, config.S3)
+	if err != nil {
+		logger.Error("failed to initialize report storage", "error", err)
+		os.Exit(1)
+	}
+	immutableStore, ok := reportStore.(storage.ImmutableStore)
+	if !ok {
+		logger.Error("report storage does not support immutable writes")
+		os.Exit(1)
+	}
+	reportWriter, err := pipeline.NewMarkdownReportWriter(immutableStore, dbRepo.PipelineRuntime(), config.ReportCacheTTL)
+	if err != nil {
+		logger.Error("failed to create report writer", "error", err)
 		os.Exit(1)
 	}
 	coordinator, err := pipeline.NewCoordinator(dbRepo.Tasks(), dbRepo.PipelineRuntime(), dbRepo.Scheduler(), registry)
@@ -81,11 +105,12 @@ func main() {
 		logger.Error("failed to create pipeline coordinator", "error", err)
 		os.Exit(1)
 	}
-	handler, err := pipeline.NewHandler(dbRepo.Tasks(), dbRepo.Scout(), dbRepo.Pipeline(), dbRepo.Scheduler(), dbRepo.PipelineRuntime(), coordinator, config.RetryMax)
+	handler, err := pipeline.NewHandler(dbRepo.Tasks(), dbRepo.Scheduler(), dbRepo.PipelineRuntime(), coordinator, config.RetryMax, definitionHash)
 	if err != nil {
 		logger.Error("failed to create pipeline handler", "error", err)
 		os.Exit(1)
 	}
+	handler.SetReportWriter(reportWriter)
 	taskMessages, err := msgr.Subscribe(ctx, message.TaskTopic)
 	if err != nil {
 		logger.Error("failed to subscribe task topic", "error", err)

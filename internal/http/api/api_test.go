@@ -183,6 +183,110 @@ func TestCreateAdminTask_HappyPath(t *testing.T) {
 	require.Equal(t, taskID, out.ID)
 }
 
+func TestCreateAdminPipelineRejectsUnfinishedInput(t *testing.T) {
+	srv, _ := newTestServer(t)
+	runtime := mocks.NewMockPipelineRuntime(t)
+	// The test server helper intentionally leaves optional runtime dependencies
+	// unset for unrelated endpoint tests.
+	srv.PipelineRuntime = runtime
+	inputID := uuid.New()
+	runtime.EXPECT().CreatePipelineRoot(mock.Anything, mock.MatchedBy(func(arg repo.CreateTaskParams) bool {
+		return arg.ParentBatchID != nil && *arg.ParentBatchID == inputID
+	})).Return(repo.Task{}, repo.ErrPipelineInputNotTerminal).Once()
+
+	body := strings.NewReader(`{"input_batch_id":"` + inputID.String() + `","source_type":"PARTY","source_abbr":"dpp","trace_id":"trace"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", body)
+	rec := httptest.NewRecorder()
+	srv.CreateAdminPipeline(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestCreateAdminPipelineRejectsMissingInput(t *testing.T) {
+	srv, _ := newTestServer(t)
+	runtime := mocks.NewMockPipelineRuntime(t)
+	srv.PipelineRuntime = runtime
+	inputID := uuid.New()
+	runtime.EXPECT().CreatePipelineRoot(mock.Anything, mock.Anything).Return(repo.Task{}, repo.ErrPipelineInputNotFound).Once()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(
+		`{"input_batch_id":"`+inputID.String()+`","source_type":"PARTY","source_abbr":"dpp","trace_id":"trace"}`,
+	))
+	rec := httptest.NewRecorder()
+	srv.CreateAdminPipeline(rec, req)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestCreateAdminPipelineIdempotencyKeyReusesTask(t *testing.T) {
+	srv, _ := newTestServer(t)
+	runtime := mocks.NewMockPipelineRuntime(t)
+	srv.PipelineRuntime = runtime
+	inputID := uuid.New()
+	rootID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("prism/pipeline/"+inputID.String()+"/request-1"))
+	first := repo.Task{ID: uuid.New(), BatchID: rootID, Kind: repo.TaskKindPipelineInit}
+	runtime.EXPECT().CreatePipelineRoot(mock.Anything, mock.MatchedBy(func(arg repo.CreateTaskParams) bool {
+		return arg.BatchID == rootID && arg.ParentBatchID != nil && *arg.ParentBatchID == inputID
+	})).Return(first, nil).Once()
+	runtime.EXPECT().CreatePipelineRoot(mock.Anything, mock.MatchedBy(func(arg repo.CreateTaskParams) bool {
+		return arg.BatchID == rootID
+	})).Return(first, repo.ErrTaskAlreadyActive).Once()
+
+	for i, testCase := range []struct {
+		trace      string
+		wantStatus int
+	}{
+		{trace: "trace", wantStatus: http.StatusCreated},
+		{trace: "renewed-trace", wantStatus: http.StatusOK},
+	} {
+		body := `{"input_batch_id":"` + inputID.String() + `","source_type":"PARTY","source_abbr":"dpp","trace_id":"` + testCase.trace + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(body))
+		req.Header.Set("Idempotency-Key", "request-1")
+		rec := httptest.NewRecorder()
+		srv.CreateAdminPipeline(rec, req)
+		require.Equal(t, testCase.wantStatus, rec.Code, "request %d", i+1)
+	}
+}
+
+func TestCreateAdminPipelineRejectsSelectedDefinition(t *testing.T) {
+	srv, _ := newTestServer(t)
+	runtime := mocks.NewMockPipelineRuntime(t)
+	srv.PipelineRuntime = runtime
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(
+		`{"input_batch_id":"`+uuid.New().String()+`","source_type":"PARTY","source_abbr":"dpp","trace_id":"trace","pipeline_file":"configs/other.yaml"}`,
+	))
+	rec := httptest.NewRecorder()
+	srv.CreateAdminPipeline(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestCreateAdminPipelineRejectsFailedInput(t *testing.T) {
+	srv, _ := newTestServer(t)
+	runtime := mocks.NewMockPipelineRuntime(t)
+	srv.PipelineRuntime = runtime
+	inputID := uuid.New()
+	runtime.EXPECT().CreatePipelineRoot(mock.Anything, mock.Anything).Return(repo.Task{}, repo.ErrPipelineInputFailed).Once()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(
+		`{"input_batch_id":"`+inputID.String()+`","source_type":"PARTY","source_abbr":"dpp","trace_id":"trace"}`,
+	))
+	rec := httptest.NewRecorder()
+	srv.CreateAdminPipeline(rec, req)
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
+func TestCreateAdminPipelineRejectsConflictingIdempotencyKey(t *testing.T) {
+	srv, _ := newTestServer(t)
+	runtime := mocks.NewMockPipelineRuntime(t)
+	srv.PipelineRuntime = runtime
+	inputID := uuid.New()
+	runtime.EXPECT().CreatePipelineRoot(mock.Anything, mock.Anything).Return(repo.Task{}, repo.ErrPipelineIdempotencyConflict).Once()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/pipelines", strings.NewReader(
+		`{"input_batch_id":"`+inputID.String()+`","source_type":"PARTY","source_abbr":"dpp","trace_id":"trace"}`,
+	))
+	req.Header.Set("Idempotency-Key", "same-key")
+	rec := httptest.NewRecorder()
+	srv.CreateAdminPipeline(rec, req)
+	require.Equal(t, http.StatusConflict, rec.Code)
+}
+
 func TestListCandidates_InvalidSince(t *testing.T) {
 	srv, _ := newTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/candidates?since=not-a-time", nil)

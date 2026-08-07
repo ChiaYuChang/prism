@@ -71,6 +71,10 @@ func TestCoordinatorRunStageUsesOwnedAtomicChildBatch(t *testing.T) {
 
 	err = coordinator.RunStage(context.Background(), repo.Task{
 		ID: ownerID, BatchID: rootID, SourceType: repo.SourceTypeParty, SourceAbbr: "dpp", TraceID: "trace", Payload: stagePayload,
-	}, WorkSetInput{CandidateIDs: []uuid.UUID{candidateID}, CandidateSourceAbbr: map[uuid.UUID]string{candidateID: "dpp"}})
+	}, WorkSetInput{
+		CandidateIDs:        []uuid.UUID{candidateID},
+		CandidateSourceAbbr: map[uuid.UUID]string{candidateID: "dpp"},
+		CandidateSnapshots:  map[uuid.UUID]repo.Candidate{candidateID: {ID: candidateID, SourceAbbr: "dpp"}},
+	})
 	require.NoError(t, err)
 }

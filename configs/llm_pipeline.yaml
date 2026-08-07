@@ -11,3 +11,8 @@ pipeline:
     config:
       task_type: EMBED_CONTENT
       fan_out: content_ids
+
+  - name: generate_report
+    depends_on: [embed_selected_contents]
+    config:
+      task_type: GENERATE_REPORT

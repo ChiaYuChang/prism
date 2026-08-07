@@ -38,7 +38,7 @@ func NewPublisher(logger *slog.Logger, tracer trace.Tracer, r repo.BatchTrigger,
 func (p *Publisher) Publish(ctx context.Context, limit int32) (int, error) {
 	ctx, span := p.tracer.Start(ctx, "batch.publisher.publish")
 	defer span.End()
-	batches, err := p.repo.ListReadyToPublishBatches(ctx, limit, repo.SourceTypeParty)
+	batches, err := p.repo.ListReadyToPublishBatches(ctx, limit)
 	if err != nil {
 		return 0, fmt.Errorf("list ready to publish batches: %w", err)
 	}

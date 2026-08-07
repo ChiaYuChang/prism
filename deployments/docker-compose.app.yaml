@@ -172,6 +172,7 @@ services:
     volumes:
       - ../runtime/logs/api-server:/logs
       - ../runtime/prompts:/app/runtime/prompts
+      - ../runtime/reports:/app/runtime/reports
     healthcheck:
       test: [ "CMD", "/app/healthcheck", "--url", "http://127.0.0.1:8091/readyz" ]
       interval: 15s

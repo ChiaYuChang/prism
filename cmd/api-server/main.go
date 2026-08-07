@@ -219,6 +219,12 @@ func main() {
 		os.Exit(1)
 	}
 	serverOpts = append(serverOpts, api.WithPrompts(repository.Prompts(), promptStore))
+	reportStore, err := appconfig.NewStorage(ctx, config.Reports.StorageURI, config.S3)
+	if err != nil {
+		logger.Error("failed to initialize report storage", "error", err)
+		os.Exit(1)
+	}
+	serverOpts = append(serverOpts, api.WithReports(repository.Reports(), reportStore))
 
 	serviceMetadata := make(map[string]api.ServiceMetadata)
 	for name, target := range config.Monitoring.Targets {
@@ -232,6 +238,7 @@ func main() {
 	serverOpts = append(serverOpts, api.WithServiceMetadata(serviceMetadata))
 
 	serverOpts = append(serverOpts, api.WithPipelineRuntime(repository.PipelineRuntime()))
+	serverOpts = append(serverOpts, api.WithAnalysisRuns(repository.AnalysisRuns()))
 	apiServer, err := api.NewServer(logger, repository.Scout(), repository.Tasks(), repository.Pipeline(), repository.UserFetches(), serverOpts...)
 	if err != nil {
 		logger.Error("failed to construct api server", "error", err)

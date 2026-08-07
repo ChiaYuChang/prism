@@ -45,6 +45,10 @@ type PromptConfig struct {
 	StorageURI string `mapstructure:"storage-uri" validate:"required"`
 }
 
+type ReportConfig struct {
+	StorageURI string `mapstructure:"storage-uri" validate:"required"`
+}
+
 type WebConfig struct {
 	Enabled   bool   `mapstructure:"enabled"`
 	StaticDir string `mapstructure:"static-dir" validate:"required_if=Enabled true"`
@@ -68,6 +72,7 @@ type Config struct {
 	RateLimit        RateLimitConfig        `mapstructure:"rate-limit"`
 	Auth             AuthConfig             `mapstructure:"auth"`
 	Prompts          PromptConfig           `mapstructure:"prompts"`
+	Reports          ReportConfig           `mapstructure:"reports"`
 	Web              WebConfig              `mapstructure:"web"`
 	Monitoring       MonitoringConfig       `mapstructure:"monitoring"`
 	SchedulerControl SchedulerControlConfig `mapstructure:"scheduler-control"`
@@ -129,6 +134,7 @@ func LoadConfig(args []string) (*Config, error) {
 	v.SetDefault("admin.enabled", true)
 	v.SetDefault("admin.port", 8091)
 	v.SetDefault("prompts.storage-uri", "file://runtime/prompts")
+	v.SetDefault("reports.storage-uri", "file://runtime/reports")
 	v.SetDefault("web.enabled", false)
 	v.SetDefault("web.static-dir", "assets/static/prismctl-web")
 	v.SetDefault("nats.nats-host", "nats")
@@ -188,6 +194,7 @@ func LoadConfig(args []string) (*Config, error) {
 
 	fs.String("auth-hash-algorithm", "sha256", "Token hash algorithm")
 	fs.String("prompts-storage-uri", "file://runtime/prompts", "Storage URI for uploaded prompt objects")
+	fs.String("reports-storage-uri", "file://runtime/reports", "Storage URI for generated report objects")
 	fs.String("s3-endpoint", "", "S3 endpoint URL")
 	fs.String("s3-region", "us-east-1", "S3 region")
 	fs.String("s3-access-key", "", "S3 access key")
@@ -240,6 +247,9 @@ func LoadConfig(args []string) (*Config, error) {
 		return nil, err
 	}
 	if err := bindPromptFlags(v, fs); err != nil {
+		return nil, err
+	}
+	if err := bindReportFlags(v, fs); err != nil {
 		return nil, err
 	}
 	if err := bindNATSFlags(v, fs); err != nil {
@@ -360,6 +370,13 @@ func bindAuthFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 func bindPromptFlags(v *viper.Viper, fs *pflag.FlagSet) error {
 	if err := v.BindPFlag("prompts.storage-uri", fs.Lookup("prompts-storage-uri")); err != nil {
 		return fmt.Errorf("bind prompts.storage-uri: %w", err)
+	}
+	return nil
+}
+
+func bindReportFlags(v *viper.Viper, fs *pflag.FlagSet) error {
+	if err := v.BindPFlag("reports.storage-uri", fs.Lookup("reports-storage-uri")); err != nil {
+		return fmt.Errorf("bind reports.storage-uri: %w", err)
 	}
 	return nil
 }

@@ -202,6 +202,22 @@ func WithPipelineRuntime(runtime repo.PipelineRuntime) ServerOption {
 	return func(s *Server) { s.PipelineRuntime = runtime }
 }
 
+func WithAnalysisRuns(runs repo.AnalysisRuns) ServerOption {
+	return func(s *Server) { s.AnalysisRuns = runs }
+}
+
+// WithReports attaches the report metadata repository and artifact storage.
+func WithReports(reports repo.Reports, store storage.Store) ServerOption {
+	return func(s *Server) {
+		if reports != nil {
+			s.Reports = reports
+		}
+		if store != nil {
+			s.ReportStore = store
+		}
+	}
+}
+
 // WithNATSInspector attaches the read-only JetStream inspector used by admin
 // diagnostics. It cannot publish, subscribe, acknowledge, or mutate NATS.
 func WithNATSInspector(inspector NATSInspector) ServerOption {
@@ -238,6 +254,8 @@ type Server struct {
 	Tasks            repo.Tasks
 	Pipeline         repo.Pipeline
 	UserFetches      repo.UserFetches
+	AnalysisRuns     repo.AnalysisRuns
+	Reports          repo.Reports
 	PipelineRuntime  repo.PipelineRuntime
 	Sources          repo.Sources
 	Operator         repo.Operator
@@ -247,6 +265,7 @@ type Server struct {
 	GetFetchLimiter  middleware.IPLimiter
 	Monitor          StatusMonitor
 	PromptStore      storage.Store
+	ReportStore      storage.Store
 	SchedulerToggles *infra.SchedulerToggleStore
 	NATSInspector    NATSInspector
 	NATSAdmin        NATSAdmin
@@ -299,8 +318,15 @@ type RouteRegistrar interface {
 func (s *Server) RegisterV1(r RouteRegistrar) {
 	r.Handle("GET /candidates", http.HandlerFunc(s.ListCandidates))
 	r.Handle("POST /page_fetch", http.HandlerFunc(s.PageFetch))
+	r.Handle("POST /analysis/preflight", http.HandlerFunc(s.AnalysisPreflight))
+	r.Handle("POST /analyses/preflight", http.HandlerFunc(s.AnalysisPreflight))
+	r.Handle("POST /analysis-runs", http.HandlerFunc(s.CreateAnalysisRun))
+	r.Handle("POST /analyses", http.HandlerFunc(s.CreateAnalysisRun))
+	r.Handle("GET /analyses/{id}", http.HandlerFunc(s.GetAnalysis))
+	r.Handle("GET /analyses/{id}/report", http.HandlerFunc(s.GetAnalysisReport))
 	r.Handle("GET /contents/{candidate_id}", http.HandlerFunc(s.GetContent))
 	r.Handle("GET /fetches/{id}", middleware.RateLimit(s.GetFetchLimiter)(http.HandlerFunc(s.GetFetch)))
+	r.Handle("POST /analysis-runs/{id}/resolve-fetch-failures", http.HandlerFunc(s.ResolveFetchFailures))
 	r.Handle("GET /status", http.HandlerFunc(s.GetStatus))
 }
 
@@ -343,6 +369,7 @@ func (s *Server) RegisterV1Admin(r RouteRegistrar) {
 	r.Handle("POST /prompts", s.requireAdmin(http.HandlerFunc(s.CreatePromptVersion)))
 	r.Handle("GET /prompts/{id}", s.requireAdmin(http.HandlerFunc(s.GetPromptVersion)))
 	r.Handle("GET /whoami", s.requireAdmin(http.HandlerFunc(s.WhoAmI)))
+	r.Handle("DELETE /reports/{execution_id}", s.requireAdmin(http.HandlerFunc(s.DeleteAdminReport)))
 	r.Handle("POST /tokens", s.requireTokenAdmin(http.HandlerFunc(s.CreateToken)))
 	r.Handle("GET /tokens", s.requireTokenAdmin(http.HandlerFunc(s.ListTokens)))
 	r.Handle("GET /tokens/{id}", s.requireTokenAdmin(http.HandlerFunc(s.GetToken)))

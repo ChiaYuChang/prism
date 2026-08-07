@@ -122,6 +122,45 @@ func TestHandlerEmbedsCanonicalContent(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestHandlerEmbedsContentSnapshotAfterSoftDelete(t *testing.T) {
+	contentID := uuid.Must(uuid.NewV7())
+	taskID := uuid.Must(uuid.NewV7())
+	llmEmbedder := llmmocks.NewMockEmbedder(t)
+	scout := repomocks.NewMockScout(t)
+	pipeline := repomocks.NewMockPipeline(t)
+	embeddings := repomocks.NewMockEmbeddings(t)
+	scheduler := repomocks.NewMockScheduler(t)
+	tasks := repomocks.NewMockTasks(t)
+	deletedAt := time.Now()
+	snapshot := repo.Content{
+		ID: contentID, Type: repo.ContentTypePartyRelease, SourceAbbr: "dpp", Title: "Captured release",
+		Content: "Captured body", PublishedAt: time.Now(), DeletedAt: &deletedAt, Metadata: []byte(`{"captured":true}`),
+	}
+
+	tasks.EXPECT().IsTaskRunning(mock.Anything, taskID).Return(true, nil)
+	embeddings.EXPECT().GetContentEmbeddingInputHash(mock.Anything, contentID, int16(7)).Return("", pgx.ErrNoRows)
+	llmEmbedder.EXPECT().Embed(mock.Anything, mock.MatchedBy(func(req *llm.EmbedRequest) bool {
+		return len(req.Input) == 1 && req.Input[0] == embedder.CanonicalDocumentText(snapshot)
+	})).Return(&llm.EmbedResponse{Vectors: [][]float32{{1, 2, 3}}}, nil)
+	embeddings.EXPECT().UpsertContentEmbedding(mock.Anything, mock.MatchedBy(func(arg repo.CreateContentEmbeddingParams) bool {
+		return arg.ContentID == contentID && arg.TraceID == "snapshot-trace"
+	})).Return(repo.ContentEmbedding{}, nil)
+	scheduler.EXPECT().CompleteTask(mock.Anything, taskID).Return(nil)
+
+	h, err := NewHandler(HandlerConfig{
+		Logger: slog.Default(), Tracer: noop.NewTracerProvider().Tracer("test"),
+		Embedder: EmbedderConfig{Embedder: llmEmbedder, ModelID: 7, ModelName: "embed-model", Dimension: 3, RetryMax: 3},
+		Store:    Store{Scout: scout, Pipeline: pipeline, Embeddings: embeddings, Reporter: scheduler, Tasks: tasks},
+	})
+	require.NoError(t, err)
+	msg := taskMessage(t, message.TaskSignal{TaskID: taskID, Kind: repo.TaskKindEmbedContent, TraceID: "snapshot-trace", Meta: mustJSON(t, map[string]any{
+		"content_id": contentID.String(), "snapshot": snapshot,
+	})})
+	ack, err := h.HandleMessage(context.Background(), msg)
+	require.True(t, ack)
+	require.NoError(t, err)
+}
+
 func TestHandlerRejectsWrongVectorDimension(t *testing.T) {
 	candidateID := uuid.Must(uuid.NewV7())
 	taskID := uuid.Must(uuid.NewV7())

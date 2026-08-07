@@ -9,6 +9,7 @@ fi
 
 ROOT_FILE="${PRISM_ROOT_TOKEN_FILE:-.secrets/prism_root_token}"
 ADMIN_FILE="${PRISM_ADMIN_TOKEN_FILE:-.secrets/prism_admin_token}"
+PG_PASSWORD_FILE="${PG_PASSWORD_FILE:-.secrets/pg-prism}"
 export PRISM_ROOT_TOKEN_FILE="$ROOT_FILE"
 export PRISM_ADMIN_TOKEN_FILE="$ADMIN_FILE"
 

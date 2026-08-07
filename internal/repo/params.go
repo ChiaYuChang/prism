@@ -45,23 +45,29 @@ type ListOperatorParams struct {
 }
 
 type CreateTaskParams struct {
-	BatchID        uuid.UUID      `validate:"required"`
-	ParentBatchID  *uuid.UUID     `validate:"omitempty"`
-	ParentTaskID   *uuid.UUID     `validate:"omitempty"`
-	PreviousTaskID *uuid.UUID     `validate:"omitempty"`
-	NextTaskID     *uuid.UUID     `validate:"omitempty"`
-	LogicalKey     *string        `validate:"omitempty"`
-	Kind           string         `validate:"required"`
-	SourceType     string         `validate:"required"`
-	SourceAbbr     string         `validate:"required"`
-	URL            string         `validate:"required,url"`
-	Payload        []byte         `validate:"omitempty"`
-	PayloadHash    *string        `validate:"omitempty,len=64"`
-	Meta           []byte         `validate:"omitempty"`
-	TraceID        string         `validate:"required"`
-	Frequency      *time.Duration `validate:"omitempty"`
-	NextRunAt      *time.Time     `validate:"omitempty"`
-	ExpiresAt      *time.Time     `validate:"omitempty"`
+	BatchID                    uuid.UUID      `validate:"required"`
+	AnalysisExecutionID        *uuid.UUID     `validate:"omitempty"`
+	ParentBatchID              *uuid.UUID     `validate:"omitempty"`
+	ParentTaskID               *uuid.UUID     `validate:"omitempty"`
+	PreviousTaskID             *uuid.UUID     `validate:"omitempty"`
+	NextTaskID                 *uuid.UUID     `validate:"omitempty"`
+	LogicalKey                 *string        `validate:"omitempty"`
+	Kind                       string         `validate:"required"`
+	SourceType                 string         `validate:"required"`
+	SourceAbbr                 string         `validate:"required"`
+	URL                        string         `validate:"required,url"`
+	Payload                    []byte         `validate:"omitempty"`
+	PayloadHash                *string        `validate:"omitempty,len=64"`
+	Meta                       []byte         `validate:"omitempty"`
+	TraceID                    string         `validate:"required"`
+	Frequency                  *time.Duration `validate:"omitempty"`
+	NextRunAt                  *time.Time     `validate:"omitempty"`
+	ExpiresAt                  *time.Time     `validate:"omitempty"`
+	PipelineDefinitionHash     string         `validate:"omitempty,len=64"`
+	PipelineIdempotencyKey     *string        `validate:"omitempty,max=255"`
+	PipelineRequestFingerprint string         `validate:"omitempty,len=64"`
+	PipelineInputCandidateIDs  []uuid.UUID    `validate:"omitempty"`
+	PipelineInputContentIDs    []uuid.UUID    `validate:"omitempty"`
 }
 
 type EnsureBatchParams struct {
@@ -277,4 +283,83 @@ type CreateUserFetchItemParams struct {
 	CandidateID    uuid.UUID  `validate:"required"`
 	TaskID         *uuid.UUID `validate:"omitempty"`
 	SnapshotStatus *string    `validate:"omitempty"`
+}
+
+type CreateAnalysisRunParams struct {
+	ID                           uuid.UUID
+	UserID                       *uuid.UUID
+	FetchID                      uuid.UUID
+	Topic                        string
+	Brief                        string
+	FetchFailurePolicy           string
+	Status                       string
+	OriginalSelectedCandidateIDs []uuid.UUID
+	UnavailableCandidateIDs      []uuid.UUID
+}
+
+type SetAnalysisRunManifestParams struct {
+	ID                 uuid.UUID
+	ReadyCandidateIDs  []uuid.UUID
+	ReadyContentIDs    []uuid.UUID
+	FailedCandidateIDs []uuid.UUID
+}
+
+type SetAnalysisRunStatusParams struct {
+	ID                 uuid.UUID
+	Status             string
+	FailedCandidateIDs []uuid.UUID
+	FailureCode        *string
+}
+
+type CreateReportParams struct {
+	AnalysisExecutionID uuid.UUID
+	RootBatchID         uuid.UUID
+	StorageURI          string
+	ByteSize            int64
+	SHA256              string
+	ExpiresAt           time.Time
+}
+
+type CompleteAnalysisReportParams struct {
+	TaskID              uuid.UUID
+	RootBatchID         uuid.UUID
+	AnalysisExecutionID uuid.UUID
+	Report              CreateReportParams
+}
+
+type MarkReportCorruptParams struct {
+	ReportID  uuid.UUID
+	Reason    string
+	RequestID *string
+}
+
+type ReportAuditEventParams struct {
+	ReportID            uuid.UUID
+	AnalysisExecutionID uuid.UUID
+	EventType           string
+	ActorTokenID        *uuid.UUID
+	ActorComponent      string
+	ActorName           *string
+	Reason              *string
+	RequestID           *string
+	StorageURI          string
+	StorageOutcome      string
+	StorageError        *string
+}
+
+type BeginReportRemovalParams struct {
+	AnalysisExecutionID uuid.UUID
+	ActorTokenID        uuid.UUID
+	ActorName           *string
+	Reason              string
+	RequestID           *string
+}
+
+type CreateAnalysisSessionParams struct {
+	AnalysisID         uuid.UUID
+	UserID             *uuid.UUID
+	Topic              string
+	Brief              string
+	FetchFailurePolicy string
+	SelectedCandidates []Candidate
 }
