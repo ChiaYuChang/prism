@@ -28,7 +28,7 @@ func TestAnalysisRuns_CreateSession_Integration(t *testing.T) {
 	q := New(pool) // Use SQLC queries directly to seed test data
 
 	// Create a shared Source (since candidate requires a source)
-	sourceAbbr := "test_source_" + uuid.NewString()[:8]
+	sourceAbbr := "test_" + uuid.NewString()[:8]
 	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'MEDIA', 'https://example.test')`, sourceAbbr, sourceAbbr)
 	require.NoError(t, err)
 
@@ -71,17 +71,17 @@ func TestAnalysisRuns_CreateSession_Integration(t *testing.T) {
 
 			// 1. Setup Candidate test data
 			_, err = pool.Exec(ctx, `
-				INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, title, url, ingestion_method) 
-				VALUES ($1, $2, $3, $4, $5, $6, 'DIRECTORY')`,
-				candidateID, uuid.New(), sourceAbbr, uuid.NewString(), "Test Article", candidateURL)
+				INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, title, url, ingestion_method, trace_id) 
+				VALUES ($1, $2, $3, $4, $5, $6, 'DIRECTORY', 'test-trace')`,
+				candidateID, uuid.New(), sourceAbbr, uuid.NewString()[:32], "Test Article", candidateURL)
 			require.NoError(t, err)
 
 			// [GIVEN] Pre-existing Content
 			if tc.givenExistingContent {
 				_, err = pool.Exec(ctx, `
-					INSERT INTO contents (url, candidate_id, title, content, fetched_at)
-					VALUES ($1, $2, 'Test Title', '<html>body</html>', $3)`,
-					candidateURL, candidateID, time.Now())
+					INSERT INTO contents (url, candidate_id, title, content, fetched_at, published_at, type, source_abbr, trace_id)
+					VALUES ($1, $2, 'Test Title', '<html>body</html>', $3, $3, 'ARTICLE', $4, 'test-trace')`,
+					candidateURL, candidateID, time.Now(), sourceAbbr)
 				require.NoError(t, err)
 			}
 
@@ -95,8 +95,8 @@ func TestAnalysisRuns_CreateSession_Integration(t *testing.T) {
 				require.NoError(t, err)
 
 				_, err = pool.Exec(ctx, `
-					INSERT INTO tasks (batch_id, kind, source_type, source_abbr, url, status)
-					VALUES ($1, 'PAGE_FETCH', 'MEDIA', $2, $3, 'PENDING')`,
+					INSERT INTO tasks (batch_id, kind, source_type, source_abbr, url, status, trace_id)
+					VALUES ($1, 'PAGE_FETCH', 'MEDIA', $2, $3, 'PENDING', 'test-trace')`,
 					otherBatchID, sourceAbbr, candidateURL)
 				require.NoError(t, err)
 			}
@@ -112,7 +112,7 @@ func TestAnalysisRuns_CreateSession_Integration(t *testing.T) {
 				UserID:             &userID,
 				Topic:              "Test Topic",
 				Brief:              "Test Brief",
-				FetchFailurePolicy: "IGNORE",
+				FetchFailurePolicy: "IGNORE_FAILED",
 				SelectedCandidates: []repo.Candidate{
 					{
 						ID:         candidateID,
@@ -143,7 +143,7 @@ func TestAnalysisRuns_CreateSession_Integration(t *testing.T) {
 				TaskID         *uuid.UUID
 				SnapshotStatus *string
 			}
-			rows, err := pool.Query(ctx, "SELECT task_id, snapshot_status FROM user_fetch_items WHERE fetch_id = $1", run.FetchID)
+			rows, err := pool.Query(ctx, "SELECT task_id, snapshot_status FROM fetch_items WHERE fetch_id = $1", run.FetchID)
 			require.NoError(t, err)
 			for rows.Next() {
 				var item struct {
@@ -187,12 +187,12 @@ func TestAnalysisRuns_CreateSession_RollbackOnConflict(t *testing.T) {
 	fetchID := uuid.New()
 
 	// Pre-create the fetch and analysis run to cause a primary key conflict
-	_, err = pool.Exec(ctx, "INSERT INTO user_fetches (id, user_id) VALUES ($1, $2)", fetchID, userID)
+	_, err = pool.Exec(ctx, "INSERT INTO fetches (id, user_id) VALUES ($1, $2)", fetchID, userID)
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO analysis_runs (id, user_id, fetch_id, status, fetch_failure_policy) 
-		VALUES ($1, $2, $3, 'FETCHING', 'IGNORE')`,
+		INSERT INTO analysis_runs (id, user_id, fetch_id, status, fetch_failure_policy, original_selected_candidate_ids) 
+		VALUES ($1, $2, $3, 'FETCHING', 'IGNORE_FAILED', '{}')`,
 		analysisID, userID, fetchID)
 	require.NoError(t, err)
 
@@ -202,23 +202,23 @@ func TestAnalysisRuns_CreateSession_RollbackOnConflict(t *testing.T) {
 		UserID:             &userID,
 		Topic:              "Test Topic",
 		Brief:              "Test Brief",
-		FetchFailurePolicy: "IGNORE",
+		FetchFailurePolicy: "IGNORE_FAILED",
 		SelectedCandidates: []repo.Candidate{},
 	}
 
 	// Record initial fetches count
 	var initialFetchCount int
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM user_fetches").Scan(&initialFetchCount)
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM fetches").Scan(&initialFetchCount)
 	require.NoError(t, err)
 
 	_, err = repository.AnalysisRuns().CreateSession(ctx, params)
 	require.Error(t, err) // Should fail due to PK conflict
 
-	// THEN: It should have rolled back, so NO new user_fetches were created
+	// THEN: It should have rolled back, so NO new fetches were created
 	var finalFetchCount int
-	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM user_fetches").Scan(&finalFetchCount)
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM fetches").Scan(&finalFetchCount)
 	require.NoError(t, err)
-	require.Equal(t, initialFetchCount, finalFetchCount, "Expected Rollback to prevent user_fetches creation")
+	require.Equal(t, initialFetchCount, finalFetchCount, "Expected Rollback to prevent fetches creation")
 }
 
 func TestAnalysisRuns_CreateSession_RaceFallback(t *testing.T) {
@@ -239,14 +239,14 @@ func TestAnalysisRuns_CreateSession_RaceFallback(t *testing.T) {
 	candidateURL := "https://example.com/race/" + uuid.NewString()
 
 	// 1. Setup Candidate test data
-	sourceAbbr := "test_source_" + uuid.NewString()[:8]
+	sourceAbbr := "test_" + uuid.NewString()[:8]
 	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'MEDIA', 'https://example.test')`, sourceAbbr, sourceAbbr)
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, title, url, ingestion_method) 
-		VALUES ($1, $2, $3, $4, $5, $6, 'DIRECTORY')`,
-		candidateID, uuid.New(), sourceAbbr, uuid.NewString(), "Test Article", candidateURL)
+		INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, title, url, ingestion_method, trace_id) 
+		VALUES ($1, $2, $3, $4, $5, $6, 'DIRECTORY', 'test-trace')`,
+		candidateID, uuid.New(), sourceAbbr, uuid.NewString()[:32], "Test Article", candidateURL)
 	require.NoError(t, err)
 
 	// 2. Setup a COMPLETED task and its contents
@@ -255,15 +255,15 @@ func TestAnalysisRuns_CreateSession_RaceFallback(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO tasks (batch_id, kind, source_type, source_abbr, url, status)
-		VALUES ($1, 'PAGE_FETCH', 'MEDIA', $2, $3, 'COMPLETED')`,
+		INSERT INTO tasks (batch_id, kind, source_type, source_abbr, url, status, trace_id)
+		VALUES ($1, 'PAGE_FETCH', 'MEDIA', $2, $3, 'COMPLETED', 'test-trace')`,
 		otherBatchID, sourceAbbr, candidateURL)
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx, `
-		INSERT INTO contents (url, candidate_id, title, content, fetched_at)
-		VALUES ($1, $2, 'Test Title', '<html>body</html>', $3)`,
-		candidateURL, candidateID, time.Now())
+		INSERT INTO contents (url, candidate_id, title, content, fetched_at, published_at, type, source_abbr, trace_id)
+		VALUES ($1, $2, 'Test Title', '<html>body</html>', $3, $3, 'ARTICLE', $4, 'test-trace')`,
+		candidateURL, candidateID, time.Now(), sourceAbbr)
 	require.NoError(t, err)
 
 	// WHEN CreateSession is called
@@ -272,7 +272,7 @@ func TestAnalysisRuns_CreateSession_RaceFallback(t *testing.T) {
 		UserID:             &userID,
 		Topic:              "Test Topic",
 		Brief:              "Test Brief",
-		FetchFailurePolicy: "IGNORE",
+		FetchFailurePolicy: "IGNORE_FAILED",
 		SelectedCandidates: []repo.Candidate{
 			{
 				ID:         candidateID,
@@ -291,14 +291,13 @@ func TestAnalysisRuns_CreateSession_RaceFallback(t *testing.T) {
 	// So it fell back to GetContentByURL and succeeded).
 	var snapshotStatus *string
 	var taskID *uuid.UUID
-	err = pool.QueryRow(ctx, "SELECT task_id, snapshot_status FROM user_fetch_items WHERE fetch_id = $1", run.FetchID).Scan(&taskID, &snapshotStatus)
+	err = pool.QueryRow(ctx, "SELECT task_id, snapshot_status FROM fetch_items WHERE fetch_id = $1", run.FetchID).Scan(&taskID, &snapshotStatus)
 	require.NoError(t, err)
-	
+
 	require.Nil(t, taskID, "Expected UserFetchItem NOT to have a task (it should use ALREADY_COMPLETE snapshot)")
 	require.NotNil(t, snapshotStatus)
 	require.Equal(t, "ALREADY_COMPLETE", *snapshotStatus)
 }
-
 
 func TestAnalysisRuns_RetryFailedItems(t *testing.T) {
 	url := os.Getenv("PRISM_TEST_DATABASE_URL")
@@ -309,58 +308,64 @@ func TestAnalysisRuns_RetryFailedItems(t *testing.T) {
 	pool, err := pgxpool.New(ctx, url)
 	require.NoError(t, err)
 	defer pool.Close()
-	
+
 	repository := NewPostgresRepository(pool)
-	
+
 	// Create a shared Source
-	sourceAbbr := "test_source_" + uuid.NewString()[:8]
+	sourceAbbr := "test_" + uuid.NewString()[:8]
 	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'MEDIA', 'https://example.test')`, sourceAbbr, sourceAbbr)
 	require.NoError(t, err)
-	
+
 	// Pre-insert batch and candidates
 	batchID := uuid.Must(uuid.NewV7())
-	_, err = pool.Exec(ctx, `INSERT INTO batches (id, source_type, source_abbr, n_subtasks, max_subtasks) VALUES ($1, 'MEDIA', $2, 0, 10)`, batchID, sourceAbbr)
+	_, err = pool.Exec(ctx, `INSERT INTO batches (id, source_type) VALUES ($1, 'MEDIA')`, batchID)
 	require.NoError(t, err)
-	
+
 	cID1 := uuid.Must(uuid.NewV7())
-	_, err = pool.Exec(ctx, `INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, url) VALUES ($1, $2, $3, $4, $5)`, cID1, batchID, sourceAbbr, "test1", "https://example.com/1")
+	_, err = pool.Exec(ctx, `INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, url, trace_id, title, ingestion_method) VALUES ($1, $2, $3, $4, $5, 'test-trace', 'Test', 'DIRECTORY')`, cID1, batchID, sourceAbbr, uuid.NewString()[:32], "https://example.com/1")
 	require.NoError(t, err)
-	
+
 	cID2 := uuid.Must(uuid.NewV7())
-	_, err = pool.Exec(ctx, `INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, url) VALUES ($1, $2, $3, $4, $5)`, cID2, batchID, sourceAbbr, "test2", "https://example.com/2")
+	_, err = pool.Exec(ctx, `INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, url, trace_id, title, ingestion_method) VALUES ($1, $2, $3, $4, $5, 'test-trace', 'Test', 'DIRECTORY')`, cID2, batchID, sourceAbbr, uuid.NewString()[:32], "https://example.com/2")
 	require.NoError(t, err)
-	
+
 	// Create analysis session
 	runID := uuid.Must(uuid.NewV7())
-	_, err = repository.AnalysisRuns().CreateSession(ctx, repo.CreateAnalysisSessionParams{
-		AnalysisID: runID, Topic: "test", Brief: "brief", 
+	run, err := repository.AnalysisRuns().CreateSession(ctx, repo.CreateAnalysisSessionParams{
+		AnalysisID: runID, Topic: "test", Brief: "brief",
 		FetchFailurePolicy: "STOP",
-		SelectedCandidates: []repo.Candidate{{ID: cID1, SourceAbbr: sourceAbbr}, {ID: cID2, SourceAbbr: sourceAbbr}},
+		SelectedCandidates: []repo.Candidate{{ID: cID1, SourceAbbr: sourceAbbr, URL: "https://example.com/1"}, {ID: cID2, SourceAbbr: sourceAbbr, URL: "https://example.com/2"}},
 	})
 	require.NoError(t, err)
-	
+
 	// Complete one task, fail another
-	items, err := repository.AnalysisRuns().ListItems(ctx, runID)
+	items, err := repository.AnalysisRuns().ListItems(ctx, run.FetchID)
 	require.NoError(t, err)
 	require.Len(t, items, 2)
-	
+
 	var taskID1, taskID2 uuid.UUID
-	if items[0].CandidateID == cID1 { taskID1 = *items[0].TaskID; taskID2 = *items[1].TaskID } else { taskID1 = *items[1].TaskID; taskID2 = *items[0].TaskID }
-	
+	if items[0].CandidateID == cID1 {
+		taskID1 = *items[0].TaskID
+		taskID2 = *items[1].TaskID
+	} else {
+		taskID1 = *items[1].TaskID
+		taskID2 = *items[0].TaskID
+	}
+
 	_, err = pool.Exec(ctx, `UPDATE tasks SET status = 'COMPLETED' WHERE id = $1`, taskID1)
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx, `UPDATE tasks SET status = 'FAILED' WHERE id = $1`, taskID2)
 	require.NoError(t, err)
-	
+
 	// Execute RetryFailedItems
 	err = repository.AnalysisRuns().RetryFailedItems(ctx, runID)
 	require.NoError(t, err)
-	
+
 	// Verify that the failed task has been retried (a new task is created and linked)
-	newItems, err := repository.AnalysisRuns().ListItems(ctx, runID)
+	newItems, err := repository.AnalysisRuns().ListItems(ctx, run.FetchID)
 	require.NoError(t, err)
 	require.Len(t, newItems, 2)
-	
+
 	for _, item := range newItems {
 		if item.CandidateID == cID1 {
 			require.Equal(t, taskID1, *item.TaskID) // The COMPLETED task should NOT change
@@ -379,48 +384,48 @@ func TestAnalysisRuns_CreateSession_RaceFallback_SoftDelete(t *testing.T) {
 	pool, err := pgxpool.New(ctx, url)
 	require.NoError(t, err)
 	defer pool.Close()
-	
+
 	repository := NewPostgresRepository(pool)
-	
+
 	// Create a shared Source
-	sourceAbbr := "test_source_" + uuid.NewString()[:8]
+	sourceAbbr := "test_" + uuid.NewString()[:8]
 	_, err = pool.Exec(ctx, `INSERT INTO sources (abbr, name, type, base_url) VALUES ($1, $2, 'MEDIA', 'https://example.test')`, sourceAbbr, sourceAbbr)
 	require.NoError(t, err)
-	
+
 	batchID := uuid.Must(uuid.NewV7())
-	_, err = pool.Exec(ctx, `INSERT INTO batches (id, source_type, source_abbr, n_subtasks, max_subtasks) VALUES ($1, 'MEDIA', $2, 0, 10)`, batchID, sourceAbbr)
+	_, err = pool.Exec(ctx, `INSERT INTO batches (id, source_type) VALUES ($1, 'MEDIA')`, batchID)
 	require.NoError(t, err)
-	
+
 	cID := uuid.Must(uuid.NewV7())
-	_, err = pool.Exec(ctx, `INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, url) VALUES ($1, $2, $3, $4, $5)`, cID, batchID, sourceAbbr, "test-soft-delete", "https://example.com/soft-delete")
+	_, err = pool.Exec(ctx, `INSERT INTO candidates (id, batch_id, source_abbr, fingerprint, url, trace_id, title, ingestion_method) VALUES ($1, $2, $3, $4, $5, 'test-trace', 'Test', 'DIRECTORY')`, cID, batchID, sourceAbbr, uuid.NewString()[:32], "https://example.com/soft-delete")
 	require.NoError(t, err)
-	
+
 	// Create task and content
 	task, err := repository.Tasks().CreateTask(ctx, repo.CreateTaskParams{
 		BatchID: batchID, Kind: repo.TaskKindPageFetch, SourceType: repo.SourceTypeMedia, SourceAbbr: sourceAbbr, URL: "https://example.com/soft-delete", TraceID: "trace",
 	})
 	require.NoError(t, err)
-	
+
 	_, err = pool.Exec(ctx, `UPDATE tasks SET status = 'COMPLETED' WHERE id = $1`, task.ID)
 	require.NoError(t, err)
-	
-	_, err = pool.Exec(ctx, `INSERT INTO contents (candidate_id, task_id, url, raw_content, content, word_count, trace_id, deleted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`, 
-		cID, task.ID, "https://example.com/soft-delete", []byte("raw"), "content", 1, "trace")
+
+	_, err = pool.Exec(ctx, `INSERT INTO contents (candidate_id, url, title, content, trace_id, deleted_at, source_abbr, type, published_at, fetched_at) VALUES ($1, $2, 'Test Title', $3, $4, NOW(), $5, 'ARTICLE', NOW(), NOW())`,
+		cID, "https://example.com/soft-delete", "content", "trace", sourceAbbr)
 	require.NoError(t, err)
-	
+
 	// Now call CreateSession -> race fallback should NOT mark it ALREADY_COMPLETE because content is deleted
 	runID := uuid.Must(uuid.NewV7())
-	_, err = repository.AnalysisRuns().CreateSession(ctx, repo.CreateAnalysisSessionParams{
-		AnalysisID: runID, Topic: "test", Brief: "brief", 
+	run, err := repository.AnalysisRuns().CreateSession(ctx, repo.CreateAnalysisSessionParams{
+		AnalysisID: runID, Topic: "test", Brief: "brief",
 		FetchFailurePolicy: "STOP",
 		SelectedCandidates: []repo.Candidate{{ID: cID, SourceAbbr: sourceAbbr, URL: "https://example.com/soft-delete"}},
 	})
 	require.NoError(t, err)
-	
-	items, err := repository.AnalysisRuns().ListItems(ctx, runID)
+
+	items, err := repository.AnalysisRuns().ListItems(ctx, run.FetchID)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	
+
 	// Because content is deleted, the race fallback should NOT have set SnapshotStatus to ALREADY_COMPLETE.
 	// It should create a new task and leave SnapshotStatus as NULL.
 	require.Nil(t, items[0].SnapshotStatus)

@@ -222,3 +222,12 @@ tasks:
         echo "api-server did not become reachable at http://127.0.0.1:8090/healthz" >&2
         exit 1
       - go test -tags=e2e -count=1 -v ./e2e/...
+
+  test:ci:
+    desc: run act to simulate GitHub Actions CI locally
+    summary: |
+      Runs the full CI pipeline using act, mimicking GitHub Actions behavior.
+      Automatically uses an empty .secrets file to prevent parsing errors
+      caused by the .secrets directory.
+    cmds:
+      - act --secret-file /dev/null

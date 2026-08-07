@@ -34,7 +34,7 @@ type AnalysisPreflightResponse struct {
 }
 
 type AnalysisRunRequest struct {
-	AnalysisID         uuid.UUID `json:"analysis_id"`
+	AnalysisID uuid.UUID `json:"analysis_id"`
 	analysisSelectionRequest
 	Topic              string `json:"topic"`
 	Brief              string `json:"brief"`
@@ -226,8 +226,6 @@ func (s *Server) ResolveFetchFailures(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, analysisRunResponse(run))
 }
-
-
 
 func (s *Server) confirmAnalysisRun(ctx context.Context, run repo.AnalysisRun) (repo.AnalysisRun, error) {
 	items, err := s.AnalysisRuns.ListItems(ctx, run.FetchID)
@@ -429,7 +427,6 @@ func validateAnalysisIDs(ids []uuid.UUID) ([]uuid.UUID, error) {
 	return unique, nil
 }
 
-
 func (s *Server) loadAnalysisRun(ctx context.Context, w http.ResponseWriter, rawID string) (repo.AnalysisRun, bool) {
 	id, err := uuid.Parse(rawID)
 	if err != nil {
@@ -452,7 +449,6 @@ func (s *Server) loadAnalysisRun(ctx context.Context, w http.ResponseWriter, raw
 	}
 	return run, true
 }
-
 
 func stringPtr(value string) *string { return &value }
 

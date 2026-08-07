@@ -48,10 +48,10 @@ func TestCreateAnalysisRunReusesExistingContent(t *testing.T) {
 
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, []uuid.UUID{candidateID}).Return([]repo.Candidate{candidate}, nil).Twice()
 	analysisRuns.EXPECT().GetByID(mock.Anything, runID).Return(repo.AnalysisRun{}, pgx.ErrNoRows).Once()
-	
+
 	analysisRuns.EXPECT().CreateSession(mock.Anything, mock.MatchedBy(func(arg repo.CreateAnalysisSessionParams) bool {
-		return arg.AnalysisID == runID && 
-			arg.FetchFailurePolicy == repo.AnalysisFailurePolicyIgnoreFailed && 
+		return arg.AnalysisID == runID &&
+			arg.FetchFailurePolicy == repo.AnalysisFailurePolicyIgnoreFailed &&
 			arg.SelectedCandidates[0].ID == candidateID &&
 			arg.Topic == "topic" && arg.Brief == "brief"
 	})).Return(repo.AnalysisRun{ID: runID, FetchID: fetchID, Status: repo.AnalysisRunStatusFetching}, nil).Once()
@@ -125,7 +125,7 @@ func TestResolveFetchFailures_API(t *testing.T) {
 func TestAnalysisPreflight_DuplicateIDs(t *testing.T) {
 	srv, m := newTestServer(t)
 	dupID := uuid.Must(uuid.NewV7())
-	
+
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, []uuid.UUID{dupID}).
 		Return([]repo.Candidate{{ID: dupID, URL: "https://example.com/article"}}, nil).Once()
 
@@ -144,9 +144,9 @@ func TestAnalysisPreflight_DuplicateIDs(t *testing.T) {
 func TestCreateAnalysisRun_DuplicateIDs(t *testing.T) {
 	srv, m := newTestServer(t)
 	userID := uuid.Must(uuid.NewV7())
-	
+
 	dupID := uuid.Must(uuid.NewV7())
-	
+
 	m.scout.EXPECT().GetCandidatesByIDs(mock.Anything, []uuid.UUID{dupID}).
 		Return([]repo.Candidate{{ID: dupID, URL: "https://example.com/article"}}, nil).Twice()
 
@@ -158,13 +158,13 @@ func TestCreateAnalysisRun_DuplicateIDs(t *testing.T) {
 	})).Return(repo.AnalysisRun{ID: uuid.Must(uuid.NewV7()), Status: repo.AnalysisRunStatusFetching}, nil).Once()
 
 	body, _ := json.Marshal(map[string]any{
-		"analysis_id": uuid.Must(uuid.NewV7()),
-		"topic": "Test", 
-		"brief": "Brief", 
-		"fetch_failure_policy": "STOP",
+		"analysis_id":            uuid.Must(uuid.NewV7()),
+		"topic":                  "Test",
+		"brief":                  "Brief",
+		"fetch_failure_policy":   "STOP",
 		"selected_candidate_ids": []uuid.UUID{dupID, dupID},
 	})
-	
+
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/analysis-runs", bytes.NewReader(body))
 	req = withUserPrincipal(req, userID)
 	rec := httptest.NewRecorder()
@@ -178,7 +178,7 @@ func TestGetAnalysisRun_OwnershipEnforcement(t *testing.T) {
 	runID := uuid.Must(uuid.NewV7())
 	ownerID := uuid.Must(uuid.NewV7())
 	otherID := uuid.Must(uuid.NewV7())
-	
+
 	mockRepo := mocks.NewMockAnalysisRuns(t)
 	srv.AnalysisRuns = mockRepo
 	mockRepo.EXPECT().GetByID(mock.Anything, runID).
@@ -208,14 +208,14 @@ func TestResolveFetchFailures_OwnershipEnforcement(t *testing.T) {
 	runID := uuid.Must(uuid.NewV7())
 	ownerID := uuid.Must(uuid.NewV7())
 	otherID := uuid.Must(uuid.NewV7())
-	
+
 	mockRepo := mocks.NewMockAnalysisRuns(t)
 	srv.AnalysisRuns = mockRepo
 	mockRepo.EXPECT().GetByID(mock.Anything, runID).
 		Return(repo.AnalysisRun{ID: runID, UserID: &ownerID, Status: repo.AnalysisRunStatusAwaitingResolution}, nil).Once()
 
 	body, _ := json.Marshal(map[string]any{"action": "RETRY_FAILED"})
-	
+
 	// Other user gets 404
 	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/analysis-runs/"+runID.String()+"/resolve-fetch-failures", bytes.NewReader(body))
 	req2 = withUserPrincipal(req2, otherID)

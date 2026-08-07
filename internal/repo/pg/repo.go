@@ -2059,6 +2059,7 @@ func (r *PGAnalysisRuns) CreateSession(ctx context.Context, arg repo.CreateAnaly
 		FetchFailurePolicy:           arg.FetchFailurePolicy,
 		Status:                       "FETCHING",
 		OriginalSelectedCandidateIds: originalSelectedCandidateIDs,
+		UnavailableCandidateIds:      []uuid.UUID{},
 	})
 	if err != nil {
 		return repo.AnalysisRun{}, fmt.Errorf("create analysis run: %w", err)
@@ -2329,7 +2330,7 @@ func (r *PGAnalysisRuns) RetryFailedItems(ctx context.Context, runID uuid.UUID) 
 			}); err != nil {
 				return fmt.Errorf("update fetch item: %w", err)
 			}
-			
+
 		case errors.Is(err, repo.ErrTaskAlreadyActive):
 			if task.ID != uuid.Nil {
 				taskID := task.ID
