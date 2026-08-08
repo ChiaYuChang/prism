@@ -9,31 +9,48 @@ import (
 	"github.com/ChiaYuChang/prism/internal/analyzer/llmapi"
 )
 
-//go:embed prompt.tmpl
-var promptTemplateText string
-var promptTemplate *template.Template
+//go:embed system_instruction.txt
+var DefaultSystemInstructionText string
 
-func init() {
-	promptTemplate = template.Must(template.New("extraction_prompt").Parse(promptTemplateText))
-}
+const RequestTemplateText = `
+<title>
+{{ .Title }}
+</title>
 
-// PromptData represents the data fed into the extraction prompt template.
-type PromptData struct {
+<article>
+{{ .Content }}
+</article>
+{{- if .Repair }}
+
+Previous result:
+<previous_output>
+{{ .Repair.PreviousOutput }}
+</previous_output>
+
+Validation errors:
+<validation_errors>
+{{ .Repair.Errors }}
+</validation_errors>
+{{- end }}
+`
+
+// RequestData represents the data fed into the request envelope template.
+type RequestData struct {
 	Title   string
 	Content string
-	Repair  *PromptRepair
+	Repair  *RequestRepair
 }
 
-// PromptRepair encapsulates the serialized repair hint for the prompt template.
-type PromptRepair struct {
+// RequestRepair encapsulates the serialized repair hint for the request envelope template.
+type RequestRepair struct {
 	PreviousOutput string
 	Errors         string
 }
 
-// RenderPrompt generates the final LLM prompt string for Stage 1.
+// RenderRequest generates the final LLM request string (the user prompt).
 // If hint is not nil, a repair section is included with the serialized previous output and errors.
-func RenderPrompt(title, content string, hint *llmapi.RepairHint) (string, error) {
-	data := PromptData{
+func RenderRequest(tmpl *template.Template, title, content string, hint *llmapi.RepairHint) (string, error) {
+	data := RequestData{
 		Title:   title,
 		Content: content,
 	}
@@ -50,14 +67,14 @@ func RenderPrompt(title, content string, hint *llmapi.RepairHint) (string, error
 			return "", err
 		}
 
-		data.Repair = &PromptRepair{
+		data.Repair = &RequestRepair{
 			PreviousOutput: string(prevBytes),
 			Errors:         string(errBytes),
 		}
 	}
 
 	var buf bytes.Buffer
-	if err := promptTemplate.Execute(&buf, data); err != nil {
+	if err := tmpl.Execute(&buf, data); err != nil {
 		return "", err
 	}
 	return buf.String(), nil

@@ -28,6 +28,10 @@ func (s testStore) Get(context.Context, string) (io.ReadCloser, error) {
 
 func (s testStore) List(context.Context, string) ([]storage.Object, error) { return nil, nil }
 
+func (s testStore) Stat(context.Context, string) (storage.ObjectMetadata, error) {
+	return storage.ObjectMetadata{}, storage.ErrNotFound
+}
+
 func (s testStore) Delete(context.Context, string) error { return nil }
 
 func TestResolveUsesExactVersion(t *testing.T) {

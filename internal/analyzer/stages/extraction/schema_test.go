@@ -10,7 +10,7 @@ import (
 
 func TestSchemaValidExtractionOutputPasses(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	validJSON := `{
 		"summary": "Valid summary",
 		"statements": [
@@ -43,14 +43,14 @@ func TestSchemaValidExtractionOutputPasses(t *testing.T) {
 
 	var m map[string]any
 	require.NoError(t, json.Unmarshal([]byte(validJSON), &m))
-	
+
 	err := s.Validate(m)
 	require.NoError(t, err)
 }
 
 func TestSchemaExplicitNullFieldsAreAccepted(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	validJSON := `{
 		"summary": "Valid summary",
 		"statements": [
@@ -78,14 +78,14 @@ func TestSchemaExplicitNullFieldsAreAccepted(t *testing.T) {
 
 	var m map[string]any
 	require.NoError(t, json.Unmarshal([]byte(validJSON), &m))
-	
+
 	err := s.Validate(m)
 	require.NoError(t, err)
 }
 
 func TestSchemaMissingNullableFieldIsRejected(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	invalidJSON := `{
 		"summary": "Valid summary",
 		"statements": [
@@ -112,7 +112,7 @@ func TestSchemaMissingNullableFieldIsRejected(t *testing.T) {
 
 	var m map[string]any
 	require.NoError(t, json.Unmarshal([]byte(invalidJSON), &m))
-	
+
 	err := s.Validate(m)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "name")
@@ -120,7 +120,7 @@ func TestSchemaMissingNullableFieldIsRejected(t *testing.T) {
 
 func TestSchemaUnknownStatementTypeIsRejected(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	invalidJSON := `{
 		"summary": "Valid summary",
 		"statements": [
@@ -148,7 +148,7 @@ func TestSchemaUnknownStatementTypeIsRejected(t *testing.T) {
 
 	var m map[string]any
 	require.NoError(t, json.Unmarshal([]byte(invalidJSON), &m))
-	
+
 	err := s.Validate(m)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "type")
@@ -156,7 +156,7 @@ func TestSchemaUnknownStatementTypeIsRejected(t *testing.T) {
 
 func TestSchemaEmptyTagsArrayIsAccepted(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	validJSON := `{
 		"summary": "Valid summary",
 		"statements": [
@@ -184,14 +184,14 @@ func TestSchemaEmptyTagsArrayIsAccepted(t *testing.T) {
 
 	var m map[string]any
 	require.NoError(t, json.Unmarshal([]byte(validJSON), &m))
-	
+
 	err := s.Validate(m)
 	require.NoError(t, err)
 }
 
 func TestSchemaMissingStatementFieldIsRejected(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	invalidJSON := `{
 		"summary": "Valid summary",
 		"statements": [
@@ -218,7 +218,7 @@ func TestSchemaMissingStatementFieldIsRejected(t *testing.T) {
 
 	var m map[string]any
 	require.NoError(t, json.Unmarshal([]byte(invalidJSON), &m))
-	
+
 	err := s.Validate(m)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sentiment")
@@ -226,7 +226,7 @@ func TestSchemaMissingStatementFieldIsRejected(t *testing.T) {
 
 func TestSchemaEmptyStatementsArrayIsRejected(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	invalidJSON := `{
 		"summary": "Valid summary",
 		"statements": [],
@@ -235,14 +235,14 @@ func TestSchemaEmptyStatementsArrayIsRejected(t *testing.T) {
 
 	var m map[string]any
 	require.NoError(t, json.Unmarshal([]byte(invalidJSON), &m))
-	
+
 	err := s.Validate(m)
 	require.Error(t, err)
 }
 
 func TestSchemaEmptyEntitiesArrayIsAccepted(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	validJSON := `{
 		"summary": "Valid summary",
 		"statements": [
@@ -270,31 +270,31 @@ func TestSchemaEmptyEntitiesArrayIsAccepted(t *testing.T) {
 
 	var m map[string]any
 	require.NoError(t, json.Unmarshal([]byte(validJSON), &m))
-	
+
 	err := s.Validate(m)
 	require.NoError(t, err)
 }
 
 func TestSchemaMetadataIsStable(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	require.Equal(t, "article_extraction_result", s.Name)
 	require.Equal(t, 1, s.Version)
 }
 
 func TestSchemaOpenAINullability(t *testing.T) {
 	s := extraction.Schema()
-	
+
 	m := s.MustToOpenAI()
-	
+
 	b, err := json.MarshalIndent(m, "", "  ")
 	require.NoError(t, err)
-	
+
 	jsonStr := string(b)
-	
+
 	// Check that we didn't lose nullability in the generated schema for start_with
 	require.Contains(t, jsonStr, `"start_with"`)
 	require.Contains(t, jsonStr, `"name"`)
-	
+
 	require.NotNil(t, m)
 }

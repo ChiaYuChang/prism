@@ -18,7 +18,7 @@ func Validate(out *Output) []llmapi.ValidationError {
 
 	for i, stmt := range out.Statements {
 		pathPrefix := fmt.Sprintf("statements[%d]", i)
-		
+
 		// 1. Validate Source
 		sourceErrs := validateSource(stmt.Source, pathPrefix+".source")
 		errs = append(errs, sourceErrs...)
@@ -56,7 +56,7 @@ func validateSource(src Source, path string) []llmapi.ValidationError {
 			})
 		}
 	}
-	
+
 	return errs
 }
 

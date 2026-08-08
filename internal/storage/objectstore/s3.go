@@ -4,7 +4,6 @@ package objectstore
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -62,7 +61,7 @@ func (s *S3Store) Put(ctx context.Context, key string, body io.Reader, opts stor
 		input.ContentType = aws.String(opts.ContentType)
 	}
 	if _, err := s.client.PutObject(ctx, input); err != nil {
-		return fmt.Errorf("put s3 object %s/%s: %w", s.bucket, key, err)
+		return providerError("put", key, err)
 	}
 	return nil
 }
@@ -81,35 +80,42 @@ func (s *S3Store) PutIfAbsent(ctx context.Context, key string, body io.Reader, o
 	if err != nil {
 		return storage.PutIfAbsentResult{}, err
 	}
-	wanted := objectMetadata(cleanKey, data, opts.ContentType)
+	size := int64(len(data))
+	digest := fmt.Sprintf("%x", storage.Hash(data))
+	wantedMeta := storage.ObjectMetadata{Key: cleanKey, Size: size, ContentType: opts.ContentType}
+	wantedChecksum := storage.ObjectChecksum{Size: size, SHA256: digest}
 	input := &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(s.fullKey(cleanKey)),
 		Body:        bytes.NewReader(data),
 		IfNoneMatch: aws.String("*"),
-		Metadata:    map[string]string{"sha256": wanted.SHA256},
+		Metadata:    map[string]string{"sha256": digest},
 	}
 	if opts.ContentType != "" {
 		input.ContentType = aws.String(opts.ContentType)
 	}
 	if _, err := s.client.PutObject(ctx, input); err == nil {
-		return storage.PutIfAbsentResult{Created: true, Metadata: wanted}, nil
+		return storage.PutIfAbsentResult{Created: true, Metadata: wantedMeta, Checksum: wantedChecksum}, nil
 	} else if !isPreconditionFailure(err) {
 		return storage.PutIfAbsentResult{}, providerError("put", cleanKey, err)
 	}
 
-	existing, statErr := s.Stat(ctx, cleanKey)
+	existingMeta, statErr := s.Stat(ctx, cleanKey)
 	if statErr != nil {
-		return storage.PutIfAbsentResult{}, providerError("verify existing object after conditional write", cleanKey, statErr)
+		return storage.PutIfAbsentResult{}, providerError("verify existing object after conditional write (stat)", cleanKey, statErr)
 	}
-	if existing.Size == wanted.Size && existing.SHA256 == wanted.SHA256 {
-		return storage.PutIfAbsentResult{Metadata: existing}, nil
+	existingChecksum, chkErr := s.Checksum(ctx, cleanKey)
+	if chkErr != nil {
+		return storage.PutIfAbsentResult{}, providerError("verify existing object after conditional write (checksum)", cleanKey, chkErr)
 	}
-	return storage.PutIfAbsentResult{Metadata: existing}, fmt.Errorf("%w: %s", storage.ErrContentMismatch, cleanKey)
+	
+	if existingChecksum.Size == wantedChecksum.Size && existingChecksum.SHA256 == wantedChecksum.SHA256 {
+		return storage.PutIfAbsentResult{Metadata: existingMeta, Checksum: existingChecksum}, nil
+	}
+	return storage.PutIfAbsentResult{Metadata: existingMeta, Checksum: existingChecksum}, fmt.Errorf("%w: %s", storage.ErrContentMismatch, cleanKey)
 }
 
-// Stat returns bounded, content-verified metadata for key. It does not use an
-// ETag as a content hash, because ETags are not reliable for multipart objects.
+// Stat returns cheap metadata for key without reading the complete object.
 func (s *S3Store) Stat(ctx context.Context, key string) (storage.ObjectMetadata, error) {
 	cleanKey, err := storage.NormalizeKey(key, false)
 	if err != nil {
@@ -125,14 +131,33 @@ func (s *S3Store) Stat(ctx context.Context, key string) (storage.ObjectMetadata,
 		}
 		return storage.ObjectMetadata{}, providerError("stat", cleanKey, err)
 	}
-	size := aws.ToInt64(resp.ContentLength)
-	metadata := storage.ObjectMetadata{
+	return storage.ObjectMetadata{
 		Key:         cleanKey,
-		Size:        size,
+		Size:        aws.ToInt64(resp.ContentLength),
 		ContentType: aws.ToString(resp.ContentType),
+	}, nil
+}
+
+// Checksum returns bounded, content-verified metadata for key. It does not use an
+// ETag as a content hash, because ETags are not reliable for multipart objects.
+func (s *S3Store) Checksum(ctx context.Context, key string) (storage.ObjectChecksum, error) {
+	cleanKey, err := storage.NormalizeKey(key, false)
+	if err != nil {
+		return storage.ObjectChecksum{}, err
 	}
+	resp, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(s.fullKey(cleanKey)),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return storage.ObjectChecksum{}, fmt.Errorf("%w: %s", storage.ErrNotFound, cleanKey)
+		}
+		return storage.ObjectChecksum{}, providerError("stat for checksum", cleanKey, err)
+	}
+	size := aws.ToInt64(resp.ContentLength)
 	if size > storage.MaxObjectSize {
-		return metadata, fmt.Errorf("%w: %s", storage.ErrObjectTooLarge, cleanKey)
+		return storage.ObjectChecksum{Size: size}, fmt.Errorf("%w: %s", storage.ErrObjectTooLarge, cleanKey)
 	}
 	object, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
@@ -140,23 +165,22 @@ func (s *S3Store) Stat(ctx context.Context, key string) (storage.ObjectMetadata,
 	})
 	if err != nil {
 		if isNotFound(err) {
-			return storage.ObjectMetadata{}, fmt.Errorf("%w: %s", storage.ErrNotFound, cleanKey)
+			return storage.ObjectChecksum{}, fmt.Errorf("%w: %s", storage.ErrNotFound, cleanKey)
 		}
-		return storage.ObjectMetadata{}, providerError("read for stat", cleanKey, err)
+		return storage.ObjectChecksum{}, providerError("read for checksum", cleanKey, err)
 	}
-	digest, actualSize, hashErr := hashBounded(object.Body)
+	digest, actualSize, hashErr := storage.HashReader(object.Body, storage.MaxObjectSize)
 	closeErr := object.Body.Close()
 	if hashErr != nil {
-		return storage.ObjectMetadata{}, providerError("hash", cleanKey, hashErr)
+		return storage.ObjectChecksum{}, providerError("hash", cleanKey, hashErr)
 	}
 	if closeErr != nil {
-		return storage.ObjectMetadata{}, providerError("close", cleanKey, closeErr)
+		return storage.ObjectChecksum{}, providerError("close", cleanKey, closeErr)
 	}
 	if actualSize != size {
-		return storage.ObjectMetadata{}, fmt.Errorf("%w: object %s changed during stat", storage.ErrProvider, cleanKey)
+		return storage.ObjectChecksum{}, fmt.Errorf("%w: object %s changed during checksum", storage.ErrProvider, cleanKey)
 	}
-	metadata.SHA256 = digest
-	return metadata, nil
+	return storage.ObjectChecksum{Size: size, SHA256: fmt.Sprintf("%x", digest)}, nil
 }
 
 // Get retrieves an object from S3.
@@ -170,11 +194,10 @@ func (s *S3Store) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 		Key:    aws.String(s.fullKey(key)),
 	})
 	if err != nil {
-		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && (apiErr.ErrorCode() == "NoSuchKey" || apiErr.ErrorCode() == "NotFound") {
+		if isNotFound(err) {
 			return nil, fmt.Errorf("%w: %s", storage.ErrNotFound, key)
 		}
-		return nil, fmt.Errorf("get s3 object %s/%s: %w", s.bucket, key, err)
+		return nil, providerError("get", key, err)
 	}
 	return resp.Body, nil
 }
@@ -193,7 +216,7 @@ func (s *S3Store) List(ctx context.Context, prefix string) ([]storage.Object, er
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("list s3 objects below %s: %w", prefix, err)
+			return nil, providerError("list", prefix, err)
 		}
 		for _, obj := range page.Contents {
 			key := strings.TrimPrefix(aws.ToString(obj.Key), s.fullKey(""))
@@ -213,7 +236,7 @@ func (s *S3Store) Delete(ctx context.Context, key string) error {
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(s.fullKey(key)),
 	}); err != nil {
-		return fmt.Errorf("delete s3 object %s/%s: %w", s.bucket, key, err)
+		return providerError("delete", key, err)
 	}
 	return nil
 }
@@ -259,27 +282,7 @@ func readBounded(body io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-func hashBounded(body io.Reader) (string, int64, error) {
-	hasher := sha256.New()
-	size, err := io.Copy(hasher, io.LimitReader(body, storage.MaxObjectSize+1))
-	if err != nil {
-		return "", size, err
-	}
-	if size > storage.MaxObjectSize {
-		return "", size, storage.ErrObjectTooLarge
-	}
-	return fmt.Sprintf("%x", hasher.Sum(nil)), size, nil
-}
-
-func objectMetadata(key string, data []byte, contentType string) storage.ObjectMetadata {
-	sum := sha256.Sum256(data)
-	return storage.ObjectMetadata{
-		Key:         key,
-		Size:        int64(len(data)),
-		SHA256:      fmt.Sprintf("%x", sum),
-		ContentType: contentType,
-	}
-}
+// readBounded and hashBounded replaced by centralized storage.HashReader
 
 func providerError(operation, key string, err error) error {
 	return fmt.Errorf("%w: %s s3 object %s: %w", storage.ErrProvider, operation, key, err)

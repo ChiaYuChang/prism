@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
+	"text/template"
 
 	"github.com/ChiaYuChang/prism/internal/analyzer/llmapi"
 	"github.com/ChiaYuChang/prism/internal/llm"
@@ -16,18 +18,42 @@ var (
 )
 
 type Stage struct {
-	generator llm.Generator
-	model     string
-	schema    pkgschema.JSONSchema
+	generator         llm.Generator
+	model             string
+	schema            pkgschema.JSONSchema
+	systemInstruction string
+	requestTemplate   *template.Template
 }
 
-// NewStage creates a new extraction Stage.
-func NewStage(generator llm.Generator, model string) *Stage {
-	return &Stage{
-		generator: generator,
-		model:     model,
-		schema:    Schema(),
+// NewV1 creates a new extraction Stage using V1 parameters.
+func NewV1(ctx context.Context, deps Dependencies, params V1Parameters) (*Stage, error) {
+	if err := params.Validate(); err != nil {
+		return nil, err
 	}
+	if deps.Generator == nil {
+		return nil, errors.New("generator is required")
+	}
+	if deps.PromptLoader == nil {
+		return nil, errors.New("prompt loader is required")
+	}
+
+	loaded, err := deps.PromptLoader.Load(ctx, params.PromptID)
+	if err != nil {
+		return nil, fmt.Errorf("load prompt %s: %w", params.PromptID, err)
+	}
+
+	requestTemplate, err := template.New("extraction_request").Parse(RequestTemplateText)
+	if err != nil {
+		return nil, fmt.Errorf("parse request template: %w", err)
+	}
+
+	return &Stage{
+		generator:         deps.Generator,
+		model:             params.Model,
+		schema:            Schema(),
+		systemInstruction: string(loaded.Body),
+		requestTemplate:   requestTemplate,
+	}, nil
 }
 
 func (s *Stage) Name() string {
@@ -40,17 +66,14 @@ func (s *Stage) PreProcess(ctx context.Context, p *llmapi.Packet[Input, any, Out
 		return ErrEmptyArticleContent
 	}
 
-	// We can use a general system instruction, though the prompt template also acts as one.
-	systemInstruction := "You are an expert news analyst tasked with extracting structured information from a single news article."
-
-	renderedPrompt, err := RenderPrompt(in.Title, in.Content, p.RepairHint)
+	renderedPrompt, err := RenderRequest(s.requestTemplate, in.Title, in.Content, p.RepairHint)
 	if err != nil {
 		return err
 	}
 
 	req := llm.NewGenerateRequest(
 		s.model,
-		systemInstruction,
+		s.systemInstruction,
 		renderedPrompt,
 	)
 

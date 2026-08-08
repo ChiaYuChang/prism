@@ -41,13 +41,20 @@ func (s *immutableReportStore) PutIfAbsent(_ context.Context, key string, body i
 	return storage.PutIfAbsentResult{
 		Created: true,
 		Metadata: storage.ObjectMetadata{
-			Key: key, Size: int64(len(data)), SHA256: fmt.Sprintf("%x", digest), ContentType: opts.ContentType,
+			Key: key, Size: int64(len(data)), ContentType: opts.ContentType,
+		},
+		Checksum: storage.ObjectChecksum{
+			SHA256: fmt.Sprintf("%x", digest),
+			Size:   int64(len(data)),
 		},
 	}, nil
 }
-func (s *immutableReportStore) Stat(context.Context, string) (storage.ObjectMetadata, error) {
+func (s *immutableReportStore) Stat(ctx context.Context, key string) (storage.ObjectMetadata, error) {
+	return storage.ObjectMetadata{}, storage.ErrNotFound
+}
+func (s *immutableReportStore) Checksum(ctx context.Context, key string) (storage.ObjectChecksum, error) {
 	digest := sha256.Sum256(s.body)
-	return storage.ObjectMetadata{Size: int64(len(s.body)), SHA256: fmt.Sprintf("%x", digest)}, nil
+	return storage.ObjectChecksum{SHA256: fmt.Sprintf("%x", digest), Size: int64(len(s.body))}, nil
 }
 
 func TestMarkdownReportWriterDeliversDeterministicArtifact(t *testing.T) {

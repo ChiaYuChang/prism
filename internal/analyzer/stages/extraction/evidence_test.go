@@ -158,7 +158,7 @@ func TestGroundEvidence_OverlappingOccurrencesAreDiscovered(t *testing.T) {
 	quote := "ABA"
 
 	ev := extraction.Evidence{Quote: &quote}
-	
+
 	// Because we discover ABA at both 0 and 2, the quote count is 2 -> ambiguous.
 	_, err := extraction.GroundEvidence(article, ev)
 	require.NotNil(t, err)
@@ -172,12 +172,12 @@ func TestGroundEvidence_EndIsImmediatelyAfterStart(t *testing.T) {
 	article := "ABCDEF"
 	start := "ABC"
 	end := "DEF"
-	
+
 	ev := extraction.Evidence{
 		StartWith: &start,
 		EndWith:   &end,
 	}
-	
+
 	span, err := extraction.GroundEvidence(article, ev)
 	require.Nil(t, err)
 	require.Equal(t, "ABCDEF", span.Text)
@@ -186,7 +186,7 @@ func TestGroundEvidence_EndIsImmediatelyAfterStart(t *testing.T) {
 func TestGroundEvidence_RepeatedStartUniqueSpan(t *testing.T) {
 	// Repeated start anchor but unique span
 	// To make it unique: the second start must occur AFTER the end.
-	
+
 	start := "START"
 	end := "END"
 	article2 := "START then END and then START again"
@@ -222,7 +222,7 @@ func TestGroundEvidence_DoesNotMutateEvidence(t *testing.T) {
 	start := "行政院"
 	end := "宣布"
 	ev := extraction.Evidence{StartWith: &start, EndWith: &end}
-	
+
 	// Copy to compare later
 	evCopy := extraction.Evidence{
 		StartWith: ptr(*ev.StartWith),
@@ -231,7 +231,7 @@ func TestGroundEvidence_DoesNotMutateEvidence(t *testing.T) {
 	}
 
 	_, _ = extraction.GroundEvidence(article, ev)
-	
+
 	require.Equal(t, evCopy.StartWith, ev.StartWith)
 	require.Equal(t, evCopy.EndWith, ev.EndWith)
 	require.Equal(t, evCopy.Quote, ev.Quote)
