@@ -62,54 +62,53 @@ func NewRunner[I, S, O any](tracer trace.Tracer, logger *slog.Logger, maxAttempt
 }
 
 // Do executes the Stage lifecycle and returns the output or the first unrecoverable failure.
-func (r *Runner[I, S, O]) Do(ctx context.Context, input I) (O, error) {
+func (r *Runner[I, S, O]) Do(ctx context.Context, input I) (output O, retErr error) {
 	ctx, span := r.tracer.Start(
 		ctx,
 		"analyzer.llmapi."+r.stageName,
 		trace.WithSpanKind(trace.SpanKindInternal),
-		trace.WithAttributes(attribute.String("analyzer.stage", r.stageName)),
+		trace.WithAttributes(
+			attribute.String("analyzer.stage", r.stageName),
+		),
 	)
-	
-	var finalErr error
-	var output O
-	
+
 	defer func() {
-		if finalErr != nil {
-			span.RecordError(finalErr)
-			span.SetStatus(codes.Error, finalErr.Error())
-			r.logger.ErrorContext(ctx, "LLM stage failed", slog.Any("error", finalErr))
+		if retErr != nil {
+			span.RecordError(retErr)
+			span.SetStatus(codes.Error, retErr.Error())
+			r.logger.ErrorContext(
+				ctx,
+				"LLM stage failed",
+				slog.Any("error", retErr),
+			)
 		}
 		span.End()
 	}()
 
 	var repairHint *RepairHint
+	var lastReAttemptErr error
 
 	for attempt := 1; attempt <= r.maxAttempt; attempt++ {
 		p := NewPacket[I, S, O](input, repairHint)
+
 		err := r.doAttempt(ctx, p, attempt)
 		if err == nil {
 			return p.Output, nil
 		}
 
-		var retryErr *RetryError
-		if errors.As(err, &retryErr) {
-			finalErr = err
-			return output, finalErr
-		}
-
-		var reAttemptErr *ReAttemptError
-		if errors.As(err, &reAttemptErr) {
+		if reAttemptErr, ok := errors.AsType[*ReAttemptError](err); ok {
 			repairHint = reAttemptErr.Hint
-			finalErr = err // Track the latest error in case we exhaust attempts
+			lastReAttemptErr = err
 			continue
 		}
 
-		finalErr = err
-		return output, finalErr
+		return output, err
 	}
 
-	finalErr = fmt.Errorf("max semantic attempts exhausted: %w", finalErr)
-	return output, finalErr
+	return output, fmt.Errorf(
+		"max semantic attempts exhausted: %w",
+		lastReAttemptErr,
+	)
 }
 
 func (r *Runner[I, S, O]) doAttempt(ctx context.Context, p *Packet[I, S, O], attempt int) (err error) {

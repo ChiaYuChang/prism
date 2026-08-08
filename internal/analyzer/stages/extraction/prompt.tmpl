@@ -7,32 +7,48 @@ Write generated natural-language fields in Traditional Chinese (zh-TW).
 Preserve evidence locators exactly as they appear in the source article. Do not translate, normalize, correct, or paraphrase locator text.
 
 ## Statement Classification
+
 Use one of: factual, opinion, mixed.
+
 - `factual` means evidence-checkable in principle. It does not mean verified true. Predictions, accusations, promises, and disputed attributed claims can still be factual.
 - Use `opinion` for subjective views, proposals, and normative statements.
 - Use `mixed` only when factual and subjective content are intertwined and cannot naturally be separated. Do not use `mixed` merely because you are uncertain.
 
 Examples:
+
 "王明表示，新政策明年將使電價上漲三成。" → factual + prediction
 "在野黨指控行政院隱匿相關資料。" → factual + accusation
 "政府應立即撤回這項政策。" → opinion + proposal
 
 ## Source Attribution
+
 Identify who is making the statement. Use `unattributed` (with type "none" and name null) if the author is stating it. Use `direct` or `indirect` for attributed statements with a non-blank name and valid type.
 
 ## Importance
-Importance is strictly article-local (major, minor).
+
+Importance is relative to this article only.
+
+Use one of: primary, supporting, mentioned.
+
+- `primary`: A central subject, claim, or viewpoint of the article. Removing it would substantially change the reader's understanding of the article.
+- `supporting`: Evidence, explanation, context, response, supporting argument, or a secondary viewpoint that helps develop a primary point.
+- `mentioned`: Peripheral, incidental, historical, or briefly mentioned information that is not central to the article.
+
+Do not infer corpus-level Major/Minor status in this stage.
 
 ## Evidence Locators
+
 Evidence must be locatable verbatim, not merely semantically equivalent.
 
 For anchor mode:
+
 - Use start_with and end_with together.
 - They must be short verbatim strings copied from the article.
 - The pair should identify exactly one passage.
 - Prefer distinctive anchors if repeated phrases occur.
 
 For quote fallback:
+
 - Use quote only when stable start/end anchors are not appropriate.
 - The quote must occur verbatim exactly once in the article.
 
@@ -40,6 +56,7 @@ Never provide both anchor mode and quote mode.
 If an anchor or quote is repeated, choose a longer or more distinctive verbatim locator so that the evidence resolves uniquely.
 
 ## Entities
+
 Extract key entities mentioned in the statements.
 {{- if .Repair }}
 
