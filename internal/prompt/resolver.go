@@ -2,13 +2,16 @@ package prompt
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
+
+	"github.com/ChiaYuChang/prism/internal/storage"
 )
+
+var canonicalHashPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // Getter provides read access to stored prompt content.
 type Getter interface {
@@ -42,6 +45,10 @@ func NewResolver(store Getter, verify *bool) (*Resolver, error) {
 // Resolve reads prompt bytes corresponding to a content hash. If verification
 // is enabled, it ensures the bytes match the requested hash.
 func (r *Resolver) Resolve(ctx context.Context, hash string) ([]byte, error) {
+	if !canonicalHashPattern.MatchString(hash) {
+		return nil, errors.New("invalid prompt hash format")
+	}
+
 	key := ObjectKey(hash)
 	
 	rc, err := r.store.Get(ctx, key)
@@ -50,16 +57,18 @@ func (r *Resolver) Resolve(ctx context.Context, hash string) ([]byte, error) {
 	}
 	defer func() { _ = rc.Close() }()
 
-	b, err := io.ReadAll(rc)
+	b, err := io.ReadAll(io.LimitReader(rc, storage.MaxObjectSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read prompt content: %w", err)
+	}
+	if int64(len(b)) > storage.MaxObjectSize {
+		return nil, storage.ErrObjectTooLarge
 	}
 
 	if r.verify {
 		expectedHash := strings.TrimPrefix(hash, "sha256:")
-		hasher := sha256.New()
-		hasher.Write(b)
-		actualHash := hex.EncodeToString(hasher.Sum(nil))
+		actualDigest := storage.Hash(b)
+		actualHash := fmt.Sprintf("%x", actualDigest)
 
 		if actualHash != expectedHash {
 			return nil, fmt.Errorf("prompt content hash mismatch: expected %s, got %s", expectedHash, actualHash)

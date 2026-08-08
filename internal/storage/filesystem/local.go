@@ -3,7 +3,6 @@ package filesystem
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -44,23 +43,23 @@ func (s *LocalStore) Put(_ context.Context, key string, body io.Reader, _ storag
 		return fmt.Errorf("storage object body is nil")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create storage directory: %w", err)
+		return fmt.Errorf("%w: create storage directory: %w", storage.ErrProvider, err)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".storage-*.tmp")
 	if err != nil {
-		return fmt.Errorf("create temporary storage object: %w", err)
+		return fmt.Errorf("%w: create temporary storage object: %w", storage.ErrProvider, err)
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := io.Copy(tmp, body); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("write storage object %s: %w", key, err)
+		return fmt.Errorf("%w: write storage object %s: %w", storage.ErrProvider, key, err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temporary storage object: %w", err)
+		return fmt.Errorf("%w: close temporary storage object: %w", storage.ErrProvider, err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("commit storage object %s: %w", key, err)
+		return fmt.Errorf("%w: commit storage object %s: %w", storage.ErrProvider, key, err)
 	}
 	return nil
 }
@@ -79,7 +78,11 @@ func (s *LocalStore) PutIfAbsent(ctx context.Context, key string, body io.Reader
 	if err != nil {
 		return storage.PutIfAbsentResult{}, err
 	}
-	wanted := objectMetadata(cleanKey, data)
+	size := int64(len(data))
+	digest := fmt.Sprintf("%x", storage.Hash(data))
+	wantedMeta := storage.ObjectMetadata{Key: cleanKey, Size: size}
+	wantedChecksum := storage.ObjectChecksum{Size: size, SHA256: digest}
+
 	objectPath := filepath.Join(s.root, filepath.FromSlash(cleanKey))
 	if err := os.MkdirAll(filepath.Dir(objectPath), 0o755); err != nil {
 		return storage.PutIfAbsentResult{}, fmt.Errorf("%w: create storage directory: %w", storage.ErrProvider, err)
@@ -105,22 +108,27 @@ func (s *LocalStore) PutIfAbsent(ctx context.Context, key string, body io.Reader
 	// Linking a temporary file is atomic and refuses to replace an existing
 	// directory entry, unlike os.Rename on Unix.
 	if err := os.Link(tmpName, objectPath); err == nil {
-		return storage.PutIfAbsentResult{Created: true, Metadata: wanted}, nil
+		return storage.PutIfAbsentResult{Created: true, Metadata: wantedMeta, Checksum: wantedChecksum}, nil
 	} else if !os.IsExist(err) {
 		return storage.PutIfAbsentResult{}, fmt.Errorf("%w: commit storage object %s: %w", storage.ErrProvider, cleanKey, err)
 	}
 
-	existing, err := s.Stat(ctx, cleanKey)
+	existingMeta, err := s.Stat(ctx, cleanKey)
 	if err != nil {
 		return storage.PutIfAbsentResult{}, err
 	}
-	if existing.Size == wanted.Size && existing.SHA256 == wanted.SHA256 {
-		return storage.PutIfAbsentResult{Metadata: existing}, nil
+	existingChecksum, err := s.Checksum(ctx, cleanKey)
+	if err != nil {
+		return storage.PutIfAbsentResult{}, err
 	}
-	return storage.PutIfAbsentResult{Metadata: existing}, fmt.Errorf("%w: %s", storage.ErrContentMismatch, cleanKey)
+
+	if existingChecksum.Size == wantedChecksum.Size && existingChecksum.SHA256 == wantedChecksum.SHA256 {
+		return storage.PutIfAbsentResult{Metadata: existingMeta, Checksum: existingChecksum}, nil
+	}
+	return storage.PutIfAbsentResult{Metadata: existingMeta, Checksum: existingChecksum}, fmt.Errorf("%w: %s", storage.ErrContentMismatch, cleanKey)
 }
 
-// Stat returns bounded, content-verified metadata for key.
+// Stat returns cheap metadata for key without reading the complete object.
 func (s *LocalStore) Stat(_ context.Context, key string) (storage.ObjectMetadata, error) {
 	cleanKey, err := storage.NormalizeKey(key, false)
 	if err != nil {
@@ -137,28 +145,49 @@ func (s *LocalStore) Stat(_ context.Context, key string) (storage.ObjectMetadata
 	if !info.Mode().IsRegular() {
 		return storage.ObjectMetadata{}, fmt.Errorf("%w: storage object %s is not a regular file", storage.ErrProvider, cleanKey)
 	}
+	return storage.ObjectMetadata{Key: cleanKey, Size: info.Size()}, nil
+}
+
+// Checksum returns bounded, content-verified metadata for key.
+func (s *LocalStore) Checksum(_ context.Context, key string) (storage.ObjectChecksum, error) {
+	cleanKey, err := storage.NormalizeKey(key, false)
+	if err != nil {
+		return storage.ObjectChecksum{}, err
+	}
+	objectPath := filepath.Join(s.root, filepath.FromSlash(cleanKey))
+	info, err := os.Stat(objectPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return storage.ObjectChecksum{}, fmt.Errorf("%w: %s", storage.ErrNotFound, cleanKey)
+		}
+		return storage.ObjectChecksum{}, fmt.Errorf("%w: stat storage object %s: %w", storage.ErrProvider, cleanKey, err)
+	}
+	if !info.Mode().IsRegular() {
+		return storage.ObjectChecksum{}, fmt.Errorf("%w: storage object %s is not a regular file", storage.ErrProvider, cleanKey)
+	}
 	if info.Size() > storage.MaxObjectSize {
-		return storage.ObjectMetadata{Key: cleanKey, Size: info.Size()}, fmt.Errorf("%w: %s", storage.ErrObjectTooLarge, cleanKey)
+		return storage.ObjectChecksum{Size: info.Size()}, fmt.Errorf("%w: %s", storage.ErrObjectTooLarge, cleanKey)
 	}
 	f, err := os.Open(objectPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return storage.ObjectMetadata{}, fmt.Errorf("%w: %s", storage.ErrNotFound, cleanKey)
+			return storage.ObjectChecksum{}, fmt.Errorf("%w: %s", storage.ErrNotFound, cleanKey)
 		}
-		return storage.ObjectMetadata{}, fmt.Errorf("%w: open storage object %s: %w", storage.ErrProvider, cleanKey, err)
+		return storage.ObjectChecksum{}, fmt.Errorf("%w: open storage object %s: %w", storage.ErrProvider, cleanKey, err)
 	}
-	digest, size, hashErr := hashBounded(f)
+	expectedSize := info.Size()
+	digest, size, hashErr := storage.HashReader(f, storage.MaxObjectSize)
 	closeErr := f.Close()
 	if hashErr != nil {
-		return storage.ObjectMetadata{}, fmt.Errorf("%w: hash storage object %s: %w", storage.ErrProvider, cleanKey, hashErr)
+		return storage.ObjectChecksum{}, fmt.Errorf("%w: hash storage object %s: %w", storage.ErrProvider, cleanKey, hashErr)
+	}
+	if size != expectedSize {
+		return storage.ObjectChecksum{}, fmt.Errorf("%w: object %s changed during checksum", storage.ErrProvider, cleanKey)
 	}
 	if closeErr != nil {
-		return storage.ObjectMetadata{}, fmt.Errorf("%w: close storage object %s: %w", storage.ErrProvider, cleanKey, closeErr)
+		return storage.ObjectChecksum{}, fmt.Errorf("%w: close storage object %s: %w", storage.ErrProvider, cleanKey, closeErr)
 	}
-	if size > storage.MaxObjectSize {
-		return storage.ObjectMetadata{Key: cleanKey, Size: size}, fmt.Errorf("%w: %s", storage.ErrObjectTooLarge, cleanKey)
-	}
-	return storage.ObjectMetadata{Key: cleanKey, Size: size, SHA256: digest}, nil
+	return storage.ObjectChecksum{Size: size, SHA256: fmt.Sprintf("%x", digest)}, nil
 }
 
 // Get opens an object for reading.
@@ -172,7 +201,7 @@ func (s *LocalStore) Get(_ context.Context, key string) (io.ReadCloser, error) {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("%w: %s", storage.ErrNotFound, key)
 		}
-		return nil, fmt.Errorf("open storage object %s: %w", key, err)
+		return nil, fmt.Errorf("%w: open storage object %s: %w", storage.ErrProvider, key, err)
 	}
 	return f, nil
 }
@@ -194,7 +223,7 @@ func (s *LocalStore) List(_ context.Context, prefix string) ([]storage.Object, e
 		if os.IsNotExist(err) {
 			return []storage.Object{}, nil
 		}
-		return nil, fmt.Errorf("stat storage prefix %s: %w", prefix, err)
+		return nil, fmt.Errorf("%w: stat storage prefix %s: %w", storage.ErrProvider, prefix, err)
 	}
 	objects := make([]storage.Object, 0)
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
@@ -216,13 +245,13 @@ func (s *LocalStore) List(_ context.Context, prefix string) ([]storage.Object, e
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list storage prefix %s: %w", prefix, err)
+		return nil, fmt.Errorf("%w: list storage prefix %s: %w", storage.ErrProvider, prefix, err)
 	}
 	sort.Slice(objects, func(i, j int) bool { return objects[i].Key < objects[j].Key })
 	return objects, nil
 }
 
-// Delete removes an object.
+// Delete removes an object. It returns nil if the object is already missing.
 func (s *LocalStore) Delete(_ context.Context, key string) error {
 	path, err := s.path(key)
 	if err != nil {
@@ -230,9 +259,9 @@ func (s *LocalStore) Delete(_ context.Context, key string) error {
 	}
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%w: %s", storage.ErrNotFound, key)
+			return nil
 		}
-		return fmt.Errorf("delete storage object %s: %w", key, err)
+		return fmt.Errorf("%w: delete storage object %s: %w", storage.ErrProvider, key, err)
 	}
 	return nil
 }
@@ -248,31 +277,10 @@ func (s *LocalStore) path(key string) (string, error) {
 func readBounded(body io.Reader) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(body, storage.MaxObjectSize+1))
 	if err != nil {
-		return nil, fmt.Errorf("read storage object body: %w", err)
+		return nil, fmt.Errorf("%w: read storage object body: %w", storage.ErrProvider, err)
 	}
 	if int64(len(data)) > storage.MaxObjectSize {
 		return nil, storage.ErrObjectTooLarge
 	}
 	return data, nil
-}
-
-func hashBounded(body io.Reader) (string, int64, error) {
-	hasher := sha256.New()
-	size, err := io.Copy(hasher, io.LimitReader(body, storage.MaxObjectSize+1))
-	if err != nil {
-		return "", size, err
-	}
-	if size > storage.MaxObjectSize {
-		return "", size, storage.ErrObjectTooLarge
-	}
-	return fmt.Sprintf("%x", hasher.Sum(nil)), size, nil
-}
-
-func objectMetadata(key string, data []byte) storage.ObjectMetadata {
-	sum := sha256.Sum256(data)
-	return storage.ObjectMetadata{
-		Key:    key,
-		Size:   int64(len(data)),
-		SHA256: fmt.Sprintf("%x", sum),
-	}
 }

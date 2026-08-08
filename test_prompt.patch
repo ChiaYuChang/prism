@@ -1,0 +1,13 @@
+--- internal/prompt/ref_test.go
++++ internal/prompt/ref_test.go
+@@ -37,6 +37,10 @@
+ 	return f, nil
+ }
+ 
++func (t testStore) Stat(ctx context.Context, key string) (storage.ObjectMetadata, error) {
++	return storage.ObjectMetadata{}, storage.ErrNotFound
++}
++
+ func TestResolve(t *testing.T) {
+ 	ctx := context.Background()
+ 	s := testStore{content: "this is a prompt\n"}

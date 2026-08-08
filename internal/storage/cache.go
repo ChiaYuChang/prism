@@ -7,9 +7,15 @@ import (
 	"io"
 )
 
+// MaxCacheObjectSize determines the maximum size of objects eligible for caching.
+const MaxCacheObjectSize = MaxObjectSize
+
 // StoreWithCache provides a generic decorator that adds caching to a persistent
 // store. Persistent storage is authoritative, and the cache is a best-effort
 // optimization layer.
+//
+// StoreWithCache is intended only for immutable/content-addressed keys. It does
+// not provide coherent caching for concurrent mutation of an existing key.
 type StoreWithCache struct {
 	cache      Store
 	persistent Store
@@ -37,7 +43,12 @@ var _ Store = (*StoreWithCache)(nil)
 // the cache on a best-effort basis.
 func (s *StoreWithCache) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	if cachedResult, err := s.cache.Get(ctx, key); err == nil {
-		return cachedResult, nil
+		data, readErr := io.ReadAll(io.LimitReader(cachedResult, MaxCacheObjectSize+1))
+		_ = cachedResult.Close()
+		if readErr == nil && int64(len(data)) <= MaxCacheObjectSize {
+			return io.NopCloser(bytes.NewReader(data)), nil
+		}
+		// Fallback to persistent on read error or if cache object was unexpectedly oversized
 	}
 
 	persistentResult, err := s.persistent.Get(ctx, key)
@@ -45,15 +56,15 @@ func (s *StoreWithCache) Get(ctx context.Context, key string) (io.ReadCloser, er
 		return nil, err
 	}
 
-	// Read up to MaxObjectSize + 1 to determine if the object is cacheable
-	limitReader := io.LimitReader(persistentResult, MaxObjectSize+1)
+	// Read up to MaxCacheObjectSize + 1 to determine if the object is cacheable
+	limitReader := io.LimitReader(persistentResult, MaxCacheObjectSize+1)
 	prefix, readErr := io.ReadAll(limitReader)
 	if readErr != nil {
 		_ = persistentResult.Close()
 		return nil, readErr
 	}
 
-	if int64(len(prefix)) > MaxObjectSize {
+	if int64(len(prefix)) > MaxCacheObjectSize {
 		// Object exceeds cacheable size limit -> skip cache, return complete content
 		return &multiReadCloser{
 			reader: io.MultiReader(bytes.NewReader(prefix), persistentResult),
@@ -77,6 +88,11 @@ func (s *StoreWithCache) Put(ctx context.Context, key string, body io.Reader, op
 	}
 	_ = s.cache.Delete(ctx, key)
 	return nil
+}
+
+// Stat returns cheap metadata from the persistent store.
+func (s *StoreWithCache) Stat(ctx context.Context, key string) (ObjectMetadata, error) {
+	return s.persistent.Stat(ctx, key)
 }
 
 // List proxies directly to the persistent store. The cache is not authoritative.

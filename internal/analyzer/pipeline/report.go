@@ -60,15 +60,15 @@ func (w *MarkdownReportWriter) Deliver(ctx context.Context, task repo.Task, root
 	if err != nil {
 		return fmt.Errorf("write report artifact: %w", err)
 	}
-	if result.Metadata.SHA256 == "" {
+	if result.Checksum.SHA256 == "" {
 		return fmt.Errorf("report storage returned no verified hash")
 	}
 	expectedDigest := sha256.Sum256(body)
 	expectedHash := fmt.Sprintf("%x", expectedDigest)
-	if int64(len(body)) != result.Metadata.Size {
-		return fmt.Errorf("report storage size mismatch: wrote %d, stored %d", len(body), result.Metadata.Size)
+	if int64(len(body)) != result.Checksum.Size {
+		return fmt.Errorf("report storage size mismatch: wrote %d, stored %d", len(body), result.Checksum.Size)
 	}
-	if result.Metadata.SHA256 != expectedHash {
+	if result.Checksum.SHA256 != expectedHash {
 		return fmt.Errorf("report storage hash mismatch")
 	}
 	expiresAt := time.Now().Add(w.ttl)
@@ -81,7 +81,7 @@ func (w *MarkdownReportWriter) Deliver(ctx context.Context, task repo.Task, root
 			RootBatchID:         root.ID,
 			StorageURI:          key,
 			ByteSize:            int64(len(body)),
-			SHA256:              result.Metadata.SHA256,
+			SHA256:              result.Checksum.SHA256,
 			ExpiresAt:           expiresAt,
 		},
 	})

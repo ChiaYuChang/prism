@@ -40,6 +40,8 @@ func (s *reportReadStore) Get(context.Context, string) (io.ReadCloser, error) {
 
 func (s *reportReadStore) List(context.Context, string) ([]storage.Object, error) { return nil, nil }
 
+func (s *reportReadStore) Stat(context.Context, string) (storage.ObjectMetadata, error) { return storage.ObjectMetadata{}, storage.ErrNotFound }
+
 func (s *reportReadStore) Delete(context.Context, string) error { return s.deleteErr }
 
 func TestGetAnalysisReportVerifiesAndReturnsArtifact(t *testing.T) {

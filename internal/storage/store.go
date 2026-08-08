@@ -40,21 +40,26 @@ type Object struct {
 	Size int64
 }
 
-// ObjectMetadata describes an object returned by Stat or PutIfAbsent. SHA256
-// is lowercase hexadecimal and is computed from the complete object content.
+// ObjectMetadata describes an object returned by Stat or PutIfAbsent.
 type ObjectMetadata struct {
 	Key         string
 	Size        int64
-	SHA256      string
 	ContentType string
+}
+
+// ObjectChecksum describes an object's full-content identity and size returned by Checksum.
+type ObjectChecksum struct {
+	Size   int64
+	SHA256 string
 }
 
 // PutIfAbsentResult describes the outcome of PutIfAbsent. Created is false
 // when an existing object has matching content. On ErrContentMismatch,
-// Metadata describes the existing object when it could be verified.
+// Metadata and Checksum describe the existing object when it could be verified.
 type PutIfAbsentResult struct {
 	Created  bool
 	Metadata ObjectMetadata
+	Checksum ObjectChecksum
 }
 
 // Store provides durable object and file storage.
@@ -64,6 +69,7 @@ type PutIfAbsentResult struct {
 type Store interface {
 	Put(ctx context.Context, key string, body io.Reader, opts PutOptions) error
 	Get(ctx context.Context, key string) (io.ReadCloser, error)
+	Stat(ctx context.Context, key string) (ObjectMetadata, error)
 	List(ctx context.Context, prefix string) ([]Object, error)
 	Delete(ctx context.Context, key string) error
 }
@@ -75,7 +81,7 @@ type Store interface {
 type ImmutableStore interface {
 	Store
 	PutIfAbsent(ctx context.Context, key string, body io.Reader, opts PutOptions) (PutIfAbsentResult, error)
-	Stat(ctx context.Context, key string) (ObjectMetadata, error)
+	Checksum(ctx context.Context, key string) (ObjectChecksum, error)
 }
 
 // NormalizeKey validates and normalizes a slash-separated storage key.

@@ -37,6 +37,16 @@ func (m *mockStore) Get(ctx context.Context, key string) (io.ReadCloser, error) 
 	return io.NopCloser(bytes.NewReader(d)), nil
 }
 
+func (m *mockStore) Stat(ctx context.Context, key string) (ObjectMetadata, error) {
+	if m.getError != nil {
+		return ObjectMetadata{}, m.getError
+	}
+	if v, ok := m.data[key]; ok {
+		return ObjectMetadata{Key: key, Size: int64(len(v))}, nil
+	}
+	return ObjectMetadata{}, ErrNotFound
+}
+
 func (m *mockStore) Put(ctx context.Context, key string, body io.Reader, opts PutOptions) error {
 	m.puts++
 	if m.putError != nil {
@@ -326,5 +336,30 @@ func TestStoreWithCache_Get_ObjectTooLarge(t *testing.T) {
 	}
 	if cache.puts > 0 {
 		t.Errorf("expected object not to be cached due to size limit")
+	}
+}
+
+func TestStoreWithCache_Get_CacheReaderFailure(t *testing.T) {
+	cache := &mockStoreWithReadError{mockStore: *newMockStore()}
+	// simulate Cache.Get succeeding but reader failing
+	cache.data["test-key"] = []byte("this will not be read successfully")
+	
+	persistent := newMockStore()
+	persistent.data["test-key"] = []byte("persistent content")
+	
+	store, _ := NewStoreWithCache(cache, persistent)
+	
+	rc, err := store.Get(context.Background(), "test-key")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer func() { _ = rc.Close() }()
+	b, _ := io.ReadAll(rc)
+	
+	if string(b) != "persistent content" {
+		t.Errorf("expected persistent content after cache read failure, got %s", string(b))
+	}
+	if persistent.gets != 1 {
+		t.Errorf("expected persistent.Get to be called, got %d", persistent.gets)
 	}
 }
