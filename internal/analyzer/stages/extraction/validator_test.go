@@ -301,7 +301,7 @@ func TestValidator_PrecedenceStructuralVersusContent(t *testing.T) {
 	}
 	errs := extraction.Validate(out)
 	require.Len(t, errs, 2)
-	
+
 	hasEmpty := false
 	hasConflicting := false
 	for _, e := range errs {
@@ -312,7 +312,7 @@ func TestValidator_PrecedenceStructuralVersusContent(t *testing.T) {
 			hasConflicting = true
 		}
 	}
-	
+
 	require.True(t, hasEmpty, "Should have empty_evidence_locator on start_with")
 	require.True(t, hasConflicting, "Should have conflicting_evidence_locator")
 }
@@ -350,16 +350,16 @@ func TestValidator_AccumulatesMultipleErrorsInDeterministicOrder(t *testing.T) {
 			},
 		},
 	}
-	
+
 	errs := extraction.Validate(out)
 	require.Len(t, errs, 3)
-	
+
 	require.Equal(t, "statements[0].source", errs[0].Path)
 	require.Equal(t, "invalid_source_combination", errs[0].Code)
-	
+
 	require.Equal(t, "statements[1].evidence", errs[1].Path)
 	require.Equal(t, "missing_evidence_locator", errs[1].Code)
-	
+
 	require.Equal(t, "statements[2].evidence", errs[2].Path)
 	require.Equal(t, "partial_evidence_locator", errs[2].Code)
 }
@@ -381,9 +381,9 @@ func TestValidator_ValidationDoesNotMutateOutput(t *testing.T) {
 			},
 		},
 	}
-	
+
 	_ = extraction.Validate(out)
-	
+
 	// Ensure fields haven't been trimmed or changed
 	require.Equal(t, "   ", *out.Statements[0].Source.Name)
 	require.Equal(t, " start ", *out.Statements[0].Evidence.StartWith)

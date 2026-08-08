@@ -11,6 +11,7 @@ import (
 	"github.com/ChiaYuChang/prism/internal/analyzer/llmapi"
 	"github.com/ChiaYuChang/prism/internal/analyzer/stages/extraction"
 	"github.com/ChiaYuChang/prism/internal/llm"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 )
@@ -229,10 +230,26 @@ var fakeTransientError = &llm.TransientError{
 
 var errFakeFatal = errors.New("invalid model configuration")
 
+
+
 func setupRunner(fake *FakeLLM, maxAttempt int) *llmapi.Runner[extraction.Input, any, extraction.Output] {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tracer := otel.Tracer("test")
-	stage := extraction.NewStage(fake, "fake-model")
+
+	deps := extraction.Dependencies{
+		Generator:    fake,
+		PromptLoader: &fakeLoader{},
+	}
+	params := extraction.V1Parameters{
+		Model:    "fake-model",
+		PromptID: uuid.MustParse("00000000-0000-0000-0000-000000000001"),
+	}
+
+	stage, err := extraction.NewV1(context.Background(), deps, params)
+	if err != nil {
+		panic(err)
+	}
+
 	runner, err := llmapi.NewRunner[extraction.Input, any, extraction.Output](tracer, logger, maxAttempt, stage)
 	if err != nil {
 		panic(err)
@@ -355,7 +372,7 @@ func TestStage_FatalProviderErrorAborts(t *testing.T) {
 
 	var retryErr *llmapi.RetryError
 	require.False(t, errors.As(err, &retryErr))
-	
+
 	var reAttemptErr *llmapi.ReAttemptError
 	require.False(t, errors.As(err, &reAttemptErr))
 }

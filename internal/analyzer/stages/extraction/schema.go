@@ -112,10 +112,10 @@ func Schema() schema.JSONSchema {
 
 	evidenceStartWithSchema := evidenceSchema.Properties["start_with"]
 	evidenceStartWithSchema.Description = "verbatim source text"
-	
+
 	evidenceEndWithSchema := evidenceSchema.Properties["end_with"]
 	evidenceEndWithSchema.Description = "verbatim source text"
-	
+
 	evidenceQuoteSchema := evidenceSchema.Properties["quote"]
 	evidenceQuoteSchema.Description = "verbatim source text"
 

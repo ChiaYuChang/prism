@@ -10,12 +10,7 @@ import (
 )
 
 //go:embed prompt.tmpl
-var promptTemplateText string
-var promptTemplate *template.Template
-
-func init() {
-	promptTemplate = template.Must(template.New("extraction_prompt").Parse(promptTemplateText))
-}
+var DefaultPromptTemplateText string
 
 // PromptData represents the data fed into the extraction prompt template.
 type PromptData struct {
@@ -32,7 +27,7 @@ type PromptRepair struct {
 
 // RenderPrompt generates the final LLM prompt string for Stage 1.
 // If hint is not nil, a repair section is included with the serialized previous output and errors.
-func RenderPrompt(title, content string, hint *llmapi.RepairHint) (string, error) {
+func RenderPrompt(tmpl *template.Template, title, content string, hint *llmapi.RepairHint) (string, error) {
 	data := PromptData{
 		Title:   title,
 		Content: content,
@@ -57,7 +52,7 @@ func RenderPrompt(title, content string, hint *llmapi.RepairHint) (string, error
 	}
 
 	var buf bytes.Buffer
-	if err := promptTemplate.Execute(&buf, data); err != nil {
+	if err := tmpl.Execute(&buf, data); err != nil {
 		return "", err
 	}
 	return buf.String(), nil

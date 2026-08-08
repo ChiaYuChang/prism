@@ -18,10 +18,10 @@ func TestOutputStableJSONContract(t *testing.T) {
 		Summary: "Test summary",
 		Statements: []extraction.Statement{
 			{
-				Statement:  "A test statement",
-				Type:       extraction.StatementTypeFactual,
-				Tags:       []extraction.StatementTag{extraction.StatementTagPrediction},
-				Sentiment:  extraction.SentimentNeutral,
+				Statement: "A test statement",
+				Type:      extraction.StatementTypeFactual,
+				Tags:      []extraction.StatementTag{extraction.StatementTagPrediction},
+				Sentiment: extraction.SentimentNeutral,
 				Source: extraction.Source{
 					Name: &name,
 					Type: extraction.SourceTypePerson,
