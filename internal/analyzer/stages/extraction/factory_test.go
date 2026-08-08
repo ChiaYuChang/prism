@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"errors"
 	"github.com/ChiaYuChang/prism/internal/analyzer/stageparams"
 	"github.com/ChiaYuChang/prism/internal/analyzer/stages/extraction"
 	"github.com/ChiaYuChang/prism/internal/prompt"
 	"github.com/stretchr/testify/require"
-	"errors"
 
 	"github.com/ChiaYuChang/prism/internal/llm"
 	"github.com/google/uuid"

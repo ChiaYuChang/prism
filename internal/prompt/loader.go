@@ -2,6 +2,8 @@ package prompt
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -33,11 +35,17 @@ type Loader struct {
 }
 
 // NewLoader creates a new prompt loader.
-func NewLoader(metadata MetadataGetter, resolver *Resolver) *Loader {
+func NewLoader(metadata MetadataGetter, resolver *Resolver) (*Loader, error) {
+	if metadata == nil {
+		return nil, errors.New("metadata getter is required")
+	}
+	if resolver == nil {
+		return nil, errors.New("resolver is required")
+	}
 	return &Loader{
 		metadata: metadata,
 		resolver: resolver,
-	}
+	}, nil
 }
 
 // Load retrieves a prompt's metadata and resolves its content.
@@ -45,6 +53,9 @@ func (l *Loader) Load(ctx context.Context, id uuid.UUID) (Loaded, error) {
 	meta, err := l.metadata.GetByID(ctx, id)
 	if err != nil {
 		return Loaded{}, err
+	}
+	if meta.ID != id {
+		return Loaded{}, fmt.Errorf("prompt metadata id mismatch: requested=%s got=%s", id, meta.ID)
 	}
 
 	body, err := l.resolver.Resolve(ctx, meta.Hash)

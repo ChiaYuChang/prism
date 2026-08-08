@@ -25,15 +25,18 @@ func (f *fakeMetadataGetter) GetByID(ctx context.Context, id uuid.UUID) (prompt.
 	if f.Err != nil {
 		return prompt.Version{}, f.Err
 	}
-	if id == f.ID {
-		return prompt.Version{
-			ID:      id,
-			Hash:    f.Hash,
-			Name:    "test",
-			Version: 1,
-		}, nil
+	// Return the hardcoded ID if set, otherwise fallback to the requested ID
+	returnedID := f.ID
+	if returnedID == uuid.Nil {
+		returnedID = id
 	}
-	return prompt.Version{}, errors.New("not found")
+
+	return prompt.Version{
+		ID:      returnedID,
+		Hash:    f.Hash,
+		Name:    "test",
+		Version: 1,
+	}, nil
 }
 
 type fakeGetter struct {
@@ -69,13 +72,32 @@ func TestLoader_Success(t *testing.T) {
 	resolver, err := prompt.NewResolver(getter, &verify)
 	require.NoError(t, err)
 
-	loader := prompt.NewLoader(metaGetter, resolver)
+	loader, err := prompt.NewLoader(metaGetter, resolver)
+	require.NoError(t, err)
 
 	loaded, err := loader.Load(context.Background(), id)
 	require.NoError(t, err)
 	require.Equal(t, id, loaded.ID)
 	require.Equal(t, hashStr, loaded.Hash)
 	require.Equal(t, []byte(body), loaded.Body)
+}
+
+func TestLoader_MetadataIDMismatch(t *testing.T) {
+	requestedID := uuid.New()
+	returnedID := uuid.New()
+
+	metaGetter := &fakeMetadataGetter{
+		ID:   returnedID, // mismatch
+		Hash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	}
+
+	resolver, _ := prompt.NewResolver(&fakeGetter{}, nil)
+	loader, err := prompt.NewLoader(metaGetter, resolver)
+	require.NoError(t, err)
+
+	_, err = loader.Load(context.Background(), requestedID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "prompt metadata id mismatch")
 }
 
 func TestLoader_MetadataError(t *testing.T) {
@@ -85,9 +107,10 @@ func TestLoader_MetadataError(t *testing.T) {
 	}
 
 	resolver, _ := prompt.NewResolver(&fakeGetter{}, nil)
-	loader := prompt.NewLoader(metaGetter, resolver)
+	loader, err := prompt.NewLoader(metaGetter, resolver)
+	require.NoError(t, err)
 
-	_, err := loader.Load(context.Background(), id)
+	_, err = loader.Load(context.Background(), id)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "db error")
 }
@@ -100,9 +123,23 @@ func TestLoader_ResolveError(t *testing.T) {
 	}
 
 	resolver, _ := prompt.NewResolver(&fakeGetter{}, nil)
-	loader := prompt.NewLoader(metaGetter, resolver)
+	loader, err := prompt.NewLoader(metaGetter, resolver)
+	require.NoError(t, err)
 
-	_, err := loader.Load(context.Background(), id)
+	_, err = loader.Load(context.Background(), id)
 	require.Error(t, err)
 	require.ErrorIs(t, err, storage.ErrNotFound)
+}
+
+func TestLoader_NewLoaderValidation(t *testing.T) {
+	resolver, _ := prompt.NewResolver(&fakeGetter{}, nil)
+	metaGetter := &fakeMetadataGetter{}
+
+	_, err := prompt.NewLoader(nil, resolver)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "metadata getter is required")
+
+	_, err = prompt.NewLoader(metaGetter, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "resolver is required")
 }

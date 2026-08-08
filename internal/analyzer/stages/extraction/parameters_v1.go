@@ -7,9 +7,9 @@ import (
 )
 
 type V1Parameters struct {
-	Model string `json:"model" validate:"required"`
+	Model string `json:"model"`
 	// PromptID specifies the exact pinned version of the extraction semantic policy.
-	PromptID uuid.UUID `json:"prompt_id" validate:"required"`
+	PromptID uuid.UUID `json:"prompt_id"`
 }
 
 func (p *V1Parameters) Validate() error {

@@ -50,7 +50,7 @@ func (r *Resolver) Resolve(ctx context.Context, hash string) ([]byte, error) {
 	}
 
 	key := ObjectKey(hash)
-	
+
 	rc, err := r.store.Get(ctx, key)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get prompt from store: %w", err)

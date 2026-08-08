@@ -230,8 +230,6 @@ var fakeTransientError = &llm.TransientError{
 
 var errFakeFatal = errors.New("invalid model configuration")
 
-
-
 func setupRunner(fake *FakeLLM, maxAttempt int) *llmapi.Runner[extraction.Input, any, extraction.Output] {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tracer := otel.Tracer("test")
