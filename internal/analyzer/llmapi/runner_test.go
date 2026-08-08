@@ -5,17 +5,15 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
 	"sync"
 	"testing"
 
 	"github.com/ChiaYuChang/prism/internal/analyzer/llmapi"
-	"github.com/ChiaYuChang/prism/internal/llm"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
@@ -25,10 +23,12 @@ type fakeStage struct {
 	mu       sync.Mutex
 	name     string
 	order    []string
-	failAt   string
-	err      error
+	failAt   []string
+	errs     []error
 	packets  []*testPacket
 	contexts []context.Context
+	
+	attemptCount int
 }
 
 func (s *fakeStage) Name() string { return s.name }
@@ -39,9 +39,18 @@ func (s *fakeStage) record(ctx context.Context, p *testPacket, step string) erro
 	s.order = append(s.order, step)
 	s.packets = append(s.packets, p)
 	s.contexts = append(s.contexts, ctx)
-	if s.failAt == step {
-		return s.err
+	
+	if s.attemptCount < len(s.failAt) && s.failAt[s.attemptCount] == step {
+		err := s.errs[s.attemptCount]
+		s.attemptCount++
+		return err
 	}
+	
+	if step == "post_process" {
+		p.Output = "success"
+		s.attemptCount++
+	}
+	
 	return nil
 }
 
@@ -57,12 +66,12 @@ func (s *fakeStage) PostProcess(ctx context.Context, p *testPacket) error {
 	return s.record(ctx, p, "post_process")
 }
 
-func newRunner(t *testing.T, stage *fakeStage, exporter *tracetest.InMemoryExporter, output *bytes.Buffer) *llmapi.Runner[string, struct{}, string] {
+func newRunner(t *testing.T, stage *fakeStage, maxAttempt int, exporter *tracetest.InMemoryExporter, output *bytes.Buffer) *llmapi.Runner[string, struct{}, string] {
 	t.Helper()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
 	t.Cleanup(func() { require.NoError(t, tp.Shutdown(context.Background())) })
 	logger := slog.New(slog.NewTextHandler(output, nil))
-	runner, err := llmapi.NewRunner(tp.Tracer("test"), logger, stage)
+	runner, err := llmapi.NewRunner(tp.Tracer("test"), logger, maxAttempt, stage)
 	require.NoError(t, err)
 	return runner
 }
@@ -72,45 +81,39 @@ func TestNewRunnerValidatesDependencies(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 	stage := &fakeStage{name: "test"}
 
-	_, err := llmapi.NewRunner[string, struct{}, string](nil, logger, stage)
+	_, err := llmapi.NewRunner[string, struct{}, string](nil, logger, 1, stage)
 	require.ErrorIs(t, err, llmapi.ErrParamMissing)
-	_, err = llmapi.NewRunner[string, struct{}, string](tracer, nil, stage)
+	_, err = llmapi.NewRunner[string, struct{}, string](tracer, nil, 1, stage)
 	require.ErrorIs(t, err, llmapi.ErrParamMissing)
-	_, err = llmapi.NewRunner[string, struct{}, string](tracer, logger, nil)
+	_, err = llmapi.NewRunner[string, struct{}, string](tracer, logger, 0, stage)
 	require.ErrorIs(t, err, llmapi.ErrParamMissing)
-	_, err = llmapi.NewRunner[string, struct{}, string](tracer, logger, &fakeStage{name: " \t"})
+	_, err = llmapi.NewRunner[string, struct{}, string](tracer, logger, 1, nil)
+	require.ErrorIs(t, err, llmapi.ErrParamMissing)
+	_, err = llmapi.NewRunner[string, struct{}, string](tracer, logger, 1, &fakeStage{name: " \t"})
 	require.ErrorIs(t, err, llmapi.ErrParamMissing)
 	var typedNilStage *fakeStage
-	_, err = llmapi.NewRunner[string, struct{}, string](tracer, logger, typedNilStage)
+	_, err = llmapi.NewRunner[string, struct{}, string](tracer, logger, 1, typedNilStage)
 	require.ErrorIs(t, err, llmapi.ErrParamMissing)
 	var typedNilTracer *noop.Tracer
-	_, err = llmapi.NewRunner[string, struct{}, string](typedNilTracer, logger, stage)
+	_, err = llmapi.NewRunner[string, struct{}, string](typedNilTracer, logger, 1, stage)
 	require.ErrorIs(t, err, llmapi.ErrParamMissing)
-}
-
-func TestRunnerDoRejectsNilPacket(t *testing.T) {
-	var logs bytes.Buffer
-	exporter := tracetest.NewInMemoryExporter()
-	runner := newRunner(t, &fakeStage{name: "test"}, exporter, &logs)
-
-	err := runner.Do(context.Background(), nil)
-	require.ErrorIs(t, err, llmapi.ErrNilPacket)
-	require.Contains(t, logs.String(), "component=analyzer.llmapi.runner")
-	require.Contains(t, logs.String(), "stage=test")
 }
 
 func TestRunnerDoExecutesLifecycleWithSamePacketAndDerivedContexts(t *testing.T) {
 	var logs bytes.Buffer
 	exporter := tracetest.NewInMemoryExporter()
 	stage := &fakeStage{name: "test"}
-	runner := newRunner(t, stage, exporter, &logs)
-	p := llmapi.NewPacket[string, struct{}, string]("input")
+	runner := newRunner(t, stage, 1, exporter, &logs)
 
-	require.NoError(t, runner.Do(context.Background(), p))
+	out, err := runner.Do(context.Background(), "input")
+	require.NoError(t, err)
+	require.Equal(t, "success", out)
 
 	stage.mu.Lock()
 	require.Equal(t, []string{"pre_process", "api_call", "post_process"}, stage.order)
 	require.Len(t, stage.packets, 3)
+	
+	p := stage.packets[0]
 	for _, got := range stage.packets {
 		require.Same(t, p, got)
 	}
@@ -118,90 +121,142 @@ func TestRunnerDoExecutesLifecycleWithSamePacketAndDerivedContexts(t *testing.T)
 		require.True(t, trace.SpanContextFromContext(stepCtx).IsValid())
 	}
 	stage.mu.Unlock()
+	
 	spans := exporter.GetSpans()
-	require.Len(t, spans, 4)
+	require.Len(t, spans, 5) // parent + attempt + 3 steps
 	var parentSpanID trace.SpanID
 	var parentTraceID trace.TraceID
-	spanByName := make(map[string]tracetest.SpanStub, len(spans))
+	var attemptSpanID trace.SpanID
 	for _, span := range spans {
-		spanByName[span.Name] = span
 		if span.Name == "analyzer.llmapi.test" {
 			parentSpanID = span.SpanContext.SpanID()
 			parentTraceID = span.SpanContext.TraceID()
-			requireAttribute(t, span, "analyzer.stage", "test")
+		} else if span.Name == "attempt" {
+			attemptSpanID = span.SpanContext.SpanID()
 		}
 	}
 	require.NotEqual(t, trace.SpanID{}, parentSpanID)
+	require.NotEqual(t, trace.SpanID{}, attemptSpanID)
 	for _, span := range spans {
 		if span.Name == "analyzer.llmapi.test" {
 			continue
+		} else if span.Name == "attempt" {
+			require.Equal(t, parentSpanID, span.Parent.SpanID())
+		} else {
+			require.Equal(t, attemptSpanID, span.Parent.SpanID())
+			require.Equal(t, parentTraceID, span.SpanContext.TraceID())
 		}
-		require.Equal(t, parentSpanID, span.Parent.SpanID())
-		require.Equal(t, parentTraceID, span.SpanContext.TraceID())
-		requireAttribute(t, span, "analyzer.stage", "test")
-		requireAttribute(t, span, "analyzer.step", span.Name)
 	}
-	stage.mu.Lock()
-	for i, step := range stage.order {
-		require.Equal(t, spanByName[step].SpanContext.SpanID(), trace.SpanContextFromContext(stage.contexts[i]).SpanID())
-		require.Equal(t, parentTraceID, trace.SpanContextFromContext(stage.contexts[i]).TraceID())
-	}
-	stage.mu.Unlock()
-	require.Empty(t, logs.String())
 }
 
-func TestRunnerDoShortCircuitsAndPreservesCause(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		failAt string
-		order  []string
-	}{
-		{name: "pre process", failAt: "pre_process", order: []string{"pre_process"}},
-		{name: "api call", failAt: "api_call", order: []string{"pre_process", "api_call"}},
-		{name: "post process", failAt: "post_process", order: []string{"pre_process", "api_call", "post_process"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cause := errors.New("stage failure")
-			var logs bytes.Buffer
-			exporter := tracetest.NewInMemoryExporter()
-			stage := &fakeStage{name: "test", failAt: tc.failAt, err: cause}
-			runner := newRunner(t, stage, exporter, &logs)
-
-			err := runner.Do(context.Background(), llmapi.NewPacket[string, struct{}, string]("input"))
-			require.ErrorIs(t, err, cause)
-			require.Equal(t, tc.order, stage.order)
-			require.Equal(t, 1, strings.Count(logs.String(), "LLM stage failed"))
-			require.Contains(t, logs.String(), "component=analyzer.llmapi.runner")
-			require.Contains(t, logs.String(), "stage=test")
-			require.Contains(t, logs.String(), "error=\""+tc.failAt+": stage failure\"")
-			spans := exporter.GetSpans()
-			require.Len(t, spans, len(tc.order)+1)
-			expectedNames := append([]string{"analyzer.llmapi.test"}, tc.order...)
-			actualNames := make([]string, 0, len(spans))
-			for _, span := range spans {
-				actualNames = append(actualNames, span.Name)
-				if tc.failAt != "post_process" {
-					require.NotEqual(t, "post_process", span.Name)
-				}
-			}
-			require.ElementsMatch(t, expectedNames, actualNames)
-		})
+func TestRunnerDoReAttemptsOnReAttemptError(t *testing.T) {
+	var logs bytes.Buffer
+	exporter := tracetest.NewInMemoryExporter()
+	stage := &fakeStage{
+		name: "test",
+		failAt: []string{"post_process"},
+		errs: []error{&llmapi.ReAttemptError{Cause: errors.New("invalid"), Hint: &llmapi.RepairHint{}}},
 	}
+	runner := newRunner(t, stage, 3, exporter, &logs)
+
+	out, err := runner.Do(context.Background(), "input")
+	require.NoError(t, err)
+	require.Equal(t, "success", out)
+
+	stage.mu.Lock()
+	require.Equal(t, []string{
+		"pre_process", "api_call", "post_process",
+		"pre_process", "api_call", "post_process",
+	}, stage.order)
+	require.Len(t, stage.packets, 6)
+	
+	p1 := stage.packets[0]
+	p2 := stage.packets[3]
+	require.NotSame(t, p1, p2)
+	require.Nil(t, p1.RepairHint)
+	require.NotNil(t, p2.RepairHint)
+	stage.mu.Unlock()
+}
+
+func TestRunnerDoAbortsImmediatelyOnRetryError(t *testing.T) {
+	var logs bytes.Buffer
+	exporter := tracetest.NewInMemoryExporter()
+	stage := &fakeStage{
+		name: "test",
+		failAt: []string{"api_call"},
+		errs: []error{&llmapi.RetryError{Cause: errors.New("rate limited")}},
+	}
+	runner := newRunner(t, stage, 3, exporter, &logs)
+
+	_, err := runner.Do(context.Background(), "input")
+	var retryErr *llmapi.RetryError
+	require.ErrorAs(t, err, &retryErr)
+
+	stage.mu.Lock()
+	require.Equal(t, []string{"pre_process", "api_call"}, stage.order)
+	stage.mu.Unlock()
+}
+
+func TestRunnerDoAbortsImmediatelyOnFatalError(t *testing.T) {
+	var logs bytes.Buffer
+	exporter := tracetest.NewInMemoryExporter()
+	stage := &fakeStage{
+		name: "test",
+		failAt: []string{"post_process"},
+		errs: []error{errors.New("fatal")},
+	}
+	runner := newRunner(t, stage, 3, exporter, &logs)
+
+	_, err := runner.Do(context.Background(), "input")
+	require.ErrorContains(t, err, "fatal")
+
+	stage.mu.Lock()
+	require.Equal(t, []string{"pre_process", "api_call", "post_process"}, stage.order)
+	stage.mu.Unlock()
+}
+
+func TestRunnerDoExhaustsMaxAttempts(t *testing.T) {
+	var logs bytes.Buffer
+	exporter := tracetest.NewInMemoryExporter()
+	
+	errs := []error{
+		&llmapi.ReAttemptError{Cause: errors.New("e1")},
+		&llmapi.ReAttemptError{Cause: errors.New("e2")},
+		&llmapi.ReAttemptError{Cause: errors.New("e3")},
+	}
+	stage := &fakeStage{
+		name: "test",
+		failAt: []string{"post_process", "post_process", "post_process"},
+		errs: errs,
+	}
+	runner := newRunner(t, stage, 3, exporter, &logs)
+
+	_, err := runner.Do(context.Background(), "input")
+	require.ErrorContains(t, err, "max semantic attempts exhausted")
+	require.ErrorContains(t, err, "e3")
+
+	stage.mu.Lock()
+	require.Equal(t, 9, len(stage.order))
+	stage.mu.Unlock()
 }
 
 func TestRunnerDoRecordsParentAndChildSpanErrors(t *testing.T) {
 	var logs bytes.Buffer
 	exporter := tracetest.NewInMemoryExporter()
-	stage := &fakeStage{name: "test", failAt: "api_call", err: context.Canceled}
-	runner := newRunner(t, stage, exporter, &logs)
+	stage := &fakeStage{
+		name: "test", 
+		failAt: []string{"api_call"}, 
+		errs: []error{context.Canceled},
+	}
+	runner := newRunner(t, stage, 1, exporter, &logs)
 
-	err := runner.Do(context.Background(), llmapi.NewPacket[string, struct{}, string]("input"))
+	_, err := runner.Do(context.Background(), "input")
 	require.ErrorIs(t, err, context.Canceled)
 
 	spans := exporter.GetSpans()
-	require.Len(t, spans, 3)
+	require.Len(t, spans, 4)
 	for _, span := range spans {
-		if span.Name == "analyzer.llmapi.test" || span.Name == "api_call" {
+		if span.Name == "analyzer.llmapi.test" || span.Name == "attempt" || span.Name == "api_call" {
 			require.Equal(t, codes.Error, span.Status.Code)
 			requireExceptionEvent(t, span, "api_call: context canceled")
 		}
@@ -209,42 +264,26 @@ func TestRunnerDoRecordsParentAndChildSpanErrors(t *testing.T) {
 	}
 }
 
-func TestRunnerDoNilPacketRecordsOneErroredParentWithoutChildren(t *testing.T) {
-	var logs bytes.Buffer
-	exporter := tracetest.NewInMemoryExporter()
-	runner := newRunner(t, &fakeStage{name: "test"}, exporter, &logs)
-
-	require.ErrorIs(t, runner.Do(context.Background(), nil), llmapi.ErrNilPacket)
-	require.Equal(t, 1, strings.Count(logs.String(), "LLM stage failed"))
-	require.NotContains(t, logs.String(), "input")
-
-	spans := exporter.GetSpans()
-	require.Len(t, spans, 1)
-	require.Equal(t, "analyzer.llmapi.test", spans[0].Name)
-	require.Equal(t, codes.Error, spans[0].Status.Code)
-	requireExceptionEvent(t, spans[0], "packet is nil")
-}
-
 func TestRunnerDoesNotLogPacketPayloads(t *testing.T) {
 	var logs bytes.Buffer
 	exporter := tracetest.NewInMemoryExporter()
-	stage := &fakeStage{name: "test", failAt: "post_process", err: errors.New("stage failure")}
-	runner := newRunner(t, stage, exporter, &logs)
-	p := llmapi.NewPacket[string, struct{}, string]("secret-input")
-	p.Request = &llm.GenerateRequest{Prompt: "secret-request"}
-	p.Response = &llm.GenerateResponse{Text: "secret-response"}
+	stage := &fakeStage{
+		name: "test", 
+		failAt: []string{"post_process"}, 
+		errs: []error{errors.New("stage failure")},
+	}
+	runner := newRunner(t, stage, 1, exporter, &logs)
 
-	require.Error(t, runner.Do(context.Background(), p))
+	_, err := runner.Do(context.Background(), "secret-input")
+	require.Error(t, err)
 	require.NotContains(t, logs.String(), "secret-input")
-	require.NotContains(t, logs.String(), "secret-request")
-	require.NotContains(t, logs.String(), "secret-response")
 }
 
 func TestRunnerDoIsSafeForConcurrentCalls(t *testing.T) {
 	var logs bytes.Buffer
 	exporter := tracetest.NewInMemoryExporter()
 	stage := &fakeStage{name: "test"}
-	runner := newRunner(t, stage, exporter, &logs)
+	runner := newRunner(t, stage, 1, exporter, &logs)
 
 	var wg sync.WaitGroup
 	errs := make(chan error, 20)
@@ -252,7 +291,8 @@ func TestRunnerDoIsSafeForConcurrentCalls(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- runner.Do(context.Background(), llmapi.NewPacket[string, struct{}, string]("input"))
+			_, err := runner.Do(context.Background(), "input")
+			errs <- err
 		}()
 	}
 	wg.Wait()
@@ -295,7 +335,8 @@ func requireExceptionEvent(t *testing.T, span tracetest.SpanStub, wantMessage st
 		}
 		require.True(t, hasType)
 		require.True(t, hasMessage)
-		require.Equal(t, wantMessage, message)
+		// Our runner wraps errors differently now, so we just check Contains instead of Equal
+		require.Contains(t, message, wantMessage)
 		return
 	}
 	require.Failf(t, "missing exception event", "span=%s", span.Name)

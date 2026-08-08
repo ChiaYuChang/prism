@@ -23,19 +23,23 @@ var (
 // Runner executes a Stage in the fixed PreProcess, APICall, PostProcess order.
 // Runner is safe for concurrent use when its Stage and dependencies are safe.
 type Runner[I, S, O any] struct {
-	tracer    trace.Tracer
-	logger    *slog.Logger
-	stage     Stage[I, S, O]
-	stageName string
+	tracer     trace.Tracer
+	logger     *slog.Logger
+	stage      Stage[I, S, O]
+	stageName  string
+	maxAttempt int
 }
 
 // NewRunner creates a Runner for stage with the supplied observability dependencies.
-func NewRunner[I, S, O any](tracer trace.Tracer, logger *slog.Logger, stage Stage[I, S, O]) (*Runner[I, S, O], error) {
+func NewRunner[I, S, O any](tracer trace.Tracer, logger *slog.Logger, maxAttempt int, stage Stage[I, S, O]) (*Runner[I, S, O], error) {
 	if isNil(tracer) {
 		return nil, fmt.Errorf("%w: tracer", ErrParamMissing)
 	}
 	if logger == nil {
 		return nil, fmt.Errorf("%w: logger", ErrParamMissing)
+	}
+	if maxAttempt < 1 {
+		return nil, fmt.Errorf("%w: maxAttempt must be >= 1", ErrParamMissing)
 	}
 	if isNil(stage) {
 		return nil, fmt.Errorf("%w: stage", ErrParamMissing)
@@ -51,31 +55,80 @@ func NewRunner[I, S, O any](tracer trace.Tracer, logger *slog.Logger, stage Stag
 			slog.String("component", "analyzer.llmapi.runner"),
 			slog.String("stage", stageName),
 		),
-		stage:     stage,
-		stageName: stageName,
+		stage:      stage,
+		stageName:  stageName,
+		maxAttempt: maxAttempt,
 	}, nil
 }
 
-// Do executes the Stage lifecycle and returns the first failure.
-func (r *Runner[I, S, O]) Do(ctx context.Context, p *Packet[I, S, O]) (err error) {
+// Do executes the Stage lifecycle and returns the output or the first unrecoverable failure.
+func (r *Runner[I, S, O]) Do(ctx context.Context, input I) (O, error) {
 	ctx, span := r.tracer.Start(
 		ctx,
 		"analyzer.llmapi."+r.stageName,
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(attribute.String("analyzer.stage", r.stageName)),
 	)
+	
+	var finalErr error
+	var output O
+	
 	defer func() {
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-			r.logger.ErrorContext(ctx, "LLM stage failed", slog.Any("error", err))
+		if finalErr != nil {
+			span.RecordError(finalErr)
+			span.SetStatus(codes.Error, finalErr.Error())
+			r.logger.ErrorContext(ctx, "LLM stage failed", slog.Any("error", finalErr))
 		}
 		span.End()
 	}()
 
-	if p == nil {
-		return ErrNilPacket
+	var repairHint *RepairHint
+
+	for attempt := 1; attempt <= r.maxAttempt; attempt++ {
+		p := NewPacket[I, S, O](input, repairHint)
+		err := r.doAttempt(ctx, p, attempt)
+		if err == nil {
+			return p.Output, nil
+		}
+
+		var retryErr *RetryError
+		if errors.As(err, &retryErr) {
+			finalErr = err
+			return output, finalErr
+		}
+
+		var reAttemptErr *ReAttemptError
+		if errors.As(err, &reAttemptErr) {
+			repairHint = reAttemptErr.Hint
+			finalErr = err // Track the latest error in case we exhaust attempts
+			continue
+		}
+
+		finalErr = err
+		return output, finalErr
 	}
+
+	finalErr = fmt.Errorf("max semantic attempts exhausted: %w", finalErr)
+	return output, finalErr
+}
+
+func (r *Runner[I, S, O]) doAttempt(ctx context.Context, p *Packet[I, S, O], attempt int) (err error) {
+	ctx, span := r.tracer.Start(
+		ctx,
+		"attempt",
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("analyzer.stage", r.stageName),
+			attribute.Int("analyzer.attempt", attempt),
+		),
+	)
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+	}()
 
 	if err = r.step(ctx, StepPreProcess, func(stepCtx context.Context) error {
 		return r.stage.PreProcess(stepCtx, p)

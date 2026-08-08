@@ -2261,7 +2261,7 @@ func (r *PGAnalysisRuns) RetryFailedItems(ctx context.Context, runID uuid.UUID) 
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	qtx := r.q.WithTx(tx)
 
 	run, err := r.GetByID(ctx, runID)
