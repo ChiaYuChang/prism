@@ -29,7 +29,7 @@ func (f *fakeLoader) Load(ctx context.Context, id uuid.UUID) (prompt.Loaded, err
 		return prompt.Loaded{
 			ID:   id,
 			Hash: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-			Body: []byte(extraction.DefaultPromptTemplateText),
+			Body: []byte(extraction.DefaultSystemInstructionText),
 		}, nil
 	}
 	return prompt.Loaded{}, errors.New("prompt not found")

@@ -18,10 +18,11 @@ var (
 )
 
 type Stage struct {
-	generator      llm.Generator
-	model          string
-	schema         pkgschema.JSONSchema
-	promptTemplate *template.Template
+	generator         llm.Generator
+	model             string
+	schema            pkgschema.JSONSchema
+	systemInstruction string
+	requestTemplate   *template.Template
 }
 
 // NewV1 creates a new extraction Stage using V1 parameters.
@@ -41,16 +42,17 @@ func NewV1(ctx context.Context, deps Dependencies, params V1Parameters) (*Stage,
 		return nil, fmt.Errorf("load prompt %s: %w", params.PromptID, err)
 	}
 
-	tmpl, err := template.New("extraction_prompt").Parse(string(loaded.Body))
+	requestTemplate, err := template.New("extraction_request").Parse(RequestTemplateText)
 	if err != nil {
-		return nil, fmt.Errorf("parse prompt template: %w", err)
+		return nil, fmt.Errorf("parse request template: %w", err)
 	}
 
 	return &Stage{
-		generator:      deps.Generator,
-		model:          params.Model,
-		schema:         Schema(),
-		promptTemplate: tmpl,
+		generator:         deps.Generator,
+		model:             params.Model,
+		schema:            Schema(),
+		systemInstruction: string(loaded.Body),
+		requestTemplate:   requestTemplate,
 	}, nil
 }
 
@@ -64,17 +66,14 @@ func (s *Stage) PreProcess(ctx context.Context, p *llmapi.Packet[Input, any, Out
 		return ErrEmptyArticleContent
 	}
 
-	// We can use a general system instruction, though the prompt template also acts as one.
-	systemInstruction := "You are an expert news analyst tasked with extracting structured information from a single news article."
-
-	renderedPrompt, err := RenderPrompt(s.promptTemplate, in.Title, in.Content, p.RepairHint)
+	renderedPrompt, err := RenderRequest(s.requestTemplate, in.Title, in.Content, p.RepairHint)
 	if err != nil {
 		return err
 	}
 
 	req := llm.NewGenerateRequest(
 		s.model,
-		systemInstruction,
+		s.systemInstruction,
 		renderedPrompt,
 	)
 
